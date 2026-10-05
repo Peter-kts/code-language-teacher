@@ -5,6 +5,16 @@ interface ChatMessage {
   content: string
 }
 
+const PASSCODE_KEY = 'chat-passcode'
+
+function loadPasscode() {
+  try {
+    return localStorage.getItem(PASSCODE_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
 const SUGGESTIONS = ['How do I write a for loop in Python?', 'How do dicts work?', 'Give me a hint for this problem']
 
 export function Chat({
@@ -19,6 +29,9 @@ export function Chat({
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
+  const [passcode, setPasscode] = useState(loadPasscode)
+  const [needsPasscode, setNeedsPasscode] = useState(false)
+  const [passcodeInput, setPasscodeInput] = useState('')
   const endRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => endRef.current?.scrollIntoView({ block: 'end' }), [messages])
@@ -35,9 +48,16 @@ export function Chat({
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', 'x-chat-passcode': passcode },
         body: JSON.stringify({ messages: history, code, problem }),
       })
+      if (res.status === 401) {
+        setNeedsPasscode(true)
+        // Drop the unanswered question; it can be asked again after unlocking.
+        setMessages(messages)
+        setInput(question)
+        return
+      }
       if (!res.body) throw new Error(`HTTP ${res.status}`)
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
@@ -77,6 +97,34 @@ export function Chat({
         ))}
         <div ref={endRef} />
       </div>
+      {needsPasscode && (
+        <form
+          className="chat-form"
+          onSubmit={(e) => {
+            e.preventDefault()
+            const value = passcodeInput.trim()
+            if (!value) return
+            setPasscode(value)
+            try {
+              localStorage.setItem(PASSCODE_KEY, value)
+            } catch {
+              // Storage blocked: the passcode still works until the page reloads.
+            }
+            setPasscodeInput('')
+            setNeedsPasscode(false)
+          }}
+        >
+          <input
+            className="syntax-input"
+            type="password"
+            placeholder={passcode ? 'Wrong passcode, try again' : 'Enter the chat passcode'}
+            value={passcodeInput}
+            onChange={(e) => setPasscodeInput(e.target.value)}
+            autoFocus
+          />
+          <button type="submit">Unlock</button>
+        </form>
+      )}
       <form
         className="chat-form"
         onSubmit={(e) => {
