@@ -21,6 +21,25 @@ let client
 
 /** @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res */
 export async function handleChat(req, res) {
+  if (req.method === 'GET') {
+    // Setup check: open /api/chat in a browser to see what this deploy can see.
+    // Reports only whether settings exist, never their values.
+    const key = apiKey()
+    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(
+      JSON.stringify(
+        {
+          apiKeySet: Boolean(key),
+          apiKeyLooksRight: key.startsWith('sk-ant-') && /^[\x21-\x7e]+$/.test(key),
+          passcodeRequired: Boolean(process.env.CHAT_PASSWORD),
+          environment: process.env.VERCEL_ENV ?? 'local',
+          commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
+        },
+        null,
+        2,
+      ),
+    )
+    return
+  }
   if (req.method !== 'POST') {
     res.writeHead(405).end()
     return
@@ -53,7 +72,8 @@ export async function handleChat(req, res) {
   }))
 
   try {
-    client ??= new Anthropic()
+    if (!apiKey()) throw new Error('missing api key')
+    client ??= new Anthropic({ apiKey: apiKey() })
     const stream = client.beta.messages.stream({
       model: MODEL,
       max_tokens: 4000,
@@ -83,6 +103,11 @@ export async function handleChat(req, res) {
     if (!res.headersSent) res.writeHead(502, { 'content-type': 'text/plain' })
     res.end(message)
   }
+}
+
+// Trim stray spaces or newlines that sneak in when a key is pasted into a settings page.
+function apiKey() {
+  return (process.env.ANTHROPIC_API_KEY ?? '').trim()
 }
 
 function passcodeMatches(given, expected) {
