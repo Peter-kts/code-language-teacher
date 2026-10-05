@@ -70,7 +70,7 @@ export async function handleChat(req, res) {
       err instanceof Anthropic.AuthenticationError
         ? 'Anthropic rejected the API key. Check ANTHROPIC_API_KEY (in .env locally, or in Vercel → Settings → Environment Variables).'
         : /credentials|api key/i.test(String(err?.message))
-          ? 'The chat needs an Anthropic API key. Set ANTHROPIC_API_KEY in .env locally, or in Vercel → Settings → Environment Variables.'
+          ? 'The chat can\'t see an Anthropic API key. Locally, set ANTHROPIC_API_KEY in .env and restart. On Vercel, add it under Settings → Environment Variables with Production ticked, then redeploy (new variables only apply to new deploys).'
           : err instanceof Anthropic.RateLimitError
           ? 'Claude is rate limited right now. Try again in a moment.'
           : `Chat error: ${err?.message ?? err}`
