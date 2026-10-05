@@ -2,6 +2,7 @@
 // Used by the Vite dev server (vite.config.ts) and the production server (server/index.mjs).
 import Anthropic from '@anthropic-ai/sdk'
 import { existsSync } from 'node:fs'
+import { createHash, timingSafeEqual } from 'node:crypto'
 import { join } from 'node:path'
 
 // Load ANTHROPIC_API_KEY from a .env file in the project root, if there is one.
@@ -22,6 +23,11 @@ let client
 export async function handleChat(req, res) {
   if (req.method !== 'POST') {
     res.writeHead(405).end()
+    return
+  }
+  // Optional passcode so strangers who find the site can't spend your API credits.
+  if (process.env.CHAT_PASSWORD && !passcodeMatches(req.headers['x-chat-passcode'], process.env.CHAT_PASSWORD)) {
+    res.writeHead(401, { 'content-type': 'text/plain' }).end('This chat needs a passcode.')
     return
   }
   let body
@@ -77,6 +83,12 @@ export async function handleChat(req, res) {
     if (!res.headersSent) res.writeHead(502, { 'content-type': 'text/plain' })
     res.end(message)
   }
+}
+
+function passcodeMatches(given, expected) {
+  if (typeof given !== 'string') return false
+  const digest = (v) => createHash('sha256').update(v).digest()
+  return timingSafeEqual(digest(given), digest(expected))
 }
 
 function readBody(req) {

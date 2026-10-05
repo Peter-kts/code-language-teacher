@@ -15,6 +15,8 @@ The **Ask Claude** chat needs an Anthropic API key, which stays on the server si
 
 **Deploy to Vercel:** import the GitHub repo at vercel.com/new (it detects Vite), add `ANTHROPIC_API_KEY` under Settings → Environment Variables, and deploy. `api/chat.mjs` runs the chat; every push to `main` redeploys.
 
+**Keep strangers off your API key:** also set `CHAT_PASSWORD` (any passphrase) in the same place and redeploy. The chat then asks for it once per browser; without it, the server refuses to call Claude. The editor and visualizer stay open to everyone, since they cost nothing.
+
 For a production build on your own server: `npm run build && ANTHROPIC_API_KEY=... npm start` (serves on port 8787, or `PORT`).
 
 ## How it works
