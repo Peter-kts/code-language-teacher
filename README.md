@@ -13,7 +13,9 @@ Open the printed URL. Python runs entirely in your browser.
 
 The **Ask Claude** chat needs an Anthropic API key, which stays on the server side and never reaches the browser. Copy `.env.example` to `.env` and paste your key after `ANTHROPIC_API_KEY=`, then restart `npm run dev`. `.env` is git-ignored, so the key is never committed.
 
-For a production build: `npm run build && ANTHROPIC_API_KEY=... npm start` (serves on port 8787, or `PORT`).
+**Deploy to Vercel:** import the GitHub repo at vercel.com/new (it detects Vite), add `ANTHROPIC_API_KEY` under Settings → Environment Variables, and deploy. `api/chat.mjs` runs the chat; every push to `main` redeploys.
+
+For a production build on your own server: `npm run build && ANTHROPIC_API_KEY=... npm start` (serves on port 8787, or `PORT`).
 
 ## How it works
 

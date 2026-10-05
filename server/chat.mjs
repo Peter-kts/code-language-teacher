@@ -26,7 +26,8 @@ export async function handleChat(req, res) {
   }
   let body
   try {
-    body = JSON.parse(await readBody(req))
+    // Some hosts (e.g. Vercel) parse JSON bodies before the handler runs.
+    body = req.body && typeof req.body === 'object' ? req.body : JSON.parse(await readBody(req))
   } catch {
     res.writeHead(400, { 'content-type': 'text/plain' }).end('Bad request')
     return
@@ -67,9 +68,9 @@ export async function handleChat(req, res) {
   } catch (err) {
     const message =
       err instanceof Anthropic.AuthenticationError
-        ? 'Anthropic rejected the API key. Check ANTHROPIC_API_KEY in your .env file, then restart npm run dev.'
+        ? 'Anthropic rejected the API key. Check ANTHROPIC_API_KEY (in .env locally, or in Vercel → Settings → Environment Variables).'
         : /credentials|api key/i.test(String(err?.message))
-          ? 'The chat needs an Anthropic API key. Put ANTHROPIC_API_KEY=... in a .env file in the project folder (see .env.example), then restart npm run dev.'
+          ? 'The chat needs an Anthropic API key. Set ANTHROPIC_API_KEY in .env locally, or in Vercel → Settings → Environment Variables.'
           : err instanceof Anthropic.RateLimitError
           ? 'Claude is rate limited right now. Try again in a moment.'
           : `Chat error: ${err?.message ?? err}`
