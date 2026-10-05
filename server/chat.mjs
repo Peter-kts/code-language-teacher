@@ -1,6 +1,12 @@
 // POST /api/chat: streams a Claude answer as plain text.
 // Used by the Vite dev server (vite.config.ts) and the production server (server/index.mjs).
 import Anthropic from '@anthropic-ai/sdk'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
+
+// Load ANTHROPIC_API_KEY from a .env file in the project root, if there is one.
+const envFile = join(import.meta.dirname, '..', '.env')
+if (existsSync(envFile)) process.loadEnvFile(envFile)
 
 const MODEL = 'claude-opus-5-5'
 
@@ -60,9 +66,11 @@ export async function handleChat(req, res) {
     res.end()
   } catch (err) {
     const message =
-      err instanceof Anthropic.AuthenticationError || /credentials|api key/i.test(String(err?.message))
-        ? 'The chat needs an Anthropic API key. Start the app with ANTHROPIC_API_KEY set.'
-        : err instanceof Anthropic.RateLimitError
+      err instanceof Anthropic.AuthenticationError
+        ? 'Anthropic rejected the API key. Check ANTHROPIC_API_KEY in your .env file, then restart npm run dev.'
+        : /credentials|api key/i.test(String(err?.message))
+          ? 'The chat needs an Anthropic API key. Put ANTHROPIC_API_KEY=... in a .env file in the project folder (see .env.example), then restart npm run dev.'
+          : err instanceof Anthropic.RateLimitError
           ? 'Claude is rate limited right now. Try again in a moment.'
           : `Chat error: ${err?.message ?? err}`
     if (!res.headersSent) res.writeHead(502, { 'content-type': 'text/plain' })
