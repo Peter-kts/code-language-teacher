@@ -11,11 +11,7 @@ npm run dev
 
 Open the printed URL. Python runs entirely in your browser.
 
-The **Ask Claude** chat needs an Anthropic API key, which stays on the server side:
-
-```sh
-ANTHROPIC_API_KEY=sk-ant-... npm run dev
-```
+The **Ask Claude** chat needs an Anthropic API key, which stays on the server side and never reaches the browser. Copy `.env.example` to `.env` and paste your key after `ANTHROPIC_API_KEY=`, then restart `npm run dev`. `.env` is git-ignored, so the key is never committed.
 
 For a production build: `npm run build && ANTHROPIC_API_KEY=... npm start` (serves on port 8787, or `PORT`).
 
