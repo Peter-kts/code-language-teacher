@@ -34,7 +34,11 @@ export function Chat({
   const [passcodeInput, setPasscodeInput] = useState('')
   const endRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => endRef.current?.scrollIntoView({ block: 'end' }), [messages])
+  // Braces matter: newer browsers return a Promise from scrollIntoView, and React
+  // would treat a returned value as the effect's cleanup function.
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: 'end' })
+  }, [messages])
 
   const send = async (text: string) => {
     const question = text.trim()
