@@ -39,4 +39,22 @@ export type TraceResult =
       truncated: boolean
       error: CodeError | null
       stdout: string
+      /** Return value of the problem's function, when one was called. */
+      result: Value | null
+      /** e.g. `twoSum([2, 7, 11, 15], 9)` */
+      call: string | null
     }
+
+export interface TestResult {
+  passed: boolean
+  got: string | null
+  error: string | null
+}
+
+export interface RunRequest {
+  code: string
+  /** Problem function to call and trace after the module runs. */
+  call?: { name: string; args: unknown[] }
+  /** Test cases to run (untraced) against `call.name`. */
+  tests?: { args: unknown[]; expected: unknown; unordered?: boolean }[]
+}

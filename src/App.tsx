@@ -5,6 +5,10 @@ import './monaco'
 import { usePythonRunner } from './runner/usePythonRunner'
 import { Visualizer } from './viz/Visualizer'
 import { SyntaxHelper } from './syntax/SyntaxHelper'
+import { Chat } from './chat/Chat'
+import { PROBLEMS, type Problem } from './problems/problems'
+import { ProblemPanel } from './problems/ProblemPanel'
+import type { RunRequest } from './types'
 
 const STARTER = `nums = [4, 8, 15, 16, 23, 42]
 total = 0
@@ -15,9 +19,27 @@ print(total)
 
 const PLAY_MS = 450
 
+const PLAYGROUND = 'playground'
+
 export default function App() {
-  const [code, setCode] = useState(STARTER)
-  const { status, trace, error } = usePythonRunner(code)
+  const [mode, setMode] = useState<string>(PLAYGROUND)
+  const [codeByMode, setCodeByMode] = useState<Record<string, string>>(() => ({
+    [PLAYGROUND]: STARTER,
+    ...Object.fromEntries(PROBLEMS.map((p) => [p.id, p.starter])),
+  }))
+  const [caseIndex, setCaseIndex] = useState(0)
+  const [sidePanel, setSidePanel] = useState<'chat' | 'cards'>('chat')
+  const problem: Problem | undefined = PROBLEMS.find((p) => p.id === mode)
+  const code = codeByMode[mode]
+  const setCode = (next: string) => setCodeByMode((c) => ({ ...c, [mode]: next }))
+  const request: RunRequest = problem
+    ? {
+        code,
+        call: { name: problem.functionName, args: problem.tests[caseIndex].args },
+        tests: problem.tests,
+      }
+    : { code }
+  const { status, trace, error, tests } = usePythonRunner(request)
   const [stepIndex, setStepIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
@@ -95,18 +117,46 @@ export default function App() {
     <div className="app">
       <header className="top">
         <h1>Code Language Teacher</h1>
+        <nav className="tabs">
+          {[{ id: PLAYGROUND, title: 'Playground' }, ...PROBLEMS].map((m) => (
+            <button
+              key={m.id}
+              className={m.id === mode ? 'tab active' : 'tab'}
+              onClick={() => {
+                setMode(m.id)
+                setCaseIndex(0)
+              }}
+            >
+              {m.title}
+            </button>
+          ))}
+        </nav>
         <span className={`status status-${error ? 'error' : status}`}>{statusText}</span>
       </header>
       <main className="panes">
         <section className="pane editor-pane">
+          {problem && (
+            <ProblemPanel
+              problem={problem}
+              tests={tests}
+              caseIndex={caseIndex}
+              onSelectCase={setCaseIndex}
+              result={trace?.result ?? null}
+              call={trace?.call ?? null}
+              stale={error?.kind === 'syntax'}
+            />
+          )}
+          <div className="editor-wrap">
           <Editor
             height="100%"
+            path={mode}
             defaultLanguage="python"
             value={code}
             onChange={(v) => setCode(v ?? '')}
             onMount={onMount}
             options={{ fontSize: 15, minimap: { enabled: false }, scrollBeyondLastLine: false, tabSize: 4 }}
           />
+          </div>
         </section>
         <section className="pane viz-pane">
           <div className="controls">
@@ -151,7 +201,11 @@ export default function App() {
             </div>
           )}
           {step ? (
-            <Visualizer step={step} pointers={trace!.pointers} />
+            <Visualizer
+              step={step}
+              prevStep={steps[Math.min(stepIndex, steps.length - 1) - 1]}
+              pointers={trace!.pointers}
+            />
           ) : (
             <p className="muted">{status === 'loading' ? 'Starting Python in your browser…' : 'Write some code.'}</p>
           )}
@@ -161,8 +215,19 @@ export default function App() {
           </div>
         </section>
         <section className="pane syntax-pane">
-          <h2>Syntax helper</h2>
-          <SyntaxHelper onInsert={insert} />
+          <div className="side-tabs">
+            <button className={sidePanel === 'chat' ? 'tab active' : 'tab'} onClick={() => setSidePanel('chat')}>
+              Ask Claude
+            </button>
+            <button className={sidePanel === 'cards' ? 'tab active' : 'tab'} onClick={() => setSidePanel('cards')}>
+              Syntax cards
+            </button>
+          </div>
+          {/* Keep the chat mounted so switching tabs doesn't lose the conversation. */}
+          <div hidden={sidePanel !== 'chat'} className="side-body">
+            <Chat code={code} problem={problem?.title ?? null} onInsert={insert} />
+          </div>
+          {sidePanel === 'cards' && <SyntaxHelper onInsert={insert} />}
         </section>
       </main>
     </div>

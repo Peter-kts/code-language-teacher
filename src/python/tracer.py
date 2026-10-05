@@ -121,7 +121,13 @@ def _visible(name, value):
     return True
 
 
-def run_traced(source, max_steps=2000):
+def _call_desc(call):
+    return f"{call['name']}({', '.join(repr(a) for a in call['args'])})"
+
+
+def run_traced(source, max_steps=2000, call=None):
+    """Trace `source`. If `call` is {"name": ..., "args": [...]}, also call that
+    function after the module runs (LeetCode style) and trace its body."""
     try:
         tree = ast.parse(source, filename=USER_FILENAME)
     except SyntaxError as err:
@@ -173,17 +179,26 @@ def run_traced(source, max_steps=2000):
             return None
         if event == "line":
             snapshot(frame, frame.f_lineno)
-        elif event == "return" and frame.f_code.co_name == "<module>":
+        elif event == "return" and (
+            frame.f_back is None or frame.f_back.f_code.co_filename != USER_FILENAME
+        ):
+            # Final state of the module, or of the problem's function when we call it.
             snapshot(frame, steps[-1]["line"] if steps else 1)
         return tracer
 
     error = None
     truncated = False
+    result = None
     old_stdout = sys.stdout
     sys.stdout = stdout
     sys.settrace(tracer)
     try:
         exec(code, user_globals)
+        if call is not None:
+            func = user_globals.get(call["name"])
+            if not callable(func):
+                raise NameError(f"define a function named {call['name']}")
+            result = _serialize(func(*_copy_args(call["args"])))
     except StepLimitExceeded:
         truncated = True
     except Exception as exc:  # noqa: BLE001 - user code may raise anything
@@ -206,5 +221,59 @@ def run_traced(source, max_steps=2000):
             "truncated": truncated,
             "error": error,
             "stdout": stdout.getvalue(),
+            "result": result,
+            "call": _call_desc(call) if call is not None else None,
         }
     )
+
+
+def _copy_args(args):
+    return json.loads(json.dumps(args))
+
+
+def run_tests(source, name, cases, max_seconds=2.0):
+    """Run `name(*case["args"])` for each case without tracing.
+
+    Returns JSON: [{"passed": bool, "got": repr | None, "error": str | None}].
+    Answers are compared as sorted lists when `case["unordered"]` is set.
+    """
+    import time
+
+    results = []
+    user_globals = {"__name__": "__main__", "__builtins__": __builtins__}
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    try:
+        try:
+            exec(compile(source, USER_FILENAME, "exec"), user_globals)
+        except Exception as exc:  # noqa: BLE001
+            return json.dumps([{"passed": False, "got": None, "error": f"{type(exc).__name__}: {exc}"}] * len(cases))
+        func = user_globals.get(name)
+        for case in cases:
+            if not callable(func):
+                results.append({"passed": False, "got": None, "error": f"define a function named {name}"})
+                continue
+            deadline = time.monotonic() + max_seconds
+
+            def guard(frame, event, arg):
+                if time.monotonic() > deadline:
+                    raise TimeoutError("took too long")
+                return guard if frame.f_code.co_filename == USER_FILENAME else None
+
+            sys.settrace(guard)
+            try:
+                got = func(*_copy_args(case["args"]))
+                sys.settrace(None)
+                expected = case["expected"]
+                if case.get("unordered") and isinstance(got, (list, tuple)):
+                    passed = sorted(got) == sorted(expected)
+                else:
+                    passed = (list(got) if isinstance(got, tuple) else got) == expected
+                results.append({"passed": passed, "got": repr(got), "error": None})
+            except Exception as exc:  # noqa: BLE001
+                sys.settrace(None)
+                results.append({"passed": False, "got": None, "error": f"{type(exc).__name__}: {exc}"})
+    finally:
+        sys.settrace(None)
+        sys.stdout = old_stdout
+    return json.dumps(results)

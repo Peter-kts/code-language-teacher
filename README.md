@@ -9,7 +9,15 @@ npm install
 npm run dev
 ```
 
-Open the printed URL. Everything runs in your browser; there is no server.
+Open the printed URL. Python runs entirely in your browser.
+
+The **Ask Claude** chat needs an Anthropic API key, which stays on the server side:
+
+```sh
+ANTHROPIC_API_KEY=sk-ant-... npm run dev
+```
+
+For a production build: `npm run build && ANTHROPIC_API_KEY=... npm start` (serves on port 8787, or `PORT`).
 
 ## How it works
 
@@ -20,7 +28,9 @@ Open the printed URL. Everything runs in your browser; there is no server.
   - `for n in nums` puts an arrow labeled `n` under the current box (duplicates are handled, because the loop is rewritten to count its position).
   - `for i in range(len(nums))`, `for i, n in enumerate(nums)` and any `nums[i]` put an arrow labeled `i` under box `i`, which also covers two-pointer code like `l` and `r`.
 - **Visuals:** lists and tuples are drawn as boxes with indexes and pointer arrows (`src/viz`). Step through the run with the slider or Play; the current line is highlighted in the editor.
-- **Syntax helper:** built-in Python syntax cards with an Insert button (`src/syntax`). This is a placeholder for a Claude-powered chat.
+- **Problems:** LeetCode-style problems live in `src/problems/problems.ts` (Two Sum so far). The tracer calls your function with the selected test case so the visual walks through its body, dicts are drawn as key/value tables with new entries highlighted, and every test case is run to show pass/fail.
+- **Ask Claude:** a chat panel (`src/chat`) that streams answers from `server/chat.mjs`, which calls the Claude API with your current code and problem as context. Code blocks in answers have an Insert button. The same handler runs inside the Vite dev server and the production server (`server/index.mjs`).
+- **Syntax cards:** built-in Python examples with an Insert button (`src/syntax`) that work without an API key.
 
 ## Tests
 

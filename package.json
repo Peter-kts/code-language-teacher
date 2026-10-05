@@ -10,9 +10,11 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "test": "vitest run",
-    "test:py": "python3 -m unittest discover -s tests"
+    "test:py": "python3 -m unittest discover -s tests",
+    "start": "node server/index.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@monaco-editor/react": "^4.7.0",
     "monaco-editor": "^0.57.0",
     "pyodide": "^0.29.5",

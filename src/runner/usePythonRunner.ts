@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { CodeError, TraceResult } from '../types'
+import type { CodeError, RunRequest, TestResult, TraceResult } from '../types'
 import type { WorkerRequest, WorkerResponse } from './pyodide.worker'
 
 export type RunnerStatus = 'loading' | 'running' | 'idle'
@@ -15,8 +15,10 @@ function spawnWorker() {
   return new Worker(new URL('./pyodide.worker.ts', import.meta.url), { type: 'module' })
 }
 
-/** Re-run `code` shortly after each edit; keep the last trace that compiled. */
-export function usePythonRunner(code: string) {
+/** Re-run shortly after each edit; keep the last trace that compiled. */
+export function usePythonRunner(request: RunRequest) {
+  // Effects key off the serialized request so a new-but-equal object doesn't re-run.
+  const requestKey = JSON.stringify(request)
   const [status, setStatusState] = useState<RunnerStatus>('loading')
   const statusRef = useRef<RunnerStatus>('loading')
   const setStatus = (next: RunnerStatus) => {
@@ -25,6 +27,7 @@ export function usePythonRunner(code: string) {
   }
   const [trace, setTrace] = useState<GoodTrace | null>(null)
   const [error, setError] = useState<CodeError | null>(null)
+  const [tests, setTests] = useState<TestResult[] | null>(null)
   const workerRef = useRef<Worker | null>(null)
   const latestId = useRef(0)
   const timeoutRef = useRef<number | undefined>(undefined)
@@ -42,6 +45,7 @@ export function usePythonRunner(code: string) {
       if (msg.result.ok) {
         setTrace(msg.result)
         setError(msg.result.error)
+        setTests(msg.tests)
       } else {
         setError(msg.result.error)
       }
@@ -61,7 +65,7 @@ export function usePythonRunner(code: string) {
     const handle = window.setTimeout(() => {
       const id = ++latestId.current
       if (statusRef.current !== 'loading') setStatus('running')
-      workerRef.current?.postMessage({ id, code } satisfies WorkerRequest)
+      workerRef.current?.postMessage({ id, ...(JSON.parse(requestKey) as RunRequest) } satisfies WorkerRequest)
       window.clearTimeout(timeoutRef.current)
       timeoutRef.current = window.setTimeout(() => {
         if (id !== latestId.current) return
@@ -74,7 +78,7 @@ export function usePythonRunner(code: string) {
       }, RUN_TIMEOUT_MS)
     }, DEBOUNCE_MS)
     return () => window.clearTimeout(handle)
-  }, [code])
+  }, [requestKey])
 
-  return { status, trace, error }
+  return { status, trace, error, tests }
 }

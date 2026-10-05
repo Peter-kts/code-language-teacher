@@ -62,3 +62,42 @@ class TracerTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+TWO_SUM = """def twoSum(nums, target):
+    seen = {}
+    for i, num in enumerate(nums):
+        if target - num in seen:
+            return [seen[target - num], i]
+        seen[num] = i
+"""
+
+
+class ProblemTest(unittest.TestCase):
+    def test_traces_called_function(self):
+        result = run(TWO_SUM, call={"name": "twoSum", "args": [[2, 7, 11, 15], 9]})
+        self.assertIsNone(result["error"])
+        self.assertEqual(result["call"], "twoSum([2, 7, 11, 15], 9)")
+        self.assertEqual([x["value"] for x in result["result"]["items"]], [0, 1])
+        self.assertIn(("i", "nums"), {(p["label"], p["target"]) for p in result["pointers"]})
+        last = result["steps"][-1]
+        self.assertEqual(last["func"], "twoSum")
+        self.assertEqual(last["vars"]["seen"]["type"], "dict")
+
+    def test_missing_function_is_reported(self):
+        result = run("x = 1\n", call={"name": "twoSum", "args": [[1], 1]})
+        self.assertIn("twoSum", result["error"]["message"])
+
+    def test_run_tests(self):
+        from tracer import run_tests
+
+        cases = [
+            {"args": [[2, 7, 11, 15], 9], "expected": [0, 1], "unordered": True},
+            {"args": [[3, 2, 4], 6], "expected": [1, 2], "unordered": True},
+            {"args": [[3, 3], 6], "expected": [0, 1], "unordered": True},
+        ]
+        self.assertTrue(all(r["passed"] for r in json.loads(run_tests(TWO_SUM, "twoSum", cases))))
+        wrong = json.loads(run_tests("def twoSum(nums, target):\n    return [0, 0]\n", "twoSum", cases))
+        self.assertEqual([r["passed"] for r in wrong], [False, False, False])
+        slow = json.loads(run_tests("def twoSum(nums, target):\n    while True:\n        pass\n", "twoSum", cases[:1], max_seconds=0.2))
+        self.assertIn("too long", slow[0]["error"])

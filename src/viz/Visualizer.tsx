@@ -3,13 +3,25 @@ import { placePointers, type PlacedPointer } from './pointers'
 
 const POINTER_COLORS = ['#e8590c', '#1c7ed6', '#2f9e44', '#ae3ec9', '#f08c00', '#0c8599']
 
-export function Visualizer({ step, pointers }: { step: Step; pointers: PointerSpec[] }) {
+export function Visualizer({
+  step,
+  prevStep,
+  pointers,
+}: {
+  step: Step
+  /** The step before, used to highlight what just changed. */
+  prevStep?: Step
+  pointers: PointerSpec[]
+}) {
   const placed = placePointers(step, pointers)
   const labels = [...new Set(pointers.map((p) => p.label))]
   const colorOf = (label: string) => POINTER_COLORS[labels.indexOf(label) % POINTER_COLORS.length]
+  // Only color variables that are drawn as an arrow right now.
+  const shown = new Set(Object.values(placed).flatMap((ps) => ps.map((p) => p.label)))
   const entries = Object.entries(step.vars)
   const lists = entries.filter(([, v]) => v.type === 'list' || v.type === 'tuple')
-  const others = entries.filter(([, v]) => v.type !== 'list' && v.type !== 'tuple')
+  const dicts = entries.filter(([, v]) => v.type === 'dict')
+  const others = entries.filter(([, v]) => v.type !== 'list' && v.type !== 'tuple' && v.type !== 'dict')
 
   return (
     <div className="viz">
@@ -17,12 +29,15 @@ export function Visualizer({ step, pointers }: { step: Step; pointers: PointerSp
       {lists.map(([name, value]) => (
         <ListView key={name} name={name} value={value} pointers={placed[name] ?? []} colorOf={colorOf} />
       ))}
+      {dicts.map(([name, value]) => (
+        <DictView key={name} name={name} value={value} prev={prevStep?.func === step.func ? prevStep.vars[name] : undefined} />
+      ))}
       {others.length > 0 && (
         <table className="vars">
           <tbody>
             {others.map(([name, value]) => (
               <tr key={name}>
-                <th style={labels.includes(name) ? { color: colorOf(name) } : undefined}>{name}</th>
+                <th style={shown.has(name) ? { color: colorOf(name) } : undefined}>{name}</th>
                 <td>{formatValue(value)}</td>
               </tr>
             ))}
@@ -84,6 +99,43 @@ function ListView({
         ))}
       </div>
       {value.truncated && <div className="muted">(showing the first {value.items.length} items)</div>}
+    </div>
+  )
+}
+
+function DictView({ name, value, prev }: { name: string; value: Value; prev?: Value }) {
+  if (value.type !== 'dict') return null
+  const before = new Map(prev?.type === 'dict' ? prev.entries.map(([k, v]) => [formatValue(k), formatValue(v)]) : [])
+  return (
+    <div className="dict">
+      <div className="list-name">
+        {name} <span className="muted">(dict)</span>
+      </div>
+      {value.entries.length === 0 ? (
+        <div className="muted">empty {'{}'}</div>
+      ) : (
+        <table className="dict-table">
+          <thead>
+            <tr>
+              <th>key</th>
+              <th>value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {value.entries.map(([k, v]) => {
+              const key = formatValue(k)
+              const changed = prev !== undefined && before.get(key) !== formatValue(v)
+              return (
+                <tr key={key} className={changed ? 'changed' : undefined}>
+                  <td>{key}</td>
+                  <td>{formatValue(v)}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
+      {value.truncated && <div className="muted">(showing the first {value.entries.length} entries)</div>}
     </div>
   )
 }
