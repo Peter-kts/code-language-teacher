@@ -26,7 +26,8 @@ export async function handleChat(req, res) {
   }
   let body
   try {
-    body = JSON.parse(await readBody(req))
+    // Some hosts (e.g. Vercel) parse JSON bodies before the handler runs.
+    body = req.body && typeof req.body === 'object' ? req.body : JSON.parse(await readBody(req))
   } catch {
     res.writeHead(400, { 'content-type': 'text/plain' }).end('Bad request')
     return
