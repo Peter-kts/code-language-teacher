@@ -48,7 +48,7 @@ export function Chat({
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-chat-passcode': passcode },
+        headers: { 'content-type': 'application/json', 'x-chat-passcode': encodeURIComponent(passcode) },
         body: JSON.stringify({ messages: history, code, problem }),
       })
       if (res.status === 401) {

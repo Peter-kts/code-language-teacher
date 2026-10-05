@@ -87,8 +87,16 @@ export async function handleChat(req, res) {
 
 function passcodeMatches(given, expected) {
   if (typeof given !== 'string') return false
-  const digest = (v) => createHash('sha256').update(v).digest()
-  return timingSafeEqual(digest(given), digest(expected))
+  // The client URI-encodes the passcode, since headers can't carry characters
+  // like the narrow no-break space some keyboards insert.
+  let decoded = given
+  try {
+    decoded = decodeURIComponent(given)
+  } catch {}
+  // NFKC turns look-alike spaces into plain ones, so a copied passcode still matches.
+  const normalize = (v) => v.normalize('NFKC').trim()
+  const digest = (v) => createHash('sha256').update(normalize(v)).digest()
+  return timingSafeEqual(digest(decoded), digest(expected))
 }
 
 function readBody(req) {
