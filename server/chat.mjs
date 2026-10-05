@@ -92,14 +92,18 @@ export async function handleChat(req, res) {
     if (final.stop_reason === 'refusal') res.write('\n\n(Claude declined to answer that one.)')
     res.end()
   } catch (err) {
+    console.error('chat error:', err)
+    const detail = String(err?.error?.error?.message ?? err?.message ?? err)
     const message =
       err instanceof Anthropic.AuthenticationError
         ? 'Anthropic rejected the API key. Check ANTHROPIC_API_KEY (in .env locally, or in Vercel → Settings → Environment Variables).'
-        : /credentials|api key/i.test(String(err?.message))
+        : /^missing api key|could not resolve authentication/i.test(detail)
           ? 'The chat can\'t see an Anthropic API key. Locally, set ANTHROPIC_API_KEY in .env and restart. On Vercel, add it under Settings → Environment Variables with Production ticked, then redeploy (new variables only apply to new deploys).'
-          : err instanceof Anthropic.RateLimitError
-          ? 'Claude is rate limited right now. Try again in a moment.'
-          : `Chat error: ${err?.message ?? err}`
+          : /credit balance/i.test(detail)
+            ? 'Your Anthropic account is out of credits. Add some under Billing at console.anthropic.com, then try again.'
+            : err instanceof Anthropic.RateLimitError
+              ? 'Claude is rate limited right now. Try again in a moment.'
+              : `Claude API error${err?.status ? ` ${err.status}` : ''}: ${detail}`
     if (!res.headersSent) res.writeHead(502, { 'content-type': 'text/plain' })
     res.end(message)
   }
