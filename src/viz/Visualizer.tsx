@@ -33,7 +33,7 @@ export function Visualizer({
   const others = entries.filter(([, v]) => v.type !== 'list' && v.type !== 'tuple' && v.type !== 'dict')
   const ranLine = prevStep && code ? code.split('\n')[prevStep.line - 1] : undefined
   const changes = scalarChanges(step, prevStep, ranLine)
-  const sources = new Set(Object.values(changes).flatMap((c) => (c.from ? [c.from] : [])))
+  const sources = new Set(Object.values(changes).flatMap((c) => c.deltas.flatMap((d) => (d.from ? [d.from] : []))))
 
   return (
     <div className="viz">
@@ -64,10 +64,19 @@ export function Visualizer({
                     {formatValue(value)}
                   </span>
                 </div>
-                {change?.delta && (
-                  <span key={`d${tick}`} className="var-delta">
-                    {change.delta}
-                    {change.from && <span className="var-from"> from {change.from}</span>}
+                {/* Stays for the whole step (also while paused); the next step replaces it. */}
+                {change && change.deltas.length > 0 && (
+                  <span key={`d${tick}`} className="var-deltas">
+                    {change.deltas.map((part, i) => (
+                      <span
+                        key={i}
+                        className={part.text.startsWith('-') ? 'var-delta down' : 'var-delta'}
+                        style={{ '--i': i } as CSSProperties}
+                      >
+                        {part.text}
+                        {part.from && <span className="var-from"> from {part.from}</span>}
+                      </span>
+                    ))}
                   </span>
                 )}
               </div>

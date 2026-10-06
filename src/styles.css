@@ -232,25 +232,28 @@ button:disabled { opacity: 0.4; cursor: default; }
 .var-value > * { grid-area: 1 / 1; white-space: pre-wrap; word-break: break-all; }
 .var-old { color: var(--muted); animation: var-out 0.45s var(--ease) forwards; }
 .var-new { color: var(--pass); animation: var-in 0.45s var(--ease) both, var-settle 0.9s 0.45s forwards; }
-.var-delta {
-  position: absolute; top: -0.7rem; right: -0.4rem;
-  padding: 0.05rem 0.4rem; border-radius: 999px;
-  background: var(--pass); color: var(--bg); font-size: 0.75rem; font-weight: 600;
-  animation: var-delta 1.2s ease-out both; pointer-events: none;
+/* Change badges hang off the card's top-right corner for the whole step.
+   Several parts stack upward, the first one nearest the card. */
+.var-deltas {
+  position: absolute; right: -0.4rem; bottom: calc(100% - 0.7rem); z-index: 1;
+  display: flex; flex-direction: column-reverse; align-items: flex-end; gap: 3px;
+  pointer-events: none;
 }
+.var-delta {
+  padding: 0.05rem 0.4rem; border-radius: 999px; white-space: nowrap;
+  background: var(--pass); color: var(--bg); font-size: 0.75rem; font-weight: 600;
+  box-shadow: 0 0 12px rgba(126, 224, 184, 0.3);
+  animation: var-delta 0.3s var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 90ms);
+}
+.var-delta.down { background: var(--pink); box-shadow: 0 0 12px rgba(240, 167, 207, 0.3); }
 .var-from { font-weight: 400; opacity: 0.8; }
 .var-pulse { position: absolute; inset: -1px; border-radius: inherit; border: 2px solid var(--var-color); animation: var-pulse 0.7s ease-out forwards; pointer-events: none; }
 @keyframes var-out { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-110%); opacity: 0; } }
 @keyframes var-in { from { transform: translateY(110%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 @keyframes var-settle { to { color: var(--text); } }
-/* The change pops in fast, holds a beat, then drifts up and fades away. */
-@keyframes var-delta {
-  0% { transform: translateY(0.4rem); opacity: 0; }
-  12% { transform: translateY(0); opacity: 1; }
-  45% { transform: translateY(0); opacity: 1; }
-  100% { transform: translateY(-1.6rem); opacity: 0; }
-}
-@keyframes var-delta-fade { 0%, 45% { opacity: 1; } 100% { opacity: 0; } }
+/* The change pops in fast and then stays put until the next step. */
+@keyframes var-delta { from { transform: translateY(0.4rem) scale(0.9); opacity: 0; } }
 @keyframes var-pulse { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(1.15); } }
 .output { border-top: 1px solid var(--line-strong); padding-top: 0.6rem; }
 .output-title { font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); }
@@ -351,5 +354,5 @@ button:disabled { opacity: 0.4; cursor: default; }
   .status::before { animation: none !important; }
   .var-old, .var-pulse { display: none; }
   .var-new { animation: none; }
-  .var-delta { animation: var-delta-fade 1.2s both; }
+  .var-delta { animation: none; }
 }
