@@ -526,13 +526,15 @@ def run_traced(source, max_steps=2000, call=None):
     finally:
         sys.settrace(None)
         sys.stdout, sys.stderr = old_stdout, old_stderr
-        # logging.basicConfig() keeps the stream it was given; drop ours so the
+        # Logging handlers keep the stream they were given; drop ours so the
         # next run (Pyodide keeps the interpreter) doesn't log into a dead console.
         logging = sys.modules.get("logging")
         if logging is not None:
-            for handler in logging.root.handlers[:]:
-                if isinstance(getattr(handler, "stream", None), _ConsoleStream):
-                    logging.root.removeHandler(handler)
+            loggers = [logging.root, *logging.Logger.manager.loggerDict.values()]
+            for logger in loggers:
+                for handler in getattr(logger, "handlers", [])[:]:
+                    if isinstance(getattr(handler, "stream", None), _ConsoleStream):
+                        logger.removeHandler(handler)
 
     return json.dumps(
         {

@@ -74,6 +74,11 @@ class TracerTest(unittest.TestCase):
         again = run("import logging\nlogging.warning('again')\n")
         self.assertEqual([c["text"] for c in again["console"]], ["WARNING:root:again\n"])
 
+    def test_named_logger_handlers_do_not_outlive_their_run(self):
+        src = "import logging\nlog = logging.getLogger('ct-test')\nif not log.handlers:\n    log.addHandler(logging.StreamHandler())\nlog.warning('hi')\n"
+        self.assertEqual([c["text"] for c in run(src)["console"]], ["hi\n"])
+        self.assertEqual([c["text"] for c in run(src)["console"]], ["hi\n"])
+
     def test_runtime_error_has_a_traceback_of_user_frames(self):
         src = "def inner(xs):\n    return xs[3]\n\ndef outer():\n    return inner([1])\n\nprint('start')\nouter()\n"
         result = run(src)
