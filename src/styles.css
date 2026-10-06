@@ -202,21 +202,47 @@ button:disabled { opacity: 0.4; cursor: default; }
 .viz-frame { font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); margin-bottom: 0.7rem; }
 .list { margin-bottom: 1.4rem; }
 .list-name { font-family: var(--font-mono); font-weight: 500; margin-bottom: 0.4rem; color: var(--text); }
-.list-grid { display: grid; gap: 0 4px; }
+.list-grid { display: grid; gap: 0 4px; padding-top: 0.5rem; }
 .box {
+  position: relative;
   height: 3.25rem; display: flex; align-items: center; justify-content: center;
   border: 1px solid var(--line-strong); border-radius: 8px;
   background: var(--box);
-  font-family: var(--font-mono); overflow: hidden;
+  font-family: var(--font-mono);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
+.box-value { max-width: 100%; padding: 0 0.2rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .box-ghost { background: transparent; border-style: dashed; border-color: var(--line); }
 .index { text-align: center; font-family: var(--font-mono); font-size: 0.7rem; color: var(--faint); padding-top: 0.2rem; }
 .pointers { display: flex; flex-direction: column; align-items: center; }
 .pointer { display: flex; flex-direction: column; align-items: center; font-family: var(--font-mono); font-weight: 500; line-height: 1.1; }
 .arrow { font-size: 0.8rem; }
 .vars { border-collapse: collapse; font-family: var(--font-mono); margin-bottom: 1rem; font-size: 0.9rem; }
-.vars th, .vars td { text-align: left; padding: 0.3rem 1rem 0.3rem 0; border-bottom: 1px solid var(--line); }
+.vars th, .vars td { text-align: left; padding: 0.3rem 1rem 0.3rem 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.vars tr.changed td:nth-child(2) { color: var(--accent); }
+.vars .change-cell { padding-right: 0; }
+
+/* Change badges: what the last line did. They stay for the whole step and
+   stack (newest on top) when several changes land at once. */
+.change-stack { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px; vertical-align: middle; }
+.list-name .change-stack { margin-left: 0.6rem; flex-direction: row; gap: 4px; }
+.change {
+  font-family: var(--font-mono); font-size: 0.7rem; font-weight: 500; line-height: 1.2;
+  padding: 0.12rem 0.45rem; border-radius: 999px;
+  border: 1px solid currentColor;
+  background: rgba(5, 4, 10, 0.75);
+  white-space: nowrap;
+  animation: change-in 0.35s var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
+.change-up { color: var(--pass); box-shadow: 0 0 10px rgba(126, 224, 184, 0.18); }
+.change-down { color: var(--pink); box-shadow: 0 0 10px rgba(240, 167, 207, 0.18); }
+.change-set { color: var(--accent); box-shadow: 0 0 10px var(--accent-soft); }
+.change-new { color: #8fb4ff; box-shadow: 0 0 10px rgba(143, 180, 255, 0.18); }
+/* On a list box the stack hangs off the top-right corner and grows upward. */
+.box-changes { position: absolute; right: -0.45rem; bottom: calc(100% - 0.6rem); z-index: 1; flex-direction: column; align-items: flex-end; }
+.box-changes .change { font-size: 0.62rem; padding: 0.06rem 0.35rem; }
+@keyframes change-in { from { opacity: 0; transform: translateY(4px) scale(0.9); } }
 .vars th { font-weight: 500; }
 .output { border-top: 1px solid var(--line-strong); padding-top: 0.6rem; }
 .output-title { font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); }
@@ -314,5 +340,6 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 @media (prefers-reduced-motion: reduce) {
   .sky { transition: none; }
+  .change { animation: none; }
   .status::before { animation: none !important; }
 }

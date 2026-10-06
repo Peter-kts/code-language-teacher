@@ -1,5 +1,5 @@
 import type { TestResult, Value } from '../types'
-import { formatValue } from '../viz/Visualizer'
+import { formatValue } from '../viz/format'
 import type { Problem } from './problems'
 
 export function ProblemPanel({

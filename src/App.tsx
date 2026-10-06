@@ -6,6 +6,7 @@ import { GalaxyBackground } from './galaxy/GalaxyBackground'
 import { PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon, StepBackIcon, StepForwardIcon } from './icons'
 import { usePythonRunner } from './runner/usePythonRunner'
 import { Visualizer } from './viz/Visualizer'
+import { previousInFrame } from './viz/changes'
 import { SyntaxHelper } from './syntax/SyntaxHelper'
 import { Chat } from './chat/Chat'
 import { PROBLEMS, type Problem } from './problems/problems'
@@ -259,7 +260,8 @@ export default function App() {
             {step ? (
               <Visualizer
                 step={step}
-                prevStep={steps[shownStep - 1]}
+                stepIndex={shownStep}
+                prevStep={previousInFrame(steps, shownStep)}
                 pointers={trace!.pointers}
               />
             ) : (
