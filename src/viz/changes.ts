@@ -136,6 +136,21 @@ export function stepRoles(step: Step, prev: Step | undefined, plans?: Plans): St
   return { targets, sources: [...new Set(sources)], reads }
 }
 
+/**
+ * Variables the line between `prev` and `step` created (`total = 0`, the first
+ * `n` of `for n in nums`): their badges, keyed by name, and what the line read for them.
+ */
+export function newVars(step: Step, prev: Step | undefined, plans?: Plans): { deltas: Record<string, DeltaPart[]>; reads: Read[] } {
+  if (!prev || prev.func !== step.func) return { deltas: {}, reads: [] }
+  const work = lineWork(step, prev, plans)
+  const names = Object.keys(step.vars).filter((name) => !(name in prev.vars))
+  const deltas = Object.fromEntries(names.map((name) => [name, work.badges({ name }, NOTHING, step.vars[name])]))
+  return { deltas, reads: names.length ? work.reads(names) : [] }
+}
+
+/** What a variable or item held before it existed. */
+const NOTHING: Value = { type: 'other', repr: '' }
+
 type ItemDelta = (item: string, old: Value, now: Value) => DeltaPart[]
 
 function listChange(oldItems: Value[], newItems: Value[], itemDelta: ItemDelta): ContainerChange {
@@ -312,8 +327,8 @@ function lineWork(step: Step, prev: Step, plans?: Plans) {
         return [{ text: signed(d), from: null, sum: m.terms.map(sumPart) }]
       }
       if (m?.how === 'set') {
-        // `x = 5` says nothing the new value doesn't; `x = nums[i]` says where it came from.
-        if (m.terms.every((t) => t.part.kind === 'const')) return []
+        // `x = 5` or `seen = {}` says nothing the new value doesn't; `x = nums[i]` says where it came from.
+        if (m.terms.every((t) => isLiteral(t.part))) return []
         if (m.terms.length === 1) return [{ text: '=', from: label(m.terms[0].part.text) }]
         return [{ text: '=', from: null, sum: m.terms.map(sumPart) }]
       }
@@ -346,9 +361,9 @@ function lineWork(step: Step, prev: Step, plans?: Plans) {
         if (e.kind === 'other') e.parts.forEach(walk)
       }
       for (const name of changed) {
-        const old = prev.vars[name]
+        const old = prev.vars[name] ?? NOTHING
         const now = step.vars[name]
-        if (!old || !now) continue
+        if (!now) continue
         // The variable itself, and each of its items that changed.
         for (const c of [{ name }, ...(isContainer(now) ? changedItems(name, old, now) : [])]) {
           for (const pair of pairs.filter((p) => matches(p.target, c))) {
@@ -367,6 +382,15 @@ function lineWork(step: Step, prev: Step, plans?: Plans) {
       return [...byPart.values(), ...loopReads]
     },
   }
+}
+
+/** A value written out in the code, like `5`, `[4, 8, 15]` or `{}`, that reads no variables. */
+function isLiteral(e: ExprPlan | null): boolean {
+  if (!e) return false
+  if (e.kind === 'const') return true
+  if (e.kind === 'seq') return e.items.every(isLiteral)
+  if (e.kind === 'unary') return isLiteral(e.operand)
+  return e.kind === 'other' && !e.parts.length && /^[[{(]/.test(e.text)
 }
 
 /** Each target of an assignment with the expression that gave it its value (`a, b = b, a + b` pairs up). */
@@ -423,7 +447,7 @@ function itemValue(v: Value, item: string | undefined): Value {
       : v.type === 'list' || v.type === 'tuple'
         ? v.items[Number(item)]
         : undefined
-  return found ?? { type: 'other', repr: '' }
+  return found ?? NOTHING
 }
 
 const sumPart = (t: Term): SumPart => ({ sign: t.sign, value: t.value[0], label: t.part.kind === 'const' ? null : label(t.part.text) })
