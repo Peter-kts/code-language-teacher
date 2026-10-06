@@ -260,10 +260,10 @@ export default function App() {
             {step ? (
               <Visualizer
                 step={step}
-                stepIndex={shownStep}
                 prevStep={previousInFrame(steps, shownStep)}
                 pointers={trace!.pointers}
                 code={trace!.code}
+                tick={stepIndex}
               />
             ) : (
               <p className="muted">{status === 'loading' ? 'Starting Python in your browser…' : 'Write some code.'}</p>

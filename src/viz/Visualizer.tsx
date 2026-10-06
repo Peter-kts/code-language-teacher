@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react'
 import type { PointerSpec, Step, Value } from '../types'
-import { diffStep, type Change } from './changes'
+import { containerChanges, scalarChanges, type DeltaPart } from './changes'
 import { formatValue } from './format'
 import { placePointers, type PlacedPointer } from './pointers'
 
@@ -9,23 +9,20 @@ const POINTER_COLORS = ['#c8b4ff', '#f0a7cf', '#8fb4ff', '#7ee0b8', '#ffc978', '
 
 export function Visualizer({
   step,
-  stepIndex,
   prevStep,
   pointers,
   code,
+  tick,
 }: {
   step: Step
-  /** Position in the run; a new step remounts the change badges so they animate in. */
-  stepIndex: number
-  /** The previous step in the same function, used to show what just changed. */
+  /** The step before in the same function, used to highlight what just changed. */
   prevStep?: Step
   pointers: PointerSpec[]
   /** Source that produced this trace, to say where an added amount came from. */
   code?: string
+  /** Changes on every step, so change animations replay. */
+  tick?: number
 }) {
-  const ranLine = prevStep && code ? code.split('\n')[prevStep.line - 1] : undefined
-  const changes = diffStep(prevStep, step, ranLine)
-  const from = changes.line
   const placed = placePointers(step, pointers)
   const labels = [...new Set(pointers.map((p) => p.label))]
   const colorOf = (label: string) => POINTER_COLORS[labels.indexOf(label) % POINTER_COLORS.length]
@@ -35,6 +32,19 @@ export function Visualizer({
   const lists = entries.filter(([, v]) => v.type === 'list' || v.type === 'tuple')
   const dicts = entries.filter(([, v]) => v.type === 'dict')
   const others = entries.filter(([, v]) => v.type !== 'list' && v.type !== 'tuple' && v.type !== 'dict')
+  const ranLine = prevStep && code ? code.split('\n')[prevStep.line - 1] : undefined
+  const changes = scalarChanges(step, prevStep, ranLine)
+  const boxes = containerChanges(step, prevStep, ranLine)
+  const sources = new Set(
+    [
+      ...Object.values(changes).flatMap((c) => c.deltas),
+      ...Object.values(boxes).flatMap((c) => [...c.summary, ...Object.values(c.parts).flat()]),
+    ].flatMap((d) => (d.from ? [d.from] : [])),
+  )
+  // Keyed by step, so badges remount (and pop in) on every step but hold while paused.
+  const badges = (parts: DeltaPart[] | undefined, className?: string) => (
+    <DeltaStack key={`d${tick}`} parts={parts} className={className} line={prevStep?.line} />
+  )
 
   return (
     <div className="viz">
@@ -46,8 +56,9 @@ export function Visualizer({
           value={value}
           pointers={placed[name] ?? []}
           colorOf={colorOf}
-          badges={<ChangeStack key={stepIndex} changes={changes.vars[name]} line={from} />}
-          itemBadges={(i) => <ChangeStack key={stepIndex} changes={changes.items[name]?.[i]} line={from} className="box-changes" />}
+          summary={badges(boxes[name]?.summary, 'inline')}
+          itemBadges={(i) => badges(boxes[name]?.parts[i], 'on-box')}
+          changed={(i) => !!boxes[name]?.parts[i]}
         />
       ))}
       {dicts.map(([name, value]) => (
@@ -55,24 +66,36 @@ export function Visualizer({
           key={name}
           name={name}
           value={value}
-          prev={prevStep?.func === step.func ? prevStep.vars[name] : undefined}
-          badges={<ChangeStack key={stepIndex} changes={changes.vars[name]} line={from} />}
+          summary={badges(boxes[name]?.summary, 'inline')}
+          rowBadges={(key) => badges(boxes[name]?.parts[key], 'inline')}
+          changed={(key) => !!boxes[name]?.parts[key]}
         />
       ))}
       {others.length > 0 && (
-        <table className="vars">
-          <tbody>
-            {others.map(([name, value]) => (
-              <tr key={name} className={changes.vars[name] ? 'changed' : undefined}>
-                <th style={shown.has(name) ? { color: colorOf(name) } : undefined}>{name}</th>
-                <td>{formatValue(value)}</td>
-                <td className="change-cell">
-                  <ChangeStack key={stepIndex} changes={changes.vars[name]} line={from} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="var-cards">
+          {others.map(([name, value]) => {
+            const change = changes[name]
+            const color = shown.has(name) ? colorOf(name) : undefined
+            const cls = ['var-card', change && 'changed', sources.has(name) && 'source'].filter(Boolean).join(' ')
+            return (
+              <div key={name} className={cls} style={color ? ({ '--var-color': color } as CSSProperties) : undefined}>
+                {sources.has(name) && <span key={`p${tick}`} className="var-pulse" aria-hidden />}
+                <div className="var-name">{name}</div>
+                <div className="var-value">
+                  {change && (
+                    <span key={`old${tick}`} className="var-old" aria-hidden>
+                      {change.before}
+                    </span>
+                  )}
+                  <span key={change ? `new${tick}` : 'same'} className={change ? 'var-new' : undefined}>
+                    {formatValue(value)}
+                  </span>
+                </div>
+                {badges(change?.deltas)}
+              </div>
+            )
+          })}
+        </div>
       )}
       {entries.length === 0 && <p className="muted">No variables yet.</p>}
     </div>
@@ -80,27 +103,33 @@ export function Visualizer({
 }
 
 /**
- * Badges for what the last line changed. They stay for the whole step (also
- * while paused) and are replaced on the next one. Several changes stack, newest
- * on top.
+ * Change badges. They stay for the whole step (also while paused) and the next
+ * step replaces them. Several parts stack, the first one nearest the value.
  */
-function ChangeStack({ changes, line, className }: { changes?: Change[]; line: number | null; className?: string }) {
-  if (!changes?.length) return null
+function DeltaStack({ parts, className, line }: { parts?: DeltaPart[]; className?: string; line?: number }) {
+  if (!parts?.length) return null
   return (
-    <span className={className ? `change-stack ${className}` : 'change-stack'}>
-      {[...changes].reverse().map((c, i) => (
+    <span className={className ? `var-deltas ${className}` : 'var-deltas'}>
+      {parts.map((part, i) => (
         <span
           key={i}
-          className={`change change-${c.tone}`}
+          className={`var-delta ${tone(part.text)}`}
           style={{ '--i': i } as CSSProperties}
           title={line ? `Changed by line ${line}` : undefined}
         >
-          {c.text}
-          {c.from && <span className="change-from"> from {c.from}</span>}
+          {part.text}
+          {part.from && <span className="var-from"> from {part.from}</span>}
         </span>
       ))}
     </span>
   )
+}
+
+function tone(text: string) {
+  if (text === 'new') return 'new'
+  if (/^-\d/.test(text)) return 'down'
+  if (/^\+\d/.test(text)) return 'up'
+  return 'set'
 }
 
 function ListView({
@@ -108,15 +137,17 @@ function ListView({
   value,
   pointers,
   colorOf,
-  badges,
+  summary,
   itemBadges,
+  changed,
 }: {
   name: string
   value: Value
   pointers: PlacedPointer[]
   colorOf: (label: string) => string
-  badges: ReactNode
+  summary: ReactNode
   itemBadges: (index: number) => ReactNode
+  changed: (index: number) => boolean
 }) {
   if (value.type !== 'list' && value.type !== 'tuple') return null
   // One extra slot so a pointer one past the end (e.g. `i == len(a)`) has somewhere to sit.
@@ -125,7 +156,7 @@ function ListView({
     <div className="list">
       <div className="list-name">
         {name}
-        {badges}
+        {summary}
       </div>
       <div className="list-grid" style={{ gridTemplateColumns: `repeat(${slots}, 3.25rem)` }}>
         {value.items.map((item, i) => {
@@ -133,7 +164,7 @@ function ListView({
           return (
             <div
               key={i}
-              className="box"
+              className={changed(i) ? 'box changed' : 'box'}
               style={here.length ? { borderColor: colorOf(here[0].label), borderWidth: 3 } : undefined}
             >
               <span className="box-value">{formatValue(item)}</span>
@@ -165,14 +196,25 @@ function ListView({
   )
 }
 
-function DictView({ name, value, prev, badges }: { name: string; value: Value; prev?: Value; badges: ReactNode }) {
+function DictView({
+  name,
+  value,
+  summary,
+  rowBadges,
+  changed,
+}: {
+  name: string
+  value: Value
+  summary: ReactNode
+  rowBadges: (key: string) => ReactNode
+  changed: (key: string) => boolean
+}) {
   if (value.type !== 'dict') return null
-  const before = new Map(prev?.type === 'dict' ? prev.entries.map(([k, v]) => [formatValue(k), formatValue(v)]) : [])
   return (
     <div className="dict">
       <div className="list-name">
         {name} <span className="muted">(dict)</span>
-        {badges}
+        {summary}
       </div>
       {value.entries.length === 0 ? (
         <div className="muted">empty {'{}'}</div>
@@ -182,16 +224,17 @@ function DictView({ name, value, prev, badges }: { name: string; value: Value; p
             <tr>
               <th>key</th>
               <th>value</th>
+              <th aria-hidden />
             </tr>
           </thead>
           <tbody>
             {value.entries.map(([k, v]) => {
               const key = formatValue(k)
-              const changed = prev !== undefined && before.get(key) !== formatValue(v)
               return (
-                <tr key={key} className={changed ? 'changed' : undefined}>
+                <tr key={key} className={changed(key) ? 'changed' : undefined}>
                   <td>{key}</td>
                   <td>{formatValue(v)}</td>
+                  <td className="badge-cell">{rowBadges(key)}</td>
                 </tr>
               )
             })}

@@ -202,7 +202,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .viz-frame { font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); margin-bottom: 0.7rem; }
 .list { margin-bottom: 1.4rem; }
 .list-name { font-family: var(--font-mono); font-weight: 500; margin-bottom: 0.4rem; color: var(--text); }
-.list-grid { display: grid; gap: 0 4px; padding-top: 0.5rem; }
+.list-grid { display: grid; gap: 0 4px; padding-top: 0.6rem; }
 .box {
   position: relative;
   height: 3.25rem; display: flex; align-items: center; justify-content: center;
@@ -212,39 +212,59 @@ button:disabled { opacity: 0.4; cursor: default; }
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .box-value { max-width: 100%; padding: 0 0.2rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.box.changed { border-color: rgba(126, 224, 184, 0.6); box-shadow: 0 0 14px rgba(126, 224, 184, 0.16); }
 .box-ghost { background: transparent; border-style: dashed; border-color: var(--line); }
 .index { text-align: center; font-family: var(--font-mono); font-size: 0.7rem; color: var(--faint); padding-top: 0.2rem; }
 .pointers { display: flex; flex-direction: column; align-items: center; }
 .pointer { display: flex; flex-direction: column; align-items: center; font-family: var(--font-mono); font-weight: 500; line-height: 1.1; }
 .arrow { font-size: 0.8rem; }
-.vars { border-collapse: collapse; font-family: var(--font-mono); margin-bottom: 1rem; font-size: 0.9rem; }
-.vars th, .vars td { text-align: left; padding: 0.3rem 1rem 0.3rem 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
-.vars tr.changed td:nth-child(2) { color: var(--accent); }
-.vars .change-cell { padding-right: 0; }
-
-/* Change badges: what the last line did. They stay for the whole step and
-   stack (newest on top) when several changes land at once. */
-.change-stack { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px; vertical-align: middle; }
-.list-name .change-stack { margin-left: 0.6rem; flex-direction: row; gap: 4px; }
-.change {
-  font-family: var(--font-mono); font-size: 0.7rem; font-weight: 500; line-height: 1.2;
-  padding: 0.12rem 0.45rem; border-radius: 999px;
-  border: 1px solid currentColor;
-  background: rgba(5, 4, 10, 0.75);
-  white-space: nowrap;
-  animation: change-in 0.35s var(--ease) both;
-  animation-delay: calc(var(--i, 0) * 60ms);
+/* Scalar variables: a card each, animating every change. */
+.var-cards { display: flex; flex-wrap: wrap; gap: 1rem 0.6rem; padding-top: 0.8rem; margin-bottom: 1.2rem; font-family: var(--font-mono); }
+.var-card {
+  --var-color: var(--text);
+  position: relative; min-width: 5.5rem; max-width: 100%;
+  padding: 0.45rem 0.8rem 0.55rem;
+  border: 1px solid var(--line-strong); border-radius: 10px; background: var(--box);
+  transition: border-color 0.3s, box-shadow 0.3s;
 }
-.change-up { color: var(--pass); box-shadow: 0 0 10px rgba(126, 224, 184, 0.18); }
-.change-down { color: var(--pink); box-shadow: 0 0 10px rgba(240, 167, 207, 0.18); }
-.change-set { color: var(--accent); box-shadow: 0 0 10px var(--accent-soft); }
-.change-new { color: #8fb4ff; box-shadow: 0 0 10px rgba(143, 180, 255, 0.18); }
-.change-from { font-size: 0.62rem; opacity: 0.8; }
-/* On a list box the stack hangs off the top-right corner and grows upward. */
-.box-changes { position: absolute; right: -0.45rem; bottom: calc(100% - 0.6rem); z-index: 1; flex-direction: column; align-items: flex-end; }
-.box-changes .change { font-size: 0.62rem; padding: 0.06rem 0.35rem; }
-@keyframes change-in { from { opacity: 0; transform: translateY(4px) scale(0.9); } }
-.vars th { font-weight: 500; }
+.var-card.changed { border-color: rgba(126, 224, 184, 0.6); box-shadow: 0 0 0 1px rgba(126, 224, 184, 0.25), 0 0 18px rgba(126, 224, 184, 0.18); }
+.var-card.source { border-color: var(--var-color); }
+.var-name { font-size: 0.72rem; color: var(--var-color); font-weight: 500; letter-spacing: 0.04em; }
+.var-value { position: relative; display: grid; font-size: 1.25rem; line-height: 1.5; overflow: hidden; }
+/* Old and new value share one grid cell so one slides out as the other slides in. */
+.var-value > * { grid-area: 1 / 1; white-space: pre-wrap; word-break: break-all; }
+.var-old { color: var(--muted); animation: var-out 0.45s var(--ease) forwards; }
+.var-new { color: var(--pass); animation: var-in 0.45s var(--ease) both, var-settle 0.9s 0.45s forwards; }
+/* Change badges hang off the card's top-right corner for the whole step.
+   Several parts stack upward, the first one nearest the card. */
+.var-deltas {
+  position: absolute; right: -0.4rem; bottom: calc(100% - 0.7rem); z-index: 1;
+  display: flex; flex-direction: column-reverse; align-items: flex-end; gap: 3px;
+  pointer-events: none;
+}
+.var-delta {
+  padding: 0.05rem 0.4rem; border-radius: 999px; white-space: nowrap;
+  background: var(--pass); color: var(--bg); font-size: 0.75rem; font-weight: 600;
+  box-shadow: 0 0 12px rgba(126, 224, 184, 0.3);
+  animation: var-delta 0.3s var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 90ms);
+}
+.var-delta.down { background: var(--pink); box-shadow: 0 0 12px rgba(240, 167, 207, 0.3); }
+.var-delta.new { background: #8fb4ff; box-shadow: 0 0 12px rgba(143, 180, 255, 0.3); }
+.var-delta.set { background: var(--accent); box-shadow: 0 0 12px var(--accent-soft); }
+/* Next to a list or dict name, or in a dict row: in the flow, side by side. */
+.var-deltas.inline { position: static; display: inline-flex; flex-direction: row; flex-wrap: wrap; gap: 4px; margin-left: 0.6rem; vertical-align: middle; }
+/* On a list box: hangs off the top-right corner and stacks upward. */
+.var-deltas.on-box { right: -0.45rem; bottom: calc(100% - 0.55rem); }
+.var-deltas.on-box .var-delta { font-size: 0.66rem; padding: 0.02rem 0.35rem; }
+.var-from { font-weight: 400; opacity: 0.8; }
+.var-pulse { position: absolute; inset: -1px; border-radius: inherit; border: 2px solid var(--var-color); animation: var-pulse 0.7s ease-out forwards; pointer-events: none; }
+@keyframes var-out { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-110%); opacity: 0; } }
+@keyframes var-in { from { transform: translateY(110%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes var-settle { to { color: var(--text); } }
+/* The change pops in fast and then stays put until the next step. */
+@keyframes var-delta { from { transform: translateY(0.4rem) scale(0.9); opacity: 0; } }
+@keyframes var-pulse { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(1.15); } }
 .output { border-top: 1px solid var(--line-strong); padding-top: 0.6rem; }
 .output-title { font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); }
 .output-title::before { content: ':'; }
@@ -256,6 +276,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .dict-table th { font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); font-weight: 400; text-align: left; padding: 0.2rem 0.7rem; }
 .dict-table td { border: 1px solid var(--line); padding: 0.35rem 0.7rem; background: var(--box); }
 .dict-table tr.changed td { background: rgba(126, 224, 184, 0.16); border-color: rgba(126, 224, 184, 0.35); }
+.dict-table td.badge-cell, .dict-table tr.changed td.badge-cell { border: 0; background: transparent; padding: 0 0 0 0.5rem; }
 
 /* ---------- Problem ---------- */
 .editor-pane { display: flex; flex-direction: column; overflow: hidden; }
@@ -341,6 +362,8 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 @media (prefers-reduced-motion: reduce) {
   .sky { transition: none; }
-  .change { animation: none; }
   .status::before { animation: none !important; }
+  .var-old, .var-pulse { display: none; }
+  .var-new { animation: none; }
+  .var-delta { animation: none; }
 }

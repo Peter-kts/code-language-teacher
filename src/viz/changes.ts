@@ -1,28 +1,32 @@
 import type { Step, Value } from '../types'
 import { formatValue } from './format'
 
-export type ChangeTone = 'up' | 'down' | 'set' | 'new'
-
-export interface Change {
-  /** Badge text, e.g. `+8`, `was 'a'`, `new`. */
+export interface DeltaPart {
+  /** e.g. `+8` or `-1.5`. */
   text: string
-  tone: ChangeTone
-  from?: string
+  /** Variable on the line that just ran that supplied this amount, e.g. `n` in `total += n`. */
+  from: string | null
 }
 
-/**
- * What changed to reach a step. Every target holds a list of changes so the UI
- * can stack them when several things touch the same variable or item at once.
- */
-export interface StepChanges {
-  vars: Record<string, Change[]>
-  /** Changes to individual list items: items[listName][index]. */
-  items: Record<string, Record<number, Change[]>>
-  /** The line whose execution produced these changes. */
-  line: number | null
+export interface ScalarChange {
+  /** Value before this step, as shown to the user. */
+  before: string
+  /**
+   * What was added or subtracted. One part normally; several when the line
+   * combined variables (`total += a + b` gives `+a from a`, `+b from b`), and
+   * the UI stacks them. Empty when either side isn't a number.
+   */
+  deltas: DeltaPart[]
 }
 
-const NONE: StepChanges = { vars: {}, items: {}, line: null }
+const num = (v: Value | undefined): number | null =>
+  v?.type === 'prim' && typeof v.value === 'number' ? v.value : null
+
+const repr = (v: Value) => (v.type === 'prim' || v.type === 'other' ? v.repr : null)
+
+/** Most variables one line can combine before we stop looking for which ones made the change. */
+const MAX_PARTS = 3
+const MAX_CANDIDATES = 6
 
 /**
  * The step before `i` in the same function. Snapshots are taken before each
@@ -35,82 +39,163 @@ export function previousInFrame(steps: Step[], i: number): Step | undefined {
   return undefined
 }
 
-export function diffStep(prev: Step | undefined, step: Step, ranLine?: string): StepChanges {
-  if (!prev || prev.func !== step.func) return NONE
-  const out: StepChanges = { vars: {}, items: {}, line: prev.line }
-  const add = (name: string, change: Change) => (out.vars[name] ??= []).push(change)
-  const addItem = (name: string, index: number, change: Change) =>
-    ((out.items[name] ??= {})[index] ??= []).push(change)
-
+/**
+ * How each scalar variable changed between `prev` and `step`, keyed by name.
+ * `ranLine` is the source of the line that ran in between (prev.line), used to
+ * say where an added amount came from.
+ */
+export function scalarChanges(step: Step, prev: Step | undefined, ranLine?: string): Record<string, ScalarChange> {
+  if (!prev || prev.func !== step.func) return {}
+  const used = ranLine ? identifiers(ranLine) : []
+  const out: Record<string, ScalarChange> = {}
   for (const [name, value] of Object.entries(step.vars)) {
-    const before = prev.vars[name]
-    if (!before) {
-      add(name, { text: 'new', tone: 'new' })
-      continue
-    }
-    if (formatValue(before) === formatValue(value)) continue
-
-    const a = asNumber(before)
-    const b = asNumber(value)
+    const old = prev.vars[name]
+    const now = repr(value)
+    if (!old || now === null) continue
+    const before = repr(old)
+    if (before === null || before === now) continue
+    const a = num(old)
+    const b = num(value)
+    let deltas: DeltaPart[] = []
     if (a !== null && b !== null) {
-      const change = delta(b - a)
-      const from = sourceVariable(step, name, b - a, ranLine)
-      if (from) change.from = from
-      add(name, change)
-    } else if ((value.type === 'list' || value.type === 'tuple') && before.type === value.type) {
-      value.items.forEach((item, i) => {
-        const old = before.items[i]
-        if (!old) addItem(name, i, { text: 'new', tone: 'new' })
-        else if (formatValue(old) !== formatValue(item)) addItem(name, i, itemChange(old, item))
-      })
-      const lost = before.items.length - value.items.length
-      if (lost > 0) add(name, { text: `−${lost} ${lost === 1 ? 'item' : 'items'}`, tone: 'down' })
-    } else if (value.type === 'dict' && before.type === 'dict') {
-      // Changed rows are highlighted in the table; the badge sums up the size change.
-      const grow = value.entries.length - before.entries.length
-      if (grow === 0) add(name, { text: 'updated', tone: 'set' })
-      else add(name, { text: `${grow > 0 ? '+' : '−'}${Math.abs(grow)} ${Math.abs(grow) === 1 ? 'key' : 'keys'}`, tone: grow > 0 ? 'up' : 'down' })
+      const d = roundOff(b - a)
+      if (d !== 0) deltas = explain(d, name, step, used)
+    }
+    out[name] = { before, deltas }
+  }
+  return out
+}
+
+export interface ContainerChange {
+  /** Badges for the list or dict as a whole, e.g. `-2 items` or `reordered`. */
+  summary: DeltaPart[]
+  /** Badges per list index or dict key (keyed by the key as shown, e.g. `'a'`). */
+  parts: Record<string, DeltaPart[]>
+}
+
+/**
+ * How each list, tuple and dict changed between `prev` and `step`, keyed by
+ * name. Items get the same deltas as scalars (`+8 from n`), new items and keys
+ * get `new`, and removals are summed up on the container.
+ */
+export function containerChanges(
+  step: Step,
+  prev: Step | undefined,
+  ranLine?: string,
+): Record<string, ContainerChange> {
+  if (!prev || prev.func !== step.func) return {}
+  const used = ranLine ? identifiers(ranLine) : []
+  const itemDelta = (target: string, old: Value, now: Value): DeltaPart[] => {
+    const a = num(old)
+    const b = num(now)
+    const d = a !== null && b !== null ? roundOff(b - a) : 0
+    return d !== 0 ? explain(d, target, step, used) : [{ text: `was ${short(formatValue(old))}`, from: null }]
+  }
+  const out: Record<string, ContainerChange> = {}
+  for (const [name, value] of Object.entries(step.vars)) {
+    const old = prev.vars[name]
+    if (!old || !isContainer(value) || formatValue(old) === formatValue(value)) continue
+    if (value.type === 'dict' && old.type === 'dict') {
+      out[name] = dictChange(old.entries, value.entries, (o, n) => itemDelta(name, o, n))
+    } else if ((value.type === 'list' || value.type === 'tuple') && old.type === value.type) {
+      out[name] = listChange(old.items, value.items, (o, n) => itemDelta(name, o, n))
     } else {
-      add(name, { text: `was ${short(formatValue(before))}`, tone: 'set' })
+      out[name] = { summary: [{ text: `was ${short(formatValue(old))}`, from: null }], parts: {} }
     }
   }
   return out
 }
 
-function asNumber(v: Value): number | null {
-  return v.type === 'prim' && typeof v.value === 'number' ? v.value : null
+type ItemDelta = (old: Value, now: Value) => DeltaPart[]
+
+function listChange(oldItems: Value[], newItems: Value[], itemDelta: ItemDelta): ContainerChange {
+  const a = oldItems.map(formatValue)
+  const b = newItems.map(formatValue)
+  const parts: Record<string, DeltaPart[]> = {}
+  const summary: DeltaPart[] = []
+  const grow = b.length - a.length
+  const same = (x: string[], y: string[]) => x.length === y.length && x.every((v, i) => v === y[i])
+  const markNew = (from: number, to: number) => {
+    for (let i = from; i < to; i++) parts[i] = [{ text: 'new', from: null }]
+  }
+  if (grow === 0 && same([...a].sort(), [...b].sort())) {
+    // sort() or reverse(): one badge instead of one per moved item.
+    summary.push({ text: 'reordered', from: null })
+  } else if (grow > 0 && same(b.slice(0, a.length), a)) {
+    markNew(a.length, b.length) // append / extend
+  } else if (grow > 0 && same(b.slice(grow), a)) {
+    markNew(0, grow) // insert at the front
+  } else if (grow < 0 && (same(a.slice(0, b.length), b) || same(a.slice(-grow), b))) {
+    summary.push(removed(-grow, 'item')) // pop() / pop(0)
+  } else {
+    b.forEach((v, i) => {
+      if (i >= a.length) parts[i] = [{ text: 'new', from: null }]
+      else if (v !== a[i]) parts[i] = itemDelta(oldItems[i], newItems[i])
+    })
+    if (grow < 0) summary.push(removed(-grow, 'item'))
+  }
+  return { summary, parts }
 }
 
-function itemChange(old: Value, item: Value): Change {
-  const a = asNumber(old)
-  const b = asNumber(item)
-  return a !== null && b !== null ? delta(b - a) : { text: `was ${short(formatValue(old))}`, tone: 'set' }
+function dictChange(oldEntries: [Value, Value][], newEntries: [Value, Value][], itemDelta: ItemDelta): ContainerChange {
+  const before = new Map(oldEntries.map(([k, v]) => [formatValue(k), v]))
+  const parts: Record<string, DeltaPart[]> = {}
+  for (const [k, v] of newEntries) {
+    const key = formatValue(k)
+    const was = before.get(key)
+    if (!was) parts[key] = [{ text: 'new', from: null }]
+    else if (formatValue(was) !== formatValue(v)) parts[key] = itemDelta(was, v)
+    before.delete(key)
+  }
+  return { summary: before.size ? [removed(before.size, 'key')] : [], parts }
 }
 
-function delta(d: number): Change {
-  // toPrecision trims float noise such as 0.30000000000000004.
-  const size = Number(Math.abs(d).toPrecision(12))
-  return { text: `${d >= 0 ? '+' : '−'}${size}`, tone: d >= 0 ? 'up' : 'down' }
+const isContainer = (v: Value) => v.type === 'list' || v.type === 'tuple' || v.type === 'dict'
+
+const removed = (n: number, noun: string): DeltaPart => ({ text: `-${n} ${noun}${n === 1 ? '' : 's'}`, from: null })
+
+const short = (text: string) => (text.length > 14 ? `${text.slice(0, 13)}…` : text)
+
+/** Split a change into the variables on the line that add up to it, or give it as one amount. */
+function explain(d: number, target: string, step: Step, used: string[]): DeltaPart[] {
+  const candidates = used
+    .filter((other) => other !== target)
+    .map((other) => ({ name: other, value: num(step.vars[other]) }))
+    .filter((c): c is { name: string; value: number } => c.value !== null && c.value !== 0)
+    .slice(0, MAX_CANDIDATES)
+  // Only name sources when exactly one combination fits; a guess would teach the wrong thing.
+  for (let size = 1; size <= MAX_PARTS; size++) {
+    const fits = subsets(candidates, size).filter((set) => {
+      const sum = set.reduce((s, c) => s + c.value, 0)
+      return close(sum, d) || close(sum, -d)
+    })
+    if (fits.length === 1) {
+      const sign = Math.sign(d) * Math.sign(fits[0].reduce((s, c) => s + c.value, 0))
+      return fits[0].map((c) => ({ text: signed(roundOff(sign * c.value)), from: c.name }))
+    }
+    if (fits.length > 1) break
+  }
+  return [{ text: signed(d), from: null }]
 }
 
-function short(text: string): string {
-  return text.length > 14 ? `${text.slice(0, 13)}…` : text
+function subsets<T>(items: T[], size: number, start = 0): T[][] {
+  if (size === 0) return [[]]
+  const out: T[][] = []
+  for (let i = start; i <= items.length - size; i++) {
+    for (const rest of subsets(items, size - 1, i + 1)) out.push([items[i], ...rest])
+  }
+  return out
 }
 
-function sourceVariable(step: Step, name: string, difference: number, ranLine?: string): string | undefined {
-  if (!ranLine) return undefined
-  const used = identifiers(ranLine)
-  const amount = roundOff(Math.abs(difference))
-  const sources = Object.keys(step.vars).filter(
-    (other) => other !== name && used.has(other) && asNumber(step.vars[other]) === amount,
-  )
-  return sources.length === 1 ? sources[0] : undefined
-}
+const close = (x: number, y: number) => Math.abs(x - y) <= 1e-9 * Math.max(1, Math.abs(y))
+
+const signed = (x: number) => (x >= 0 ? `+${x}` : `${x}`)
 
 // 0.1 + 0.2 should read as +0.3, not +0.30000000000000004.
 const roundOff = (x: number) => (Number.isInteger(x) ? x : Number(x.toPrecision(12)))
 
-function identifiers(line: string): Set<string> {
+/** Names on the line, in order of first appearance. */
+function identifiers(line: string): string[] {
   const code = line.replace(/#.*$/, '').replace(/(['"]).*?\1/g, '')
-  return new Set(code.match(/[A-Za-z_]\w*/g) ?? [])
+  return [...new Set(code.match(/[A-Za-z_]\w*/g) ?? [])]
 }
