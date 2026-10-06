@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { containerChanges, previousInFrame, scalarChanges } from './changes'
+import { containerChanges, findNames, previousInFrame, scalarChanges, stepRoles } from './changes'
 import type { Step, Value } from '../types'
 
 const int = (x: number): Value => ({ type: 'prim', repr: String(x), value: x })
@@ -139,5 +139,28 @@ describe('previousInFrame', () => {
     const steps = [step({}, 1), step({ x: int(1) }, 2, 'f'), step({ r: int(1) }, 3)]
     expect(previousInFrame(steps, 2)).toBe(steps[0])
     expect(previousInFrame(steps, 1)).toBeUndefined()
+  })
+})
+
+describe('stepRoles', () => {
+  it('splits `total += n` into target total and source n', () => {
+    const prev = step({ total: int(39), n: int(23) }, 4)
+    const next = step({ total: int(62), n: int(23) }, 3)
+    expect(stepRoles(next, prev, '    total += n')).toEqual({ targets: ['total'], sources: ['n'] })
+  })
+
+  it('has no roles when nothing changed', () => {
+    const s = step({ total: int(1) })
+    expect(stepRoles(s, s, 'print(total)')).toEqual({ targets: [], sources: [] })
+  })
+})
+
+describe('findNames', () => {
+  it('finds whole names and skips strings and comments', () => {
+    expect(findNames("    total += n  # add n", ['total', 'n'])).toEqual([
+      { name: 'total', start: 5, end: 10 },
+      { name: 'n', start: 14, end: 15 },
+    ])
+    expect(findNames("print('n', nums[n])", ['n'])).toEqual([{ name: 'n', start: 17, end: 18 }])
   })
 })
