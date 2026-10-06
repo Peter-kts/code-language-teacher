@@ -29,6 +29,17 @@ const MAX_PARTS = 3
 const MAX_CANDIDATES = 6
 
 /**
+ * The step before `i` in the same function. Snapshots are taken before each
+ * line runs, so the difference from that step is what its line just did. Using
+ * the same function also credits a call's result to the line that made it.
+ */
+export function previousInFrame(steps: Step[], i: number): Step | undefined {
+  const func = steps[i]?.func
+  for (let j = i - 1; j >= 0; j--) if (steps[j].func === func) return steps[j]
+  return undefined
+}
+
+/**
  * How each scalar variable changed between `prev` and `step`, keyed by name.
  * `ranLine` is the source of the line that ran in between (prev.line), used to
  * say where an added amount came from.

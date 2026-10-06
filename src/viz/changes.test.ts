@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { containerChanges, scalarChanges } from './changes'
+import { containerChanges, previousInFrame, scalarChanges } from './changes'
 import type { Step, Value } from '../types'
 
 const int = (x: number): Value => ({ type: 'prim', repr: String(x), value: x })
@@ -131,5 +131,13 @@ describe('containerChanges', () => {
   it('ignores unchanged containers, scalars and frame switches', () => {
     expect(containerChanges(step({ xs: list(1), n: int(2) }), step({ xs: list(1), n: int(1) }))).toEqual({})
     expect(containerChanges(step({ xs: list(2) }, 1, 'f'), step({ xs: list(1) }))).toEqual({})
+  })
+})
+
+describe('previousInFrame', () => {
+  it('compares against the previous step in the same function, skipping the call', () => {
+    const steps = [step({}, 1), step({ x: int(1) }, 2, 'f'), step({ r: int(1) }, 3)]
+    expect(previousInFrame(steps, 2)).toBe(steps[0])
+    expect(previousInFrame(steps, 1)).toBeUndefined()
   })
 })

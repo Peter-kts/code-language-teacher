@@ -15,7 +15,7 @@ export function Visualizer({
   tick,
 }: {
   step: Step
-  /** The step before, used to highlight what just changed. */
+  /** The step before in the same function, used to highlight what just changed. */
   prevStep?: Step
   pointers: PointerSpec[]
   /** Source that produced this trace, to say where an added amount came from. */
@@ -43,7 +43,7 @@ export function Visualizer({
   )
   // Keyed by step, so badges remount (and pop in) on every step but hold while paused.
   const badges = (parts: DeltaPart[] | undefined, className?: string) => (
-    <DeltaStack key={`d${tick}`} parts={parts} className={className} />
+    <DeltaStack key={`d${tick}`} parts={parts} className={className} line={prevStep?.line} />
   )
 
   return (
@@ -106,12 +106,17 @@ export function Visualizer({
  * Change badges. They stay for the whole step (also while paused) and the next
  * step replaces them. Several parts stack, the first one nearest the value.
  */
-function DeltaStack({ parts, className }: { parts?: DeltaPart[]; className?: string }) {
+function DeltaStack({ parts, className, line }: { parts?: DeltaPart[]; className?: string; line?: number }) {
   if (!parts?.length) return null
   return (
     <span className={className ? `var-deltas ${className}` : 'var-deltas'}>
       {parts.map((part, i) => (
-        <span key={i} className={`var-delta ${tone(part.text)}`} style={{ '--i': i } as CSSProperties}>
+        <span
+          key={i}
+          className={`var-delta ${tone(part.text)}`}
+          style={{ '--i': i } as CSSProperties}
+          title={line ? `Changed by line ${line}` : undefined}
+        >
           {part.text}
           {part.from && <span className="var-from"> from {part.from}</span>}
         </span>
