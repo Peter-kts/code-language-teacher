@@ -31,6 +31,7 @@ For a production build on your own server: `npm run build && ANTHROPIC_API_KEY=.
 - **Problems:** LeetCode-style problems live in `src/problems/problems.ts` (Two Sum so far). The tracer calls your function with the selected test case so the visual walks through its body, dicts are drawn as key/value tables with new entries highlighted, and every test case is run to show pass/fail.
 - **Ask Claude:** a chat panel (`src/chat`) that streams answers from `server/chat.mjs`, which calls the Claude API with your current code and problem as context. Code blocks in answers have an Insert button. The same handler runs inside the Vite dev server and the production server (`server/index.mjs`).
 - **Syntax cards:** built-in Python examples with an Insert button (`src/syntax`) that work without an API key.
+- **Galaxy theme:** `src/galaxy/GalaxyBackground.tsx` draws `public/galaxy.webp` with a WebGL shader behind the app. The mouse swirls and lights the nebula, pushes stars aside and leaves ripples. Touch devices get a slow drift, and reduced-motion users get a still image. The panes are tinted glass over it (`src/styles.css`), and Monaco uses a matching `galaxy` theme (`src/monaco.ts`).
 
 ## Tests
 

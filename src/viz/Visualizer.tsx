@@ -1,7 +1,8 @@
 import type { PointerSpec, Step, Value } from '../types'
 import { placePointers, type PlacedPointer } from './pointers'
 
-const POINTER_COLORS = ['#e8590c', '#1c7ed6', '#2f9e44', '#ae3ec9', '#f08c00', '#0c8599']
+// Bright enough to read on the dark galaxy panels, and distinct from each other.
+const POINTER_COLORS = ['#c8b4ff', '#f0a7cf', '#8fb4ff', '#7ee0b8', '#ffc978', '#6fd8e8']
 
 export function Visualizer({
   step,
