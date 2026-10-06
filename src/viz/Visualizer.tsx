@@ -1,4 +1,6 @@
+import type { CSSProperties } from 'react'
 import type { PointerSpec, Step, Value } from '../types'
+import { scalarChanges } from './changes'
 import { placePointers, type PlacedPointer } from './pointers'
 
 // Bright enough to read on the dark galaxy panels, and distinct from each other.
@@ -8,11 +10,17 @@ export function Visualizer({
   step,
   prevStep,
   pointers,
+  code,
+  tick,
 }: {
   step: Step
   /** The step before, used to highlight what just changed. */
   prevStep?: Step
   pointers: PointerSpec[]
+  /** Source that produced this trace, to say where an added amount came from. */
+  code?: string
+  /** Changes on every step, so change animations replay. */
+  tick?: number
 }) {
   const placed = placePointers(step, pointers)
   const labels = [...new Set(pointers.map((p) => p.label))]
@@ -23,6 +31,9 @@ export function Visualizer({
   const lists = entries.filter(([, v]) => v.type === 'list' || v.type === 'tuple')
   const dicts = entries.filter(([, v]) => v.type === 'dict')
   const others = entries.filter(([, v]) => v.type !== 'list' && v.type !== 'tuple' && v.type !== 'dict')
+  const ranLine = prevStep && code ? code.split('\n')[prevStep.line - 1] : undefined
+  const changes = scalarChanges(step, prevStep, ranLine)
+  const sources = new Set(Object.values(changes).flatMap((c) => (c.from ? [c.from] : [])))
 
   return (
     <div className="viz">
@@ -34,16 +45,35 @@ export function Visualizer({
         <DictView key={name} name={name} value={value} prev={prevStep?.func === step.func ? prevStep.vars[name] : undefined} />
       ))}
       {others.length > 0 && (
-        <table className="vars">
-          <tbody>
-            {others.map(([name, value]) => (
-              <tr key={name}>
-                <th style={shown.has(name) ? { color: colorOf(name) } : undefined}>{name}</th>
-                <td>{formatValue(value)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="var-cards">
+          {others.map(([name, value]) => {
+            const change = changes[name]
+            const color = shown.has(name) ? colorOf(name) : undefined
+            const cls = ['var-card', change && 'changed', sources.has(name) && 'source'].filter(Boolean).join(' ')
+            return (
+              <div key={name} className={cls} style={color ? ({ '--var-color': color } as CSSProperties) : undefined}>
+                {sources.has(name) && <span key={`p${tick}`} className="var-pulse" aria-hidden />}
+                <div className="var-name">{name}</div>
+                <div className="var-value">
+                  {change && (
+                    <span key={`old${tick}`} className="var-old" aria-hidden>
+                      {change.before}
+                    </span>
+                  )}
+                  <span key={change ? `new${tick}` : 'same'} className={change ? 'var-new' : undefined}>
+                    {formatValue(value)}
+                  </span>
+                </div>
+                {change?.delta && (
+                  <span key={`d${tick}`} className="var-delta">
+                    {change.delta}
+                    {change.from && <span className="var-from"> from {change.from}</span>}
+                  </span>
+                )}
+              </div>
+            )
+          })}
+        </div>
       )}
       {entries.length === 0 && <p className="muted">No variables yet.</p>}
     </div>
