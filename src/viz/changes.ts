@@ -1,4 +1,5 @@
 import type { Step, Value } from '../types'
+import { formatValue } from './format'
 
 export interface DeltaPart {
   /** e.g. `+8` or `-1.5`. */
@@ -53,6 +54,96 @@ export function scalarChanges(step: Step, prev: Step | undefined, ranLine?: stri
   }
   return out
 }
+
+export interface ContainerChange {
+  /** Badges for the list or dict as a whole, e.g. `-2 items` or `reordered`. */
+  summary: DeltaPart[]
+  /** Badges per list index or dict key (keyed by the key as shown, e.g. `'a'`). */
+  parts: Record<string, DeltaPart[]>
+}
+
+/**
+ * How each list, tuple and dict changed between `prev` and `step`, keyed by
+ * name. Items get the same deltas as scalars (`+8 from n`), new items and keys
+ * get `new`, and removals are summed up on the container.
+ */
+export function containerChanges(
+  step: Step,
+  prev: Step | undefined,
+  ranLine?: string,
+): Record<string, ContainerChange> {
+  if (!prev || prev.func !== step.func) return {}
+  const used = ranLine ? identifiers(ranLine) : []
+  const itemDelta = (target: string, old: Value, now: Value): DeltaPart[] => {
+    const a = num(old)
+    const b = num(now)
+    const d = a !== null && b !== null ? roundOff(b - a) : 0
+    return d !== 0 ? explain(d, target, step, used) : [{ text: `was ${short(formatValue(old))}`, from: null }]
+  }
+  const out: Record<string, ContainerChange> = {}
+  for (const [name, value] of Object.entries(step.vars)) {
+    const old = prev.vars[name]
+    if (!old || !isContainer(value) || formatValue(old) === formatValue(value)) continue
+    if (value.type === 'dict' && old.type === 'dict') {
+      out[name] = dictChange(old.entries, value.entries, (o, n) => itemDelta(name, o, n))
+    } else if ((value.type === 'list' || value.type === 'tuple') && old.type === value.type) {
+      out[name] = listChange(old.items, value.items, (o, n) => itemDelta(name, o, n))
+    } else {
+      out[name] = { summary: [{ text: `was ${short(formatValue(old))}`, from: null }], parts: {} }
+    }
+  }
+  return out
+}
+
+type ItemDelta = (old: Value, now: Value) => DeltaPart[]
+
+function listChange(oldItems: Value[], newItems: Value[], itemDelta: ItemDelta): ContainerChange {
+  const a = oldItems.map(formatValue)
+  const b = newItems.map(formatValue)
+  const parts: Record<string, DeltaPart[]> = {}
+  const summary: DeltaPart[] = []
+  const grow = b.length - a.length
+  const same = (x: string[], y: string[]) => x.length === y.length && x.every((v, i) => v === y[i])
+  const markNew = (from: number, to: number) => {
+    for (let i = from; i < to; i++) parts[i] = [{ text: 'new', from: null }]
+  }
+  if (grow === 0 && same([...a].sort(), [...b].sort())) {
+    // sort() or reverse(): one badge instead of one per moved item.
+    summary.push({ text: 'reordered', from: null })
+  } else if (grow > 0 && same(b.slice(0, a.length), a)) {
+    markNew(a.length, b.length) // append / extend
+  } else if (grow > 0 && same(b.slice(grow), a)) {
+    markNew(0, grow) // insert at the front
+  } else if (grow < 0 && (same(a.slice(0, b.length), b) || same(a.slice(-grow), b))) {
+    summary.push(removed(-grow, 'item')) // pop() / pop(0)
+  } else {
+    b.forEach((v, i) => {
+      if (i >= a.length) parts[i] = [{ text: 'new', from: null }]
+      else if (v !== a[i]) parts[i] = itemDelta(oldItems[i], newItems[i])
+    })
+    if (grow < 0) summary.push(removed(-grow, 'item'))
+  }
+  return { summary, parts }
+}
+
+function dictChange(oldEntries: [Value, Value][], newEntries: [Value, Value][], itemDelta: ItemDelta): ContainerChange {
+  const before = new Map(oldEntries.map(([k, v]) => [formatValue(k), v]))
+  const parts: Record<string, DeltaPart[]> = {}
+  for (const [k, v] of newEntries) {
+    const key = formatValue(k)
+    const was = before.get(key)
+    if (!was) parts[key] = [{ text: 'new', from: null }]
+    else if (formatValue(was) !== formatValue(v)) parts[key] = itemDelta(was, v)
+    before.delete(key)
+  }
+  return { summary: before.size ? [removed(before.size, 'key')] : [], parts }
+}
+
+const isContainer = (v: Value) => v.type === 'list' || v.type === 'tuple' || v.type === 'dict'
+
+const removed = (n: number, noun: string): DeltaPart => ({ text: `-${n} ${noun}${n === 1 ? '' : 's'}`, from: null })
+
+const short = (text: string) => (text.length > 14 ? `${text.slice(0, 13)}…` : text)
 
 /** Split a change into the variables on the line that add up to it, or give it as one amount. */
 function explain(d: number, target: string, step: Step, used: string[]): DeltaPart[] {

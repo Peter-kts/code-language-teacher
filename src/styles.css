@@ -202,14 +202,17 @@ button:disabled { opacity: 0.4; cursor: default; }
 .viz-frame { font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); margin-bottom: 0.7rem; }
 .list { margin-bottom: 1.4rem; }
 .list-name { font-family: var(--font-mono); font-weight: 500; margin-bottom: 0.4rem; color: var(--text); }
-.list-grid { display: grid; gap: 0 4px; }
+.list-grid { display: grid; gap: 0 4px; padding-top: 0.6rem; }
 .box {
+  position: relative;
   height: 3.25rem; display: flex; align-items: center; justify-content: center;
   border: 1px solid var(--line-strong); border-radius: 8px;
   background: var(--box);
-  font-family: var(--font-mono); overflow: hidden;
+  font-family: var(--font-mono);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
+.box-value { max-width: 100%; padding: 0 0.2rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.box.changed { border-color: rgba(126, 224, 184, 0.6); box-shadow: 0 0 14px rgba(126, 224, 184, 0.16); }
 .box-ghost { background: transparent; border-style: dashed; border-color: var(--line); }
 .index { text-align: center; font-family: var(--font-mono); font-size: 0.7rem; color: var(--faint); padding-top: 0.2rem; }
 .pointers { display: flex; flex-direction: column; align-items: center; }
@@ -247,6 +250,13 @@ button:disabled { opacity: 0.4; cursor: default; }
   animation-delay: calc(var(--i, 0) * 90ms);
 }
 .var-delta.down { background: var(--pink); box-shadow: 0 0 12px rgba(240, 167, 207, 0.3); }
+.var-delta.new { background: #8fb4ff; box-shadow: 0 0 12px rgba(143, 180, 255, 0.3); }
+.var-delta.set { background: var(--accent); box-shadow: 0 0 12px var(--accent-soft); }
+/* Next to a list or dict name, or in a dict row: in the flow, side by side. */
+.var-deltas.inline { position: static; display: inline-flex; flex-direction: row; flex-wrap: wrap; gap: 4px; margin-left: 0.6rem; vertical-align: middle; }
+/* On a list box: hangs off the top-right corner and stacks upward. */
+.var-deltas.on-box { right: -0.45rem; bottom: calc(100% - 0.55rem); }
+.var-deltas.on-box .var-delta { font-size: 0.66rem; padding: 0.02rem 0.35rem; }
 .var-from { font-weight: 400; opacity: 0.8; }
 .var-pulse { position: absolute; inset: -1px; border-radius: inherit; border: 2px solid var(--var-color); animation: var-pulse 0.7s ease-out forwards; pointer-events: none; }
 @keyframes var-out { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-110%); opacity: 0; } }
@@ -266,6 +276,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .dict-table th { font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); font-weight: 400; text-align: left; padding: 0.2rem 0.7rem; }
 .dict-table td { border: 1px solid var(--line); padding: 0.35rem 0.7rem; background: var(--box); }
 .dict-table tr.changed td { background: rgba(126, 224, 184, 0.16); border-color: rgba(126, 224, 184, 0.35); }
+.dict-table td.badge-cell, .dict-table tr.changed td.badge-cell { border: 0; background: transparent; padding: 0 0 0 0.5rem; }
 
 /* ---------- Problem ---------- */
 .editor-pane { display: flex; flex-direction: column; overflow: hidden; }
