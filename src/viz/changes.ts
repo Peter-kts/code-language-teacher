@@ -376,7 +376,11 @@ function lineWork(step: Step, prev: Step, plans?: Plans) {
             if (t.part.id !== undefined) byPart.get(t.part.id)?.gave.push({ value: gave(t), to })
           }
           const index = looped(c)
-          if (index !== null) loopReads.push({ name: loop!.over, item: index, gave: [], start: loop!.start, end: loop!.end })
+          // `for n in nums` hands nums[i] to n.
+          if (index !== null) {
+            const gave = [{ value: formatValue(now), to }]
+            loopReads.push({ name: loop!.over, item: index, gave, start: loop!.start, end: loop!.end })
+          }
         }
       }
       return [...byPart.values(), ...loopReads]
@@ -390,7 +394,9 @@ function isLiteral(e: ExprPlan | null): boolean {
   if (e.kind === 'const') return true
   if (e.kind === 'seq') return e.items.every(isLiteral)
   if (e.kind === 'unary') return isLiteral(e.operand)
-  return e.kind === 'other' && !e.parts.length && /^[[{(]/.test(e.text)
+  // The tracer doesn't break down dicts, comprehensions or long lists, so check
+  // the text itself names nothing: `{}` or `[0, 0, 0, …]`, but not `{n: i}`.
+  return e.kind === 'other' && !e.parts.length && /^[[{(]/.test(e.text) && !/[A-Za-z_]/.test(e.text.replace(/(['"])(?:\\.|(?!\1).)*\1/g, ''))
 }
 
 /** Each target of an assignment with the expression that gave it its value (`a, b = b, a + b` pairs up). */

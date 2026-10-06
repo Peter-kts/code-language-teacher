@@ -3,6 +3,7 @@ import { buildHistory, deltaText, entryLabel, type HistoryEntry } from './histor
 import type { TraceResult } from '../types'
 import sumTrace from './fixtures/sum.json'
 import twoSumTrace from './fixtures/twosum.json'
+import enumerateTrace from './fixtures/enumerate.json'
 
 // Real traces from src/python/tracer.py (made with run_traced; their `code` is the source that ran).
 type Trace = Extract<TraceResult, { ok: true }>
@@ -37,5 +38,16 @@ describe('buildHistory', () => {
     // `need = target - n`: n gave 2 (not -2), and came from nums[0] a step earlier.
     expect(rows).toContain('step 5 line 4: need new → 7 = 9 (target) − 2 (n) [target gave 9] [n gave 2 from step 4: = nums[0]]')
     expect(rows).toContain("step 7 line 7: seen[2] new → 0 [i gave 0 from step 4: = 0]")
+  })
+  it('credits the box a loop handed out, with enumerate too', () => {
+    const rows = history(enumerateTrace).map(show)
+    expect(rows).toContain('step 3 line 3: n new → 3 = nums[0] [nums[0] gave 3]')
+  })
+
+  it('names what `pair = {n: i}` read, but adds nothing to `{}` or `[0, 0]`', () => {
+    const rows = history(enumerateTrace).map(show)
+    expect(rows).toContain('step 2 line 2: seen new → {}')
+    expect(rows).toContain('step 4 line 4: pair new → {3: 0} = {n: i}')
+    expect(rows).toContain('step 5 line 5: zeros new → [0, 0]')
   })
 })
