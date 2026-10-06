@@ -1,3 +1,4 @@
+import io
 import json
 import os
 import sys
@@ -101,3 +102,141 @@ class ProblemTest(unittest.TestCase):
         self.assertEqual([r["passed"] for r in wrong], [False, False, False])
         slow = json.loads(run_tests("def twoSum(nums, target):\n    while True:\n        pass\n", "twoSum", cases[:1], max_seconds=0.2))
         self.assertIn("too long", slow[0]["error"])
+
+
+def strict_json(text):
+    """Parse like the browser does: no Infinity or NaN."""
+
+    def reject(token):
+        raise ValueError(f"not valid JSON in a browser: {token}")
+
+    return json.loads(text, parse_constant=reject)
+
+
+def after_line(result, line):
+    """Steps whose previous step in the same call was on `line`."""
+    steps = result["steps"]
+    out = []
+    for i, step in enumerate(steps):
+        prev = next((s for s in reversed(steps[:i]) if s["frame"] == step["frame"]), None)
+        if prev is not None and prev["line"] == line:
+            out.append(step)
+    return out
+
+
+class RecordTest(unittest.TestCase):
+    def test_records_each_part_of_an_assignment(self):
+        src = 'nums = [4, 8]\nages = {"test": 12}\ntotal = 0\nfor n in nums:\n    total += n + ages["test"]\n'
+        result = run(src)
+        [plan] = [p for p in result["plans"] if p["line"] == 5]
+        self.assertEqual(plan["op"], "+")
+        self.assertEqual(plan["targets"], [{"kind": "name", "name": "total"}])
+        value = plan["value"]
+        self.assertEqual((value["kind"], value["op"], value["text"]), ("bin", "+", 'n + ages["test"]'))
+        n, ages = value["left"], value["right"]
+        self.assertEqual((n["kind"], n["name"], n["start"], n["end"]), ("name", "n", 14, 15))
+        self.assertEqual((ages["kind"], ages["name"], ages["text"]), ("sub", "ages", 'ages["test"]'))
+        self.assertEqual(ages["key"]["value"], ["'test'", None])
+        first, second = after_line(result, 5)
+        ran = lambda step, part: step["ran"][str(part["id"])]  # noqa: E731
+        self.assertEqual([ran(first, n), ran(first, ages), ran(first, value)], [["4", 4], ["12", 12], ["16", 16]])
+        self.assertEqual(ran(second, n), ["8", 8])
+        self.assertNotIn("_ct_rec", result["steps"][-1]["vars"])
+
+    def test_recording_keeps_what_the_code_does(self):
+        src = """
+calls = []
+def key():
+    calls.append(1)
+    return 'k'
+def boom():
+    raise ValueError('should not run')
+xs = [1, 2, 3, 4]
+d = {'k': 1}
+d[key()] += 10
+a = xs[0] or boom()
+ys = xs[1:3]
+zs = [*xs, 9]
+ok = 1 < xs[1] < 5
+w = (v := 3) + 1
+sq = [k * k for k in xs]
+inc = lambda q: q + 1
+first, *rest = xs
+t: int = inc(5)
+s = f"{a}!"
+xs.append(t)
+got = d.get('k', 0) + d.get('missing', 7)
+def gen():
+    y = yield 1
+    yield y * 2
+g = gen()
+nxt = next(g)
+again = g.send(5)
+class Box:
+    size = len(xs) * 2
+big = Box.size
+print(a, ys, zs, ok, w, sq, first, rest, t, s, got, nxt, again, big, len(calls))
+"""
+        plain = io.StringIO()
+        old = sys.stdout
+        sys.stdout = plain
+        try:
+            exec(compile(src, "<plain>", "exec"), {})
+        finally:
+            sys.stdout = old
+        result = run(src)
+        self.assertIsNone(result["error"])
+        self.assertEqual(result["stdout"], plain.getvalue())
+        self.assertIn(" 1\n", result["stdout"])  # key() ran once for `d[key()] += 10`
+
+    def test_errors_still_point_at_the_line(self):
+        result = run('ages = {"a": 1}\ntotal = 0\ntotal += ages["b"]\n')
+        self.assertEqual(result["error"]["line"], 3)
+        self.assertIn("KeyError", result["error"]["message"])
+
+    def test_each_frame_keeps_its_own_values(self):
+        src = "def fact(n):\n    r = 1 if n <= 1 else n * fact(n - 1)\n    return r\n\nfact(3)\n"
+        result = run(src)
+        [plan] = [p for p in result["plans"] if p["line"] == 2]
+        root = str(plan["value"]["id"])
+        # Inner calls finish first: 1, then 2 * 1, then 3 * 2.
+        self.assertEqual([s["ran"][root][1] for s in after_line(result, 2)], [1, 2, 6])
+
+    def test_a_generator_stays_one_call_across_yields(self):
+        src = "def running(xs):\n    total = 0\n    for x in xs:\n        total += x\n        yield total\n\nout = list(running([1, 2]))\n"
+        result = run(src)
+        self.assertEqual(len({s["frame"] for s in result["steps"] if s["func"] == "running"}), 1)
+        # Each resume picks up from the step before its yield.
+        self.assertEqual([s["line"] for s in after_line(result, 5)], [3, 3])
+
+    def test_describing_a_value_does_not_trace_the_users_repr(self):
+        src = 'class Node:\n    def __repr__(self):\n        return "Node"\n\na = Node()\nb = a\n'
+        result = run(src)
+        self.assertNotIn("__repr__", {s["func"] for s in result["steps"]})
+        [plan] = [p for p in result["plans"] if p["line"] == 6]
+        self.assertEqual(after_line(result, 6)[0]["ran"][str(plan["value"]["id"])], ["Node", None])
+
+    def test_loops_say_which_list_they_walk(self):
+        result = run("nums = [5]\nfor n in nums:\n    pass\nfor i, m in enumerate(nums):\n    pass\n")
+        self.assertEqual(
+            result["loops"],
+            [
+                {"item": "n", "over": "nums", "index": None, "start": 10, "end": 14, "line": 2},
+                {"item": "m", "over": "nums", "index": "i", "start": 23, "end": 27, "line": 4},
+            ],
+        )
+
+    def test_method_calls_and_dict_get_are_recorded(self):
+        result = run("stack = []\nn = 4\nstack.append(n)\ncounts = {}\ncounts['a'] = counts.get('a', 0) + 1\n")
+        append = next(p for p in result["plans"] if p["line"] == 3)
+        self.assertEqual((append["op"], append["targets"]), ("call", [{"kind": "name", "name": "stack"}]))
+        self.assertEqual(append["value"]["parts"][0]["name"], "n")
+        get = next(p for p in result["plans"] if p["line"] == 5)["value"]["left"]
+        self.assertEqual((get["kind"], get["name"], get["key"]["value"]), ("sub", "counts", ["'a'", None]))
+
+    def test_infinity_and_nan_stay_valid_json(self):
+        out = run_traced("best = float('inf')\nworst = -best\nnan = best - best\nbest += 1\n")
+        result = strict_json(out)
+        self.assertIsNone(result["error"])
+        last = result["steps"][-1]["vars"]
+        self.assertEqual([last[k]["repr"] for k in ("best", "worst", "nan")], ["inf", "-inf", "nan"])

@@ -222,7 +222,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .pointer { display: flex; flex-direction: column; align-items: center; font-family: var(--font-mono); font-weight: 500; line-height: 1.1; }
 .arrow { font-size: 0.8rem; }
 /* Scalar variables: a card each, animating every change. */
-.var-cards { display: flex; flex-wrap: wrap; gap: 1rem 0.6rem; padding-top: 0.8rem; margin-bottom: 1.2rem; font-family: var(--font-mono); }
+.var-cards { display: flex; flex-wrap: wrap; gap: 1.25rem 0.6rem; padding-top: 1.1rem; margin-bottom: 1.2rem; font-family: var(--font-mono); }
 .var-card {
   --var-color: var(--text);
   position: relative; min-width: 5.5rem; max-width: 100%;
@@ -242,8 +242,11 @@ button:disabled { opacity: 0.4; cursor: default; }
 /* Change badges hang off the card's top-right corner for the whole step.
    Several parts stack upward, the first one nearest the card. */
 .var-deltas {
-  position: absolute; right: -0.4rem; bottom: calc(100% - 0.7rem); z-index: 1;
-  display: flex; flex-direction: column-reverse; align-items: flex-end; gap: 3px;
+  position: absolute; left: -0.4rem; right: -0.4rem; bottom: calc(100% - 0.4rem); z-index: 1;
+  display: flex; flex-direction: column-reverse; gap: 3px;
+  /* Right-aligned, but a badge wider than the card grows to the right instead of out of the pane. */
+  align-items: flex-end;
+  align-items: safe flex-end;
   pointer-events: none;
 }
 .var-delta {
@@ -262,6 +265,13 @@ button:disabled { opacity: 0.4; cursor: default; }
 .var-deltas.on-box { right: -0.45rem; bottom: calc(100% - 0.55rem); }
 .var-deltas.on-box .var-delta { font-size: 0.66rem; padding: 0.02rem 0.35rem; }
 .var-from { font-weight: 400; opacity: 0.8; }
+/* What a change is made of: `+16 = 4 + 12`, a value read from somewhere in an amber chip. */
+.sum { display: inline-flex; align-items: center; gap: 0.2rem; margin-left: 0.25rem; }
+.sum-group { display: inline-flex; align-items: center; gap: 0.2rem; }
+.sum-op { font-weight: 500; opacity: 0.7; }
+.sum-part.read { padding: 0 0.3rem; border-radius: 999px; background: var(--source); }
+/* On a variable, list box or dict row the line read: what it gave to a change (`12 → total`). */
+.var-delta.gave { background: var(--source); box-shadow: 0 0 12px rgba(255, 201, 120, 0.3); }
 .var-pulse { position: absolute; inset: -1px; border-radius: inherit; border: 2px solid var(--source); animation: var-pulse 0.7s ease-out forwards; pointer-events: none; }
 @keyframes var-out { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-110%); opacity: 0; } }
 @keyframes var-in { from { transform: translateY(110%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
@@ -283,7 +293,8 @@ button:disabled { opacity: 0.4; cursor: default; }
 .dict-table th { font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); font-weight: 400; text-align: left; padding: 0.2rem 0.7rem; }
 .dict-table td { border: 1px solid var(--line); padding: 0.35rem 0.7rem; background: var(--box); }
 .dict-table tr.changed td { background: rgba(126, 224, 184, 0.16); border-color: rgba(126, 224, 184, 0.35); }
-.dict-table td.badge-cell, .dict-table tr.changed td.badge-cell { border: 0; background: transparent; padding: 0 0 0 0.5rem; }
+.dict-table tr.source td { background: rgba(255, 201, 120, 0.14); border-color: rgba(255, 201, 120, 0.55); color: var(--source); }
+.dict-table td.badge-cell, .dict-table tr.changed td.badge-cell, .dict-table tr.source td.badge-cell { border: 0; background: transparent; padding: 0 0 0 0.5rem; }
 
 /* ---------- Problem ---------- */
 .editor-pane { display: flex; flex-direction: column; overflow: hidden; }
