@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react'
 import type { PointerSpec, Step, Value } from '../types'
-import { containerChanges, scalarChanges, stepRoles, type DeltaPart } from './changes'
+import { containerChanges, scalarChanges, stepRoles, type DeltaPart, type Plans, type Read } from './changes'
 import { formatValue } from './format'
 import { placePointers, type PlacedPointer } from './pointers'
 
@@ -11,15 +11,15 @@ export function Visualizer({
   step,
   prevStep,
   pointers,
-  code,
+  plans,
   tick,
 }: {
   step: Step
   /** The step before in the same function, used to highlight what just changed. */
   prevStep?: Step
   pointers: PointerSpec[]
-  /** Source that produced this trace, to say where an added amount came from. */
-  code?: string
+  /** The tracer's plans for the code, to say what each change was made of. */
+  plans?: Plans
   /** Changes on every step, so change animations replay. */
   tick?: number
 }) {
@@ -32,13 +32,21 @@ export function Visualizer({
   const lists = entries.filter(([, v]) => v.type === 'list' || v.type === 'tuple')
   const dicts = entries.filter(([, v]) => v.type === 'dict')
   const others = entries.filter(([, v]) => v.type !== 'list' && v.type !== 'tuple' && v.type !== 'dict')
-  const ranLine = prevStep && code ? code.split('\n')[prevStep.line - 1] : undefined
-  const changes = scalarChanges(step, prevStep, ranLine)
-  const boxes = containerChanges(step, prevStep, ranLine)
-  const sources = new Set(stepRoles(step, prevStep, ranLine).sources)
+  const changes = scalarChanges(step, prevStep, plans)
+  const boxes = containerChanges(step, prevStep, plans)
+  const { sources: sourceNames, reads } = stepRoles(step, prevStep, plans)
+  const sources = new Set(sourceNames)
+  // A list box or dict row the line read, e.g. ages['test'] in `total += ages["test"]`.
+  const readsOf = (name: string, item?: string) => reads.filter((r) => r.name === name && r.item === item)
   // Keyed by step, so badges remount (and pop in) on every step but hold while paused.
-  const badges = (parts: DeltaPart[] | undefined, className?: string) => (
-    <DeltaStack key={`d${tick}`} parts={parts} className={className} line={prevStep?.line} />
+  const badges = (parts: DeltaPart[] | undefined, gave: Read[], className?: string) => (
+    <DeltaStack
+      key={`d${tick}`}
+      parts={parts}
+      gave={gave.flatMap((r) => r.gave)}
+      className={className}
+      line={prevStep?.line}
+    />
   )
 
   return (
@@ -52,9 +60,11 @@ export function Visualizer({
           pointers={placed[name] ?? []}
           colorOf={colorOf}
           isSource={(label) => sources.has(label)}
-          summary={badges(boxes[name]?.summary, 'inline')}
-          itemBadges={(i) => badges(boxes[name]?.parts[i], 'on-box')}
+          summary={badges(boxes[name]?.summary, [], 'inline')}
+          // Boxes are narrow, so what a box gave shows on the change it fed, not on the box.
+          itemBadges={(i) => badges(boxes[name]?.parts[i], [], 'on-box')}
           changed={(i) => !!boxes[name]?.parts[i]}
+          read={(i) => readsOf(name, String(i)).length > 0}
         />
       ))}
       {dicts.map(([name, value]) => (
@@ -62,9 +72,10 @@ export function Visualizer({
           key={name}
           name={name}
           value={value}
-          summary={badges(boxes[name]?.summary, 'inline')}
-          rowBadges={(key) => badges(boxes[name]?.parts[key], 'inline')}
+          summary={badges(boxes[name]?.summary, [], 'inline')}
+          rowBadges={(key) => badges(boxes[name]?.parts[key], readsOf(name, key), 'inline')}
           changed={(key) => !!boxes[name]?.parts[key]}
+          read={(key) => readsOf(name, key).length > 0}
         />
       ))}
       {others.length > 0 && (
@@ -87,7 +98,7 @@ export function Visualizer({
                     {formatValue(value)}
                   </span>
                 </div>
-                {badges(change?.deltas)}
+                {badges(change?.deltas, readsOf(name))}
               </div>
             )
           })}
@@ -101,9 +112,20 @@ export function Visualizer({
 /**
  * Change badges. They stay for the whole step (also while paused) and the next
  * step replaces them. Several parts stack, the first one nearest the value.
+ * `gave` adds an amber tag per value this thing gave to a change (`12 → total`).
  */
-function DeltaStack({ parts, className, line }: { parts?: DeltaPart[]; className?: string; line?: number }) {
-  if (!parts?.length) return null
+function DeltaStack({
+  parts = [],
+  gave = [],
+  className,
+  line,
+}: {
+  parts?: DeltaPart[]
+  gave?: Read['gave']
+  className?: string
+  line?: number
+}) {
+  if (!parts.length && !gave.length) return null
   return (
     <span className={className ? `var-deltas ${className}` : 'var-deltas'}>
       {parts.map((part, i) => (
@@ -114,7 +136,38 @@ function DeltaStack({ parts, className, line }: { parts?: DeltaPart[]; className
           title={line ? `Changed by line ${line}` : undefined}
         >
           {part.text}
-          {part.from && <span className="var-from"> from {part.from}</span>}
+          {part.from && (
+            <span className="var-from">
+              {part.text === '=' ? ' ' : ' from '}
+              {part.from}
+            </span>
+          )}
+          {part.sum && <SumParts parts={part.sum} first={part.text !== '='} />}
+        </span>
+      ))}
+      {gave.map((g, i) => (
+        <span
+          key={`g${i}`}
+          className="var-delta gave"
+          style={{ '--i': parts.length + i } as CSSProperties}
+          title={line ? `Used by line ${line}` : undefined}
+        >
+          {g.value} → {g.to}
+        </span>
+      ))}
+    </span>
+  )
+}
+
+/** `= 4 + 12`: a value read from a variable, box or row gets an amber chip, like its source. */
+function SumParts({ parts, first }: { parts: NonNullable<DeltaPart['sum']>; first: boolean }) {
+  return (
+    <span className="sum">
+      {first && <span className="sum-op">=</span>}
+      {parts.map((p, i) => (
+        <span key={i} className="sum-group">
+          {(i > 0 || p.sign < 0) && <span className="sum-op">{p.sign < 0 ? '−' : '+'}</span>}
+          <span className={p.label ? 'sum-part read' : 'sum-part'}>{p.value}</span>
         </span>
       ))}
     </span>
@@ -137,6 +190,7 @@ function ListView({
   summary,
   itemBadges,
   changed,
+  read,
 }: {
   name: string
   value: Value
@@ -147,6 +201,8 @@ function ListView({
   summary: ReactNode
   itemBadges: (index: number) => ReactNode
   changed: (index: number) => boolean
+  /** True for a box the line that just ran read, e.g. `nums[i]`. */
+  read: (index: number) => boolean
 }) {
   if (value.type !== 'list' && value.type !== 'tuple') return null
   // One extra slot so a pointer one past the end (e.g. `i == len(a)`) has somewhere to sit.
@@ -160,13 +216,14 @@ function ListView({
       <div className="list-grid" style={{ gridTemplateColumns: `repeat(${slots}, 3.25rem)` }}>
         {value.items.map((item, i) => {
           const here = pointers.filter((p) => p.index === i)
-          const source = here.some((p) => isSource(p.label))
+          // A box the line wrote stays green even when it also read it (`xs[i] += 1`).
+          const source = !changed(i) && (read(i) || here.some((p) => isSource(p.label)))
           const cls = ['box', changed(i) && 'changed', source && 'source'].filter(Boolean).join(' ')
           return (
             <div
               key={i}
               className={cls}
-              style={here.length && !source ? { borderColor: colorOf(here[0].label), borderWidth: 3 } : undefined}
+              style={here.length && !source && !changed(i) ? { borderColor: colorOf(here[0].label), borderWidth: 3 } : undefined}
             >
               <span className="box-value">{formatValue(item)}</span>
               {itemBadges(i)}
@@ -203,12 +260,15 @@ function DictView({
   summary,
   rowBadges,
   changed,
+  read,
 }: {
   name: string
   value: Value
   summary: ReactNode
   rowBadges: (key: string) => ReactNode
   changed: (key: string) => boolean
+  /** True for a row the line that just ran read, e.g. `ages["test"]`. */
+  read: (key: string) => boolean
 }) {
   if (value.type !== 'dict') return null
   return (
@@ -232,7 +292,7 @@ function DictView({
             {value.entries.map(([k, v]) => {
               const key = formatValue(k)
               return (
-                <tr key={key} className={changed(key) ? 'changed' : undefined}>
+                <tr key={key} className={changed(key) ? 'changed' : read(key) ? 'source' : undefined}>
                   <td>{key}</td>
                   <td>{formatValue(v)}</td>
                   <td className="badge-cell">{rowBadges(key)}</td>

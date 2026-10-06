@@ -171,11 +171,20 @@ export default function App() {
     const line = trace.code.split('\n')[prevStep.line - 1]
     // Skip it while the editor holds newer code than the trace ran.
     if (line === undefined || prevStep.line > model.getLineCount() || model.getLineContent(prevStep.line) !== line) return []
-    const { targets, sources } = stepRoles(step, prevStep, line)
-    return findNames(line, [...targets, ...sources]).map((r) => ({
-      range: new m.Range(prevStep.line, r.start, prevStep.line, r.end),
-      options: { inlineClassName: targets.includes(r.name) ? 'code-target' : 'code-source' },
-    }))
+    const { targets, sources, reads } = stepRoles(step, prevStep, trace)
+    const at = (start: number, end: number, className: string) => ({
+      range: new m.Range(prevStep.line, start, prevStep.line, end),
+      options: { inlineClassName: className },
+    })
+    // The exact spots it read, like all of ages["test"]; a name read without one lights up everywhere.
+    const spots = reads.filter((r) => r.start && r.end && (r.item !== undefined || !targets.includes(r.name)))
+    const spotted = new Set(spots.map((r) => r.name))
+    return [
+      ...findNames(line, [...targets, ...sources.filter((s) => !spotted.has(s))]).map((r) =>
+        at(r.start, r.end, targets.includes(r.name) ? 'code-target' : 'code-source'),
+      ),
+      ...spots.map((r) => at(r.start!, r.end!, 'code-source')),
+    ]
   }
 
   const onMount: OnMount = (editor, m) => {
@@ -361,7 +370,7 @@ export default function App() {
                 step={step}
                 prevStep={prevStep}
                 pointers={trace!.pointers}
-                code={trace!.code}
+                plans={trace!}
                 tick={stepIndex}
               />
             ) : (
