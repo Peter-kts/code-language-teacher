@@ -7,6 +7,7 @@ export interface Change {
   /** Badge text, e.g. `+8`, `was 'a'`, `new`. */
   text: string
   tone: ChangeTone
+  from?: string
 }
 
 /**
@@ -34,7 +35,7 @@ export function previousInFrame(steps: Step[], i: number): Step | undefined {
   return undefined
 }
 
-export function diffStep(prev: Step | undefined, step: Step): StepChanges {
+export function diffStep(prev: Step | undefined, step: Step, ranLine?: string): StepChanges {
   if (!prev || prev.func !== step.func) return NONE
   const out: StepChanges = { vars: {}, items: {}, line: prev.line }
   const add = (name: string, change: Change) => (out.vars[name] ??= []).push(change)
@@ -52,7 +53,10 @@ export function diffStep(prev: Step | undefined, step: Step): StepChanges {
     const a = asNumber(before)
     const b = asNumber(value)
     if (a !== null && b !== null) {
-      add(name, delta(b - a))
+      const change = delta(b - a)
+      const from = sourceVariable(step, name, b - a, ranLine)
+      if (from) change.from = from
+      add(name, change)
     } else if ((value.type === 'list' || value.type === 'tuple') && before.type === value.type) {
       value.items.forEach((item, i) => {
         const old = before.items[i]
@@ -91,4 +95,22 @@ function delta(d: number): Change {
 
 function short(text: string): string {
   return text.length > 14 ? `${text.slice(0, 13)}…` : text
+}
+
+function sourceVariable(step: Step, name: string, difference: number, ranLine?: string): string | undefined {
+  if (!ranLine) return undefined
+  const used = identifiers(ranLine)
+  const amount = roundOff(Math.abs(difference))
+  const sources = Object.keys(step.vars).filter(
+    (other) => other !== name && used.has(other) && asNumber(step.vars[other]) === amount,
+  )
+  return sources.length === 1 ? sources[0] : undefined
+}
+
+// 0.1 + 0.2 should read as +0.3, not +0.30000000000000004.
+const roundOff = (x: number) => (Number.isInteger(x) ? x : Number(x.toPrecision(12)))
+
+function identifiers(line: string): Set<string> {
+  const code = line.replace(/#.*$/, '').replace(/(['"]).*?\1/g, '')
+  return new Set(code.match(/[A-Za-z_]\w*/g) ?? [])
 }

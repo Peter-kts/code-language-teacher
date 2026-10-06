@@ -12,6 +12,7 @@ export function Visualizer({
   stepIndex,
   prevStep,
   pointers,
+  code,
 }: {
   step: Step
   /** Position in the run; a new step remounts the change badges so they animate in. */
@@ -19,8 +20,11 @@ export function Visualizer({
   /** The previous step in the same function, used to show what just changed. */
   prevStep?: Step
   pointers: PointerSpec[]
+  /** Source that produced this trace, to say where an added amount came from. */
+  code?: string
 }) {
-  const changes = diffStep(prevStep, step)
+  const ranLine = prevStep && code ? code.split('\n')[prevStep.line - 1] : undefined
+  const changes = diffStep(prevStep, step, ranLine)
   const from = changes.line
   const placed = placePointers(step, pointers)
   const labels = [...new Set(pointers.map((p) => p.label))]
@@ -92,6 +96,7 @@ function ChangeStack({ changes, line, className }: { changes?: Change[]; line: n
           title={line ? `Changed by line ${line}` : undefined}
         >
           {c.text}
+          {c.from && <span className="change-from"> from {c.from}</span>}
         </span>
       ))}
     </span>

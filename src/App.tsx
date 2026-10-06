@@ -20,7 +20,7 @@ for n in nums:
 print(total)
 `
 
-const PLAY_MS = 450
+const PLAY_MS = 700
 
 const PLAYGROUND = 'playground'
 
@@ -263,6 +263,7 @@ export default function App() {
                 stepIndex={shownStep}
                 prevStep={previousInFrame(steps, shownStep)}
                 pointers={trace!.pointers}
+                code={trace!.code}
               />
             ) : (
               <p className="muted">{status === 'loading' ? 'Starting Python in your browser…' : 'Write some code.'}</p>

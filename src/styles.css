@@ -239,6 +239,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .change-down { color: var(--pink); box-shadow: 0 0 10px rgba(240, 167, 207, 0.18); }
 .change-set { color: var(--accent); box-shadow: 0 0 10px var(--accent-soft); }
 .change-new { color: #8fb4ff; box-shadow: 0 0 10px rgba(143, 180, 255, 0.18); }
+.change-from { font-size: 0.62rem; opacity: 0.8; }
 /* On a list box the stack hangs off the top-right corner and grows upward. */
 .box-changes { position: absolute; right: -0.45rem; bottom: calc(100% - 0.6rem); z-index: 1; flex-direction: column; align-items: flex-end; }
 .box-changes .change { font-size: 0.62rem; padding: 0.06rem 0.35rem; }

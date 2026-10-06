@@ -14,6 +14,11 @@ describe('diffStep', () => {
     expect(changes.line).toBe(4)
   })
 
+  it('attributes a numeric delta to a unique matching variable on the line', () => {
+    const changes = diffStep(step({ total: int(4), n: int(8) }, 4), step({ total: int(12), n: int(8) }, 3), 'total += n')
+    expect(changes.vars.total).toEqual([{ text: '+8', tone: 'up', from: 'n' }])
+  })
+
   it('gives each variable its own stack when one line changes several', () => {
     // a, b = b, a + b
     const changes = diffStep(step({ a: int(1), b: int(1) }), step({ a: int(1), b: int(2) }))

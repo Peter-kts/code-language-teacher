@@ -5,7 +5,10 @@ import type { WorkerRequest, WorkerResponse } from './pyodide.worker'
 export type RunnerStatus = 'loading' | 'running' | 'idle'
 
 /** A successful trace: the visual keeps showing the last one while code is broken. */
-export type GoodTrace = Extract<TraceResult, { ok: true }>
+export type GoodTrace = Extract<TraceResult, { ok: true }> & {
+  /** The source that produced this trace (may lag the editor while code is broken). */
+  code: string
+}
 
 const DEBOUNCE_MS = 300
 // The tracer caps steps, but a single slow line (e.g. 10**10**8) can still hang.
@@ -30,6 +33,7 @@ export function usePythonRunner(request: RunRequest) {
   const [tests, setTests] = useState<TestResult[] | null>(null)
   const workerRef = useRef<Worker | null>(null)
   const latestId = useRef(0)
+  const latestCode = useRef('')
   const timeoutRef = useRef<number | undefined>(undefined)
 
   const attach = (worker: Worker) => {
@@ -43,7 +47,7 @@ export function usePythonRunner(request: RunRequest) {
       window.clearTimeout(timeoutRef.current)
       setStatus('idle')
       if (msg.result.ok) {
-        setTrace(msg.result)
+        setTrace({ ...msg.result, code: latestCode.current })
         setError(msg.result.error)
         setTests(msg.tests)
       } else {
@@ -64,8 +68,10 @@ export function usePythonRunner(request: RunRequest) {
   useEffect(() => {
     const handle = window.setTimeout(() => {
       const id = ++latestId.current
+      const req = JSON.parse(requestKey) as RunRequest
+      latestCode.current = req.code
       if (statusRef.current !== 'loading') setStatus('running')
-      workerRef.current?.postMessage({ id, ...(JSON.parse(requestKey) as RunRequest) } satisfies WorkerRequest)
+      workerRef.current?.postMessage({ id, ...req } satisfies WorkerRequest)
       window.clearTimeout(timeoutRef.current)
       timeoutRef.current = window.setTimeout(() => {
         if (id !== latestId.current) return
