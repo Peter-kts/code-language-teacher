@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { flushSync } from 'react-dom'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type * as monaco from 'monaco-editor/editor/editor.api'
@@ -8,6 +8,8 @@ import { KeyboardIcon, PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon, StepB
 import { usePythonRunner } from './runner/usePythonRunner'
 import { Visualizer } from './viz/Visualizer'
 import { findNames, previousInFrame, stepRoles } from './viz/changes'
+import { buildHistory } from './viz/history'
+import { HistoryPanel } from './viz/HistoryPanel'
 import { SyntaxHelper } from './syntax/SyntaxHelper'
 import { Chat } from './chat/Chat'
 import { PROBLEMS, type Problem } from './problems/problems'
@@ -34,7 +36,7 @@ export default function App() {
     ...Object.fromEntries(PROBLEMS.map((p) => [p.id, p.starter])),
   }))
   const [caseIndex, setCaseIndex] = useState(0)
-  const [sidePanel, setSidePanel] = useState<'chat' | 'cards'>('chat')
+  const [sidePanel, setSidePanel] = useState<'chat' | 'history' | 'cards'>('chat')
   const problem: Problem | undefined = PROBLEMS.find((p) => p.id === mode)
   const code = codeByMode[mode]
   const setCode = (next: string) => setCodeByMode((c) => ({ ...c, [mode]: next }))
@@ -58,6 +60,7 @@ export default function App() {
   const shownStep = Math.min(stepIndex, Math.max(0, steps.length - 1))
   const step = steps[shownStep]
   const prevStep = previousInFrame(steps, shownStep)
+  const history = useMemo(() => (trace ? buildHistory(trace.steps, trace) : []), [trace])
 
   // What the step buttons and the keyboard shortcuts do (keys in src/shortcuts.ts).
   const stepTo = (next: (i: number) => number) => {
@@ -386,6 +389,9 @@ export default function App() {
               <button className={sidePanel === 'chat' ? 'tab active' : 'tab'} onClick={() => setSidePanel('chat')}>
                 Ask Claude
               </button>
+              <button className={sidePanel === 'history' ? 'tab active' : 'tab'} onClick={() => setSidePanel('history')}>
+                History
+              </button>
               <button className={sidePanel === 'cards' ? 'tab active' : 'tab'} onClick={() => setSidePanel('cards')}>
                 Syntax cards
               </button>
@@ -394,6 +400,19 @@ export default function App() {
             <div hidden={sidePanel !== 'chat'} className="side-body">
               <Chat code={code} problem={problem?.title ?? null} onInsert={insert} inputRef={chatInputRef} />
             </div>
+            {sidePanel === 'history' && (
+              <div className="side-body">
+              <HistoryPanel
+                entries={history}
+                current={shownStep}
+                code={trace?.code ?? ''}
+                onJump={(i) => {
+                  setPlaying(false)
+                  setStepIndex(i)
+                }}
+              />
+              </div>
+            )}
             {sidePanel === 'cards' && <SyntaxHelper onInsert={insert} />}
           </section>
         </main>

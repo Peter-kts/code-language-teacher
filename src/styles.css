@@ -324,6 +324,35 @@ button:disabled { opacity: 0.4; cursor: default; }
 .call { margin-top: 0.5rem; }
 .fail-text { color: var(--error); }
 
+/* ---------- Side panel: history of changes ---------- */
+.history { flex: 1; display: flex; flex-direction: column; gap: 0.7rem; min-height: 0; }
+.hist-filters { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.chip { font-family: var(--font-mono); font-size: 0.72rem; padding: 0.1rem 0.6rem; border-radius: 999px; }
+.chip.active { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 12px var(--accent-soft); }
+.hist-list { flex: 1; min-height: 0; overflow: auto; position: relative; scrollbar-width: thin; list-style: none; margin: 0; padding: 2px; display: flex; flex-direction: column; gap: 0.45rem; font-family: var(--font-mono); font-size: 0.78rem; }
+.hist-row { padding: 0.45rem 0.6rem; border: 1px solid var(--line); border-radius: 8px; background: rgba(5, 4, 10, 0.35); }
+.hist-row.current { border-color: var(--pass); box-shadow: 0 0 0 1px var(--pass), 0 0 14px rgba(126, 224, 184, 0.2); }
+.hist-head, .hist-source {
+  all: unset; box-sizing: border-box; cursor: pointer; display: flex; gap: 0.5rem; align-items: baseline; width: 100%;
+  font-family: var(--font-mono); font-size: 0.72rem; color: var(--faint);
+}
+.hist-head:hover .hist-code, .hist-source:hover:not(:disabled) .hist-src-name { text-decoration: underline; }
+.hist-source:disabled { cursor: default; }
+.hist-step { color: var(--muted); white-space: nowrap; }
+.hist-line { white-space: nowrap; }
+.hist-code { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.hist-change { margin-top: 0.3rem; }
+.hist-what { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem; }
+.hist-name { color: var(--pass); }
+.hist-before { color: var(--faint); text-decoration: line-through; }
+.hist-new { color: var(--faint); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.1em; }
+.hist-arrow { color: var(--faint); }
+.hist-after { color: var(--text); }
+.hist-delta { padding: 0 0.45rem; border-radius: 999px; background: rgba(126, 224, 184, 0.16); color: var(--pass); font-size: 0.72rem; }
+.hist-source { padding-left: 0.9rem; margin-top: 0.15rem; color: var(--muted); display: block; }
+.hist-source::before { content: '↳ '; color: var(--faint); }
+.hist-src-name { color: var(--source); }
+
 /* ---------- Side panel: chat and syntax cards ---------- */
 .syntax-pane { display: flex; flex-direction: column; }
 .side-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -417,6 +446,7 @@ kbd {
   .panes { grid-template-columns: minmax(0, 1fr); grid-auto-rows: minmax(320px, auto); }
   .pane { border-right: 0; border-bottom: 1px solid var(--line); }
   .editor-pane { min-height: 420px; }
+  .hist-list { flex: none; max-height: 60vh; }
   .tick { display: none; }
   .shortcuts-grid { grid-template-columns: minmax(0, 1fr); }
   .shortcuts-grid > section:nth-child(3) { grid-column: auto; grid-row: auto; }

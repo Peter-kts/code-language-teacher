@@ -174,7 +174,7 @@ describe('scalarChanges', () => {
     const prev = step({ nums: list(4, 8), n: int(4) })
     const next = { ...step({ nums: list(4, 8), n: int(8) }, 2), hidden: { _ct_idx_1_0: 1 } }
     expect(scalarChanges(next, prev, why).n.deltas).toEqual([{ text: '=', from: 'nums[1]' }])
-    expect(stepRoles(next, prev, why).reads).toEqual([{ name: 'nums', item: '1', gave: [], start: 10, end: 14 }])
+    expect(stepRoles(next, prev, why).reads).toEqual([{ name: 'nums', item: '1', gave: [{ value: '8', to: 'n' }], start: 10, end: 14 }])
     // A dict hands out keys, not `count[1]`.
     const keys = plans([], [{ ...loop, over: 'count' }], [{ label: 'n', var: '_ct_idx_1_0', target: 'count' }])
     const before = step({ count: dict(['a', 1], ['b', 2]), n: str('a') })
