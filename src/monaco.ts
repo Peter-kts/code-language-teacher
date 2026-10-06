@@ -53,5 +53,5 @@ monaco.editor.defineTheme(EDITOR_THEME, {
   },
 })
 
-// Monaco measures glyphs once; re-measure after Geist Mono arrives so the cursor lines up.
+// Monaco measures glyphs once; re-measure after JetBrains Mono arrives so the cursor lines up.
 document.fonts?.ready.then(() => monaco.editor.remeasureFonts())

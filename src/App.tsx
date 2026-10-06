@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type * as monaco from 'monaco-editor/editor/editor.api'
 import { EDITOR_THEME } from './monaco'
 import { GalaxyBackground } from './galaxy/GalaxyBackground'
+import { PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon, StepBackIcon, StepForwardIcon } from './icons'
 import { usePythonRunner } from './runner/usePythonRunner'
 import { Visualizer } from './viz/Visualizer'
 import { SyntaxHelper } from './syntax/SyntaxHelper'
@@ -48,7 +49,8 @@ export default function App() {
   const decorations = useRef<monaco.editor.IEditorDecorationsCollection | null>(null)
 
   const steps = trace?.steps ?? []
-  const step = steps[Math.min(stepIndex, steps.length - 1)]
+  const shownStep = Math.min(stepIndex, Math.max(0, steps.length - 1))
+  const step = steps[shownStep]
 
   // A fresh trace shows the final state; Play walks through it from the top.
   useEffect(() => {
@@ -166,7 +168,7 @@ export default function App() {
               theme={EDITOR_THEME}
               options={{
                 fontSize: 15,
-                fontFamily: "'Geist Mono', ui-monospace, Consolas, monospace",
+                fontFamily: "'JetBrains Mono', ui-monospace, Consolas, monospace",
                 lineHeight: 24,
                 padding: { top: 14 },
                 minimap: { enabled: false },
@@ -178,39 +180,75 @@ export default function App() {
           </section>
           <section className="pane viz-pane">
             <div className="controls">
-              <button onClick={() => setStepIndex(0)} disabled={!steps.length}>
-                ⏮
-              </button>
-              <button onClick={() => setStepIndex((i) => Math.max(0, i - 1))} disabled={!steps.length}>
-                ◀
+              <button
+                className="icon-btn"
+                onClick={() => setStepIndex(0)}
+                disabled={!steps.length}
+                aria-label="Go to first step"
+                title="First step"
+              >
+                <SkipBackIcon />
               </button>
               <button
+                className="icon-btn"
+                onClick={() => setStepIndex((i) => Math.max(0, i - 1))}
+                disabled={!steps.length}
+                aria-label="Previous step"
+                title="Previous step"
+              >
+                <StepBackIcon />
+              </button>
+              <button
+                className="icon-btn play-btn"
                 onClick={() => {
                   if (stepIndex >= steps.length - 1) setStepIndex(0)
                   setPlaying((p) => !p)
                 }}
                 disabled={steps.length < 2}
+                aria-label={playing ? 'Pause' : 'Play'}
+                title={playing ? 'Pause' : 'Play'}
               >
-                {playing ? 'Pause' : 'Play'}
+                {playing ? <PauseIcon /> : <PlayIcon />}
               </button>
-              <button onClick={() => setStepIndex((i) => Math.min(steps.length - 1, i + 1))} disabled={!steps.length}>
-                ▶
+              <button
+                className="icon-btn"
+                onClick={() => setStepIndex((i) => Math.min(steps.length - 1, i + 1))}
+                disabled={!steps.length}
+                aria-label="Next step"
+                title="Next step"
+              >
+                <StepForwardIcon />
+              </button>
+              <button
+                className="icon-btn"
+                onClick={() => {
+                  setPlaying(false)
+                  setStepIndex(Math.max(0, steps.length - 1))
+                }}
+                disabled={!steps.length}
+                aria-label="Go to last step"
+                title="Last step"
+              >
+                <SkipForwardIcon />
               </button>
               <input
+                className="scrubber"
                 type="range"
+                aria-label="Step"
                 min={0}
                 max={Math.max(0, steps.length - 1)}
-                value={Math.min(stepIndex, Math.max(0, steps.length - 1))}
+                value={shownStep}
+                style={{ '--pct': `${steps.length > 1 ? (shownStep / (steps.length - 1)) * 100 : 0}%` } as CSSProperties}
                 onChange={(e) => {
                   setPlaying(false)
                   setStepIndex(Number(e.target.value))
                 }}
               />
-              <span className="muted">
-                {steps.length ? `step ${Math.min(stepIndex, steps.length - 1) + 1} / ${steps.length}` : ''}
-                {trace?.truncated ? ' (stopped early: too many steps)' : ''}
+              <span className="step-count">
+                {steps.length ? `${shownStep + 1} / ${steps.length}` : ''}
               </span>
             </div>
+            {trace?.truncated && <p className="muted">Stopped early: too many steps.</p>}
             {error && (
               <div className="error">
                 {error.line ? `Line ${error.line}: ` : ''}
@@ -221,7 +259,7 @@ export default function App() {
             {step ? (
               <Visualizer
                 step={step}
-                prevStep={steps[Math.min(stepIndex, steps.length - 1) - 1]}
+                prevStep={steps[shownStep - 1]}
                 pointers={trace!.pointers}
               />
             ) : (

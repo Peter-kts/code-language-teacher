@@ -17,8 +17,8 @@
   --pink: #f0a7cf;
   --pass: #7ee0b8;
   --error: #ff6f91;
-  --font-display: 'Geist', 'Helvetica Neue', Arial, sans-serif;
-  --font-mono: 'Geist Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --font-display: 'Sora', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --gutter: 14px;
   font-family: var(--font-display);
@@ -148,10 +148,50 @@ button {
 }
 button:hover:not(:disabled) { background: var(--text); color: var(--bg); border-color: var(--text); }
 button:disabled { opacity: 0.4; cursor: default; }
-.controls { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 1rem; }
-.controls input[type='range'] { flex: 1; min-width: 6rem; accent-color: var(--accent); }
+.controls { display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.icon-btn {
+  width: 2rem; height: 2rem; padding: 0;
+  display: inline-grid; place-items: center;
+  color: var(--muted); border-color: var(--line);
+}
+.icon-btn:hover:not(:disabled) { background: var(--accent-soft); color: var(--text); border-color: var(--accent); }
+.play-btn { width: 2.4rem; height: 2.4rem; color: var(--bg); background: var(--accent); border-color: var(--accent); box-shadow: 0 0 18px var(--accent-soft); }
+.play-btn:hover:not(:disabled) { background: var(--text); color: var(--bg); border-color: var(--text); }
+.play-btn:disabled { background: transparent; color: var(--muted); border-color: var(--line); box-shadow: none; }
+.step-count { font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.06em; color: var(--faint); font-variant-numeric: tabular-nums; min-width: 4.5em; text-align: right; }
+
+/* Step scrubber: a hairline track with a lavender fill and a glowing | handle. */
+.scrubber {
+  --pct: 0%;
+  flex: 1; min-width: 6rem; height: 1.6rem; margin: 0 0.5rem;
+  -webkit-appearance: none; appearance: none;
+  background: transparent; cursor: pointer;
+}
+.scrubber:focus-visible { outline: none; }
+.scrubber::-webkit-slider-runnable-track {
+  height: 2px; border-radius: 1px;
+  background: linear-gradient(to right, var(--accent) var(--pct), var(--line-strong) var(--pct));
+}
+.scrubber::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 3px; height: 18px; margin-top: -8px;
+  border: 0; border-radius: 2px;
+  background: var(--text);
+  box-shadow: 0 0 0 1px rgba(200, 180, 255, 0.35), 0 0 10px var(--accent);
+  transition: height 0.15s, margin-top 0.15s, box-shadow 0.15s;
+}
+.scrubber:hover::-webkit-slider-thumb,
+.scrubber:focus-visible::-webkit-slider-thumb { height: 22px; margin-top: -10px; box-shadow: 0 0 0 1px var(--accent), 0 0 16px var(--accent); }
+.scrubber::-moz-range-track { height: 2px; border-radius: 1px; background: var(--line-strong); }
+.scrubber::-moz-range-progress { height: 2px; border-radius: 1px; background: var(--accent); }
+.scrubber::-moz-range-thumb {
+  width: 3px; height: 18px; border: 0; border-radius: 2px;
+  background: var(--text);
+  box-shadow: 0 0 0 1px rgba(200, 180, 255, 0.35), 0 0 10px var(--accent);
+}
+.scrubber:hover::-moz-range-thumb,
+.scrubber:focus-visible::-moz-range-thumb { height: 22px; box-shadow: 0 0 0 1px var(--accent), 0 0 16px var(--accent); }
 .muted { color: var(--muted); font-size: 0.88rem; }
-.controls .muted { font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.06em; color: var(--faint); }
 .error {
   color: var(--error); font-family: var(--font-mono); font-size: 0.85rem;
   margin-bottom: 0.9rem; padding: 0.5rem 0.7rem;
