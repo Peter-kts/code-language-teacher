@@ -199,3 +199,43 @@ function identifiers(line: string): string[] {
   const code = line.replace(/#.*$/, '').replace(/(['"]).*?\1/g, '')
   return [...new Set(code.match(/[A-Za-z_]\w*/g) ?? [])]
 }
+
+export interface StepRoles {
+  /** Variables the line that just ran changed, e.g. `total` in `total += n`. */
+  targets: string[]
+  /** Variables it read to make that change, e.g. `n`. */
+  sources: string[]
+}
+
+/** Which variables the line between `prev` and `step` changed, and which ones it used to do it. */
+export function stepRoles(step: Step, prev: Step | undefined, ranLine?: string): StepRoles {
+  const scalars = scalarChanges(step, prev, ranLine)
+  const boxes = containerChanges(step, prev, ranLine)
+  const parts = [
+    ...Object.values(scalars).flatMap((c) => c.deltas),
+    ...Object.values(boxes).flatMap((c) => [...c.summary, ...Object.values(c.parts).flat()]),
+  ]
+  return {
+    targets: [...Object.keys(scalars), ...Object.keys(boxes)],
+    sources: [...new Set(parts.flatMap((d) => (d.from ? [d.from] : [])))],
+  }
+}
+
+export interface NameRange {
+  name: string
+  /** 1-based start column, as Monaco counts. */
+  start: number
+  end: number
+}
+
+/** Where each of `names` appears on a line of code, skipping strings and comments. */
+export function findNames(line: string, names: string[]): NameRange[] {
+  const wanted = new Set(names)
+  const out: NameRange[] = []
+  // Strings and comments are matched first so names inside them are skipped.
+  const token = /#.*$|(['"])(?:\\.|(?!\1).)*\1?|[A-Za-z_]\w*/g
+  for (const m of line.matchAll(token)) {
+    if (wanted.has(m[0])) out.push({ name: m[0], start: m.index + 1, end: m.index + 1 + m[0].length })
+  }
+  return out
+}

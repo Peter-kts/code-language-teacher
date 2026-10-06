@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react'
 import type { PointerSpec, Step, Value } from '../types'
-import { containerChanges, scalarChanges, type DeltaPart } from './changes'
+import { containerChanges, scalarChanges, stepRoles, type DeltaPart } from './changes'
 import { formatValue } from './format'
 import { placePointers, type PlacedPointer } from './pointers'
 
@@ -35,12 +35,7 @@ export function Visualizer({
   const ranLine = prevStep && code ? code.split('\n')[prevStep.line - 1] : undefined
   const changes = scalarChanges(step, prevStep, ranLine)
   const boxes = containerChanges(step, prevStep, ranLine)
-  const sources = new Set(
-    [
-      ...Object.values(changes).flatMap((c) => c.deltas),
-      ...Object.values(boxes).flatMap((c) => [...c.summary, ...Object.values(c.parts).flat()]),
-    ].flatMap((d) => (d.from ? [d.from] : [])),
-  )
+  const sources = new Set(stepRoles(step, prevStep, ranLine).sources)
   // Keyed by step, so badges remount (and pop in) on every step but hold while paused.
   const badges = (parts: DeltaPart[] | undefined, className?: string) => (
     <DeltaStack key={`d${tick}`} parts={parts} className={className} line={prevStep?.line} />
@@ -56,6 +51,7 @@ export function Visualizer({
           value={value}
           pointers={placed[name] ?? []}
           colorOf={colorOf}
+          isSource={(label) => sources.has(label)}
           summary={badges(boxes[name]?.summary, 'inline')}
           itemBadges={(i) => badges(boxes[name]?.parts[i], 'on-box')}
           changed={(i) => !!boxes[name]?.parts[i]}
@@ -137,6 +133,7 @@ function ListView({
   value,
   pointers,
   colorOf,
+  isSource,
   summary,
   itemBadges,
   changed,
@@ -145,6 +142,8 @@ function ListView({
   value: Value
   pointers: PlacedPointer[]
   colorOf: (label: string) => string
+  /** True for a pointer whose value the line that just ran used, e.g. `n` in `total += n`. */
+  isSource: (label: string) => boolean
   summary: ReactNode
   itemBadges: (index: number) => ReactNode
   changed: (index: number) => boolean
@@ -161,11 +160,13 @@ function ListView({
       <div className="list-grid" style={{ gridTemplateColumns: `repeat(${slots}, 3.25rem)` }}>
         {value.items.map((item, i) => {
           const here = pointers.filter((p) => p.index === i)
+          const source = here.some((p) => isSource(p.label))
+          const cls = ['box', changed(i) && 'changed', source && 'source'].filter(Boolean).join(' ')
           return (
             <div
               key={i}
-              className={changed(i) ? 'box changed' : 'box'}
-              style={here.length ? { borderColor: colorOf(here[0].label), borderWidth: 3 } : undefined}
+              className={cls}
+              style={here.length && !source ? { borderColor: colorOf(here[0].label), borderWidth: 3 } : undefined}
             >
               <span className="box-value">{formatValue(item)}</span>
               {itemBadges(i)}
@@ -183,7 +184,7 @@ function ListView({
             {pointers
               .filter((p) => p.index === i)
               .map((p) => (
-                <div key={p.label} className="pointer" style={{ color: colorOf(p.label) }}>
+                <div key={p.label} className="pointer" style={{ color: isSource(p.label) ? 'var(--source)' : colorOf(p.label) }}>
                   <span className="arrow">▲</span>
                   {p.label}
                 </div>

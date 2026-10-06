@@ -6,7 +6,7 @@ import { GalaxyBackground } from './galaxy/GalaxyBackground'
 import { PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon, StepBackIcon, StepForwardIcon } from './icons'
 import { usePythonRunner } from './runner/usePythonRunner'
 import { Visualizer } from './viz/Visualizer'
-import { previousInFrame } from './viz/changes'
+import { findNames, previousInFrame, stepRoles } from './viz/changes'
 import { SyntaxHelper } from './syntax/SyntaxHelper'
 import { Chat } from './chat/Chat'
 import { PROBLEMS, type Problem } from './problems/problems'
@@ -52,6 +52,7 @@ export default function App() {
   const steps = trace?.steps ?? []
   const shownStep = Math.min(stepIndex, Math.max(0, steps.length - 1))
   const step = steps[shownStep]
+  const prevStep = previousInFrame(steps, shownStep)
 
   // A fresh trace shows the final state; Play walks through it from the top.
   useEffect(() => {
@@ -75,13 +76,16 @@ export default function App() {
     const m = monacoRef.current
     if (!editor || !m) return
     decorations.current ??= editor.createDecorationsCollection()
-    decorations.current.set(
-      step
-        ? [{ range: new m.Range(step.line, 1, step.line, 1), options: { isWholeLine: true, className: 'current-line' } }]
-        : [],
-    )
     const model = editor.getModel()
     if (!model) return
+    decorations.current.set(
+      step
+        ? [
+            { range: new m.Range(step.line, 1, step.line, 1), options: { isWholeLine: true, className: 'current-line' } },
+            ...roleDecorations(m, model),
+          ]
+        : [],
+    )
     m.editor.setModelMarkers(
       model,
       'python',
@@ -98,7 +102,20 @@ export default function App() {
           ]
         : [],
     )
-  }, [step, error])
+  }, [step, error, prevStep, trace])
+
+  // Color the names on the line that just ran: what it changed and what it read.
+  const roleDecorations = (m: typeof monaco, model: monaco.editor.ITextModel) => {
+    if (!step || !prevStep || !trace) return []
+    const line = trace.code.split('\n')[prevStep.line - 1]
+    // Skip it while the editor holds newer code than the trace ran.
+    if (line === undefined || prevStep.line > model.getLineCount() || model.getLineContent(prevStep.line) !== line) return []
+    const { targets, sources } = stepRoles(step, prevStep, line)
+    return findNames(line, [...targets, ...sources]).map((r) => ({
+      range: new m.Range(prevStep.line, r.start, prevStep.line, r.end),
+      options: { inlineClassName: targets.includes(r.name) ? 'code-target' : 'code-source' },
+    }))
+  }
 
   const onMount: OnMount = (editor, m) => {
     editorRef.current = editor
@@ -260,7 +277,7 @@ export default function App() {
             {step ? (
               <Visualizer
                 step={step}
-                prevStep={previousInFrame(steps, shownStep)}
+                prevStep={prevStep}
                 pointers={trace!.pointers}
                 code={trace!.code}
                 tick={stepIndex}
