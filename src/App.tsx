@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { flushSync } from 'react-dom'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type * as monaco from 'monaco-editor/editor/editor.api'
 import { EDITOR_THEME } from './monaco'
 import { GalaxyBackground } from './galaxy/GalaxyBackground'
-import { PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon, StepBackIcon, StepForwardIcon } from './icons'
+import { KeyboardIcon, PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon, StepBackIcon, StepForwardIcon } from './icons'
 import { usePythonRunner } from './runner/usePythonRunner'
 import { Visualizer } from './viz/Visualizer'
 import { findNames, previousInFrame, stepRoles } from './viz/changes'
@@ -11,6 +12,8 @@ import { SyntaxHelper } from './syntax/SyntaxHelper'
 import { Chat } from './chat/Chat'
 import { PROBLEMS, type Problem } from './problems/problems'
 import { ProblemPanel } from './problems/ProblemPanel'
+import { commandFor, focusKind, withShortcut, type Command } from './shortcuts'
+import { ShortcutsDialog } from './ShortcutsDialog'
 import type { RunRequest } from './types'
 
 const STARTER = `nums = [4, 8, 15, 16, 23, 42]
@@ -48,11 +51,69 @@ export default function App() {
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
   const monacoRef = useRef<typeof monaco | null>(null)
   const decorations = useRef<monaco.editor.IEditorDecorationsCollection | null>(null)
+  const chatInputRef = useRef<HTMLInputElement>(null)
+  const shortcutsRef = useRef<HTMLDialogElement>(null)
 
   const steps = trace?.steps ?? []
   const shownStep = Math.min(stepIndex, Math.max(0, steps.length - 1))
   const step = steps[shownStep]
   const prevStep = previousInFrame(steps, shownStep)
+
+  // What the step buttons and the keyboard shortcuts do (keys in src/shortcuts.ts).
+  const stepTo = (next: (i: number) => number) => {
+    if (steps.length) setStepIndex((i) => Math.max(0, Math.min(steps.length - 1, next(i))))
+  }
+  const commands: Record<Command, () => void> = {
+    playPause: () => {
+      if (steps.length < 2) return
+      if (stepIndex >= steps.length - 1) setStepIndex(0)
+      setPlaying((p) => !p)
+    },
+    firstStep: () => stepTo(() => 0),
+    prevStep: () => stepTo((i) => i - 1),
+    nextStep: () => stepTo((i) => i + 1),
+    lastStep: () => {
+      setPlaying(false)
+      stepTo(() => steps.length - 1)
+    },
+    // Toggles between the code and the question box.
+    askClaude: () => {
+      if (chatInputRef.current && document.activeElement === chatInputRef.current) {
+        editorRef.current?.focus()
+        return
+      }
+      flushSync(() => setSidePanel('chat'))
+      chatInputRef.current?.focus()
+    },
+    focusEditor: () => editorRef.current?.focus(),
+    showShortcuts: () => {
+      const dialog = shortcutsRef.current
+      if (dialog?.open) dialog.close()
+      else dialog?.showModal()
+    },
+    save: () => {},
+  }
+  // The editor actions and the key listener are set up once; this keeps them current.
+  const commandsRef = useRef(commands)
+  useEffect(() => {
+    commandsRef.current = commands
+  })
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.isComposing) return
+      const command = commandFor(e, focusKind(e.target instanceof Element ? e.target : null))
+      if (!command) return
+      // While the cheat sheet is open, only ? (to close it) and the Save block apply.
+      if (shortcutsRef.current?.open && command !== 'showShortcuts' && command !== 'save') return
+      e.preventDefault()
+      // Holding Space would flip between play and pause.
+      if (e.repeat && command === 'playPause') return
+      commandsRef.current[command]()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   // A fresh trace shows the final state; Play walks through it from the top.
   useEffect(() => {
@@ -120,6 +181,23 @@ export default function App() {
   const onMount: OnMount = (editor, m) => {
     editorRef.current = editor
     monacoRef.current = m
+    // The same shortcuts while typing. As editor actions they also show up in F1.
+    const { KeyMod, KeyCode } = m
+    const action = (id: Command, label: string, keybindings: number[] = []) =>
+      editor.addAction({
+        id: `app.${id}`,
+        label,
+        keybindings,
+        keybindingContext: 'editorTextFocus',
+        run: () => commandsRef.current[id](),
+      })
+    action('playPause', 'Play / pause the run', [KeyMod.CtrlCmd | KeyCode.Enter])
+    action('nextStep', 'Next step', [KeyMod.Alt | KeyCode.Period])
+    action('prevStep', 'Previous step', [KeyMod.Alt | KeyCode.Comma])
+    action('lastStep', 'Last step', [KeyMod.Alt | KeyMod.Shift | KeyCode.Period])
+    action('firstStep', 'First step', [KeyMod.Alt | KeyMod.Shift | KeyCode.Comma])
+    action('askClaude', 'Ask Claude', [KeyMod.CtrlCmd | KeyCode.KeyI])
+    action('showShortcuts', 'Keyboard shortcuts')
   }
 
   const insert = (snippet: string) => {
@@ -159,6 +237,14 @@ export default function App() {
           </nav>
           <h1 className="wordmark">Code Language Teacher</h1>
           <div className="top-right">
+            <button
+              className="icon-btn keys-btn"
+              onClick={commands.showShortcuts}
+              aria-label="Keyboard shortcuts"
+              title={withShortcut('Keyboard shortcuts', 'showShortcuts')}
+            >
+              <KeyboardIcon />
+            </button>
             <span className={`status status-${error ? 'error' : status}`}>{statusText}</span>
           </div>
         </header>
@@ -192,6 +278,8 @@ export default function App() {
                 minimap: { enabled: false },
                 scrollBeyondLastLine: false,
                 tabSize: 4,
+                // Word suggestions only on Ctrl+Space, so they don't pop up (and grab Enter) while typing.
+                quickSuggestions: false,
               }}
             />
             </div>
@@ -200,52 +288,46 @@ export default function App() {
             <div className="controls">
               <button
                 className="icon-btn"
-                onClick={() => setStepIndex(0)}
+                onClick={commands.firstStep}
                 disabled={!steps.length}
                 aria-label="Go to first step"
-                title="First step"
+                title={withShortcut('First step', 'firstStep')}
               >
                 <SkipBackIcon />
               </button>
               <button
                 className="icon-btn"
-                onClick={() => setStepIndex((i) => Math.max(0, i - 1))}
+                onClick={commands.prevStep}
                 disabled={!steps.length}
                 aria-label="Previous step"
-                title="Previous step"
+                title={withShortcut('Previous step', 'prevStep')}
               >
                 <StepBackIcon />
               </button>
               <button
                 className="icon-btn play-btn"
-                onClick={() => {
-                  if (stepIndex >= steps.length - 1) setStepIndex(0)
-                  setPlaying((p) => !p)
-                }}
+                onClick={commands.playPause}
                 disabled={steps.length < 2}
                 aria-label={playing ? 'Pause' : 'Play'}
-                title={playing ? 'Pause' : 'Play'}
+                title={withShortcut(playing ? 'Pause' : 'Play', 'playPause')}
               >
                 {playing ? <PauseIcon /> : <PlayIcon />}
               </button>
               <button
                 className="icon-btn"
-                onClick={() => setStepIndex((i) => Math.min(steps.length - 1, i + 1))}
+                onClick={commands.nextStep}
                 disabled={!steps.length}
                 aria-label="Next step"
-                title="Next step"
+                title={withShortcut('Next step', 'nextStep')}
               >
                 <StepForwardIcon />
               </button>
               <button
                 className="icon-btn"
-                onClick={() => {
-                  setPlaying(false)
-                  setStepIndex(Math.max(0, steps.length - 1))
-                }}
+                onClick={commands.lastStep}
                 disabled={!steps.length}
                 aria-label="Go to last step"
-                title="Last step"
+                title={withShortcut('Last step', 'lastStep')}
               >
                 <SkipForwardIcon />
               </button>
@@ -301,12 +383,13 @@ export default function App() {
             </div>
             {/* Keep the chat mounted so switching tabs doesn't lose the conversation. */}
             <div hidden={sidePanel !== 'chat'} className="side-body">
-              <Chat code={code} problem={problem?.title ?? null} onInsert={insert} />
+              <Chat code={code} problem={problem?.title ?? null} onInsert={insert} inputRef={chatInputRef} />
             </div>
             {sidePanel === 'cards' && <SyntaxHelper onInsert={insert} />}
           </section>
         </main>
       </div>
+      <ShortcutsDialog dialogRef={shortcutsRef} />
     </div>
   )
 }

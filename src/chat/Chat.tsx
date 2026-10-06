@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type Ref } from 'react'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -21,10 +21,13 @@ export function Chat({
   code,
   problem,
   onInsert,
+  inputRef,
 }: {
   code: string
   problem: string | null
   onInsert: (code: string) => void
+  /** The question box, so a shortcut can jump to it. */
+  inputRef?: Ref<HTMLInputElement>
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
@@ -137,6 +140,7 @@ export function Chat({
         }}
       >
         <input
+          ref={inputRef}
           className="syntax-input"
           placeholder="e.g. how do I loop over a dict?"
           value={input}

@@ -56,3 +56,10 @@ export const SkipForwardIcon = () => (
     <path d="M6 6.5v11a.6.6 0 0 0 .92.5l7.58-5.5a.6.6 0 0 0 0-1L6.92 6a.6.6 0 0 0-.92.5Z" />
   </Icon>
 )
+
+export const KeyboardIcon = () => (
+  <Icon>
+    <rect x="2.5" y="6" width="19" height="12" rx="2" />
+    <path d="M6.5 10h.01M9.5 10h.01M12.5 10h.01M15.5 10h.01M18 10h.01M6.5 14h.01M18 14h.01M9.5 14h5.5" />
+  </Icon>
+)
