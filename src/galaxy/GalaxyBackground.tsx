@@ -56,12 +56,12 @@ void main() {
   vec2 d = px - mpx;
   float dist = length(d) / uDpr;
 
-  // Gravity well: a slow swirl and slight pinch around the cursor.
-  float well = smoothstep(230.0, 0.0, dist) * uActive;
-  float ang = well * well * 0.6;
+  // Gravity well: a gentle swirl and slight pinch around the cursor.
+  float well = smoothstep(190.0, 0.0, dist) * uActive;
+  float ang = well * well * 0.28;
   float c = cos(ang), s = sin(ang);
   vec2 rd = mat2(c, -s, s, c) * d;
-  rd *= 1.0 - well * 0.12;
+  rd *= 1.0 - well * 0.05;
   vec2 wpx = mpx + rd;
 
   // Ripples left behind by fast mouse movement.
@@ -71,36 +71,42 @@ void main() {
     if (life <= 0.0) continue;
     vec2 td = px - tr.xy * uRes;
     float r = length(td) / uDpr;
-    float ring = exp(-pow((r - tr.z * 150.0) / 16.0, 2.0));
-    wpx += normalize(td + 0.0001) * ring * life * life * 7.0 * uDpr;
+    float ring = exp(-pow((r - tr.z * 130.0) / 18.0, 2.0));
+    wpx += normalize(td + 0.0001) * ring * life * life * 3.0 * uDpr;
   }
 
-  // Parallax and idle drift.
+  // Parallax and flowing gas (the drift noise varies across the image, so it warps).
+  float t = uTime * uDrift;
   vec2 par = (uMouse - 0.5) * uActive;
   vec2 wuv = wpx / uRes;
   vec2 drift = vec2(
-    noise(wuv * 1.4 + uTime * 0.010),
-    noise(wuv * 1.4 + vec2(7.3, 2.9) - uTime * 0.008)
+    noise(wuv * 1.4 + t * 0.018),
+    noise(wuv * 1.4 + vec2(7.3, 2.9) - t * 0.015)
   ) - 0.5;
-  vec2 imgPx = wpx - par * 30.0 * uDpr + drift * 26.0 * uDpr * uDrift;
+  vec2 imgPx = wpx - par * 16.0 * uDpr + drift * 34.0 * uDpr * uDrift;
 
-  float k = max(uRes.x / uImg.x, uRes.y / uImg.y) * uZoom;
-  vec2 tuv = ((imgPx - uRes * 0.5) / k + uImg * 0.5) / uImg;
+  // Slow camera: pan, a slight tilt and a gentle breathing zoom.
+  vec2 rel = imgPx - uRes * 0.5;
+  float tilt = sin(t * 0.021) * 0.035;
+  rel = mat2(cos(tilt), -sin(tilt), sin(tilt), cos(tilt)) * rel;
+  rel += vec2(sin(t * 0.013), cos(t * 0.011)) * 38.0 * uDpr;
+  float k = max(uRes.x / uImg.x, uRes.y / uImg.y) * uZoom * (1.0 + 0.025 * sin(t * 0.08));
+  vec2 tuv = (rel / k + uImg * 0.5) / uImg;
   vec3 col = texture2D(uTex, tuv).rgb;
 
-  // Keep it subtle.
-  col = pow(col, vec3(1.1)) * 0.62;
+  // Keep it subtle, with a faint slow pulse of light.
+  col = pow(col, vec3(1.1)) * 0.62 * (1.0 + 0.05 * sin(t * 0.11));
 
-  // Soft lavender light that lifts the gas near the cursor.
-  float glow = smoothstep(320.0, 0.0, dist) * uActive;
-  col += col * glow * 0.5 + vec3(0.78, 0.70, 1.0) * glow * glow * 0.05;
+  // Faint lavender light near the cursor.
+  float glow = smoothstep(280.0, 0.0, dist) * uActive;
+  col += col * glow * 0.22 + vec3(0.78, 0.70, 1.0) * glow * glow * 0.02;
 
-  // Procedural stars, pushed outward and brightened near the cursor.
+  // Procedural stars, nudged aside and slightly brightened near the cursor.
   vec2 dir = d / max(length(d), 0.0001);
-  vec2 push = dir * well * 18.0 * uDpr;
-  vec3 stars = starLayer(px - push - par * 45.0 * uDpr, 34.0 * uDpr, 0.38, 1.0, 0.35, 0.9) * 0.55
-             + starLayer(px - push - par * 70.0 * uDpr, 110.0 * uDpr, 0.32, 17.0, 0.6, 1.6);
-  col += stars * (0.75 + well * 1.6);
+  vec2 push = dir * well * 7.0 * uDpr;
+  vec3 stars = starLayer(px - push - par * 22.0 * uDpr, 34.0 * uDpr, 0.38, 1.0, 0.35, 0.9) * 0.55
+             + starLayer(px - push - par * 36.0 * uDpr, 110.0 * uDpr, 0.32, 17.0, 0.6, 1.6);
+  col += stars * (0.75 + well * 0.6);
 
   // Vignette to the page background.
   vec2 q = (uv - 0.5) * vec2(uRes.x / uRes.y, 1.0);
@@ -112,9 +118,10 @@ void main() {
 `
 
 /**
- * Fixed full-screen nebula behind the app. The mouse bends and lights the gas,
- * pushes stars aside and leaves ripples when it moves fast. Touch devices and
- * reduced-motion users get the slow drift (or a still image) only.
+ * Fixed full-screen nebula behind the app. The gas flows and the view slowly
+ * pans, tilts and breathes; the mouse gently bends and lights the gas, nudges
+ * stars aside and leaves faint ripples when it moves fast. Touch devices get
+ * the ambient motion only, and reduced-motion users get a still image.
  */
 export function GalaxyBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -194,7 +201,7 @@ export function GalaxyBackground() {
       const now = performance.now()
       if (lastPt) {
         const speed = Math.hypot(e.clientX - lastPt.x, e.clientY - lastPt.y) / Math.max(1, now - lastPt.t)
-        if (speed > 1.1 && now - lastPush > 70) {
+        if (speed > 1.6 && now - lastPush > 110) {
           trail[trailIdx] = { x: target.x, y: target.y, born: now }
           trailIdx = (trailIdx + 1) % TRAIL_LENGTH
           lastPush = now
@@ -216,10 +223,11 @@ export function GalaxyBackground() {
     const frame = (now: number) => {
       const step = Math.min(50, now - last) / 16.667
       last = now
-      const a = 1 - Math.pow(0.95, step)
+      // Slow, floaty follow.
+      const a = 1 - Math.pow(0.97, step)
       mouse.x += (target.x - mouse.x) * a
       mouse.y += (target.y - mouse.y) * a
-      active += ((hovering ? 1 : 0) - active) * (1 - Math.pow(0.96, step))
+      active += ((hovering ? 1 : 0) - active) * (1 - Math.pow(0.975, step))
       for (let i = 0; i < TRAIL_LENGTH; i++) {
         trailData[i * 3] = trail[i].x
         trailData[i * 3 + 1] = trail[i].y
