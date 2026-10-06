@@ -1,6 +1,7 @@
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import type { PointerSpec, Step, Value } from '../types'
-import { scalarChanges } from './changes'
+import { containerChanges, scalarChanges, type DeltaPart } from './changes'
+import { formatValue } from './format'
 import { placePointers, type PlacedPointer } from './pointers'
 
 // Bright enough to read on the dark galaxy panels, and distinct from each other.
@@ -33,16 +34,42 @@ export function Visualizer({
   const others = entries.filter(([, v]) => v.type !== 'list' && v.type !== 'tuple' && v.type !== 'dict')
   const ranLine = prevStep && code ? code.split('\n')[prevStep.line - 1] : undefined
   const changes = scalarChanges(step, prevStep, ranLine)
-  const sources = new Set(Object.values(changes).flatMap((c) => (c.from ? [c.from] : [])))
+  const boxes = containerChanges(step, prevStep, ranLine)
+  const sources = new Set(
+    [
+      ...Object.values(changes).flatMap((c) => c.deltas),
+      ...Object.values(boxes).flatMap((c) => [...c.summary, ...Object.values(c.parts).flat()]),
+    ].flatMap((d) => (d.from ? [d.from] : [])),
+  )
+  // Keyed by step, so badges remount (and pop in) on every step but hold while paused.
+  const badges = (parts: DeltaPart[] | undefined, className?: string) => (
+    <DeltaStack key={`d${tick}`} parts={parts} className={className} />
+  )
 
   return (
     <div className="viz">
       {step.func !== '<module>' && <div className="viz-frame">inside {step.func}()</div>}
       {lists.map(([name, value]) => (
-        <ListView key={name} name={name} value={value} pointers={placed[name] ?? []} colorOf={colorOf} />
+        <ListView
+          key={name}
+          name={name}
+          value={value}
+          pointers={placed[name] ?? []}
+          colorOf={colorOf}
+          summary={badges(boxes[name]?.summary, 'inline')}
+          itemBadges={(i) => badges(boxes[name]?.parts[i], 'on-box')}
+          changed={(i) => !!boxes[name]?.parts[i]}
+        />
       ))}
       {dicts.map(([name, value]) => (
-        <DictView key={name} name={name} value={value} prev={prevStep?.func === step.func ? prevStep.vars[name] : undefined} />
+        <DictView
+          key={name}
+          name={name}
+          value={value}
+          summary={badges(boxes[name]?.summary, 'inline')}
+          rowBadges={(key) => badges(boxes[name]?.parts[key], 'inline')}
+          changed={(key) => !!boxes[name]?.parts[key]}
+        />
       ))}
       {others.length > 0 && (
         <div className="var-cards">
@@ -64,12 +91,7 @@ export function Visualizer({
                     {formatValue(value)}
                   </span>
                 </div>
-                {change?.delta && (
-                  <span key={`d${tick}`} className="var-delta">
-                    {change.delta}
-                    {change.from && <span className="var-from"> from {change.from}</span>}
-                  </span>
-                )}
+                {badges(change?.deltas)}
               </div>
             )
           })}
@@ -80,33 +102,68 @@ export function Visualizer({
   )
 }
 
+/**
+ * Change badges. They stay for the whole step (also while paused) and the next
+ * step replaces them. Several parts stack, the first one nearest the value.
+ */
+function DeltaStack({ parts, className }: { parts?: DeltaPart[]; className?: string }) {
+  if (!parts?.length) return null
+  return (
+    <span className={className ? `var-deltas ${className}` : 'var-deltas'}>
+      {parts.map((part, i) => (
+        <span key={i} className={`var-delta ${tone(part.text)}`} style={{ '--i': i } as CSSProperties}>
+          {part.text}
+          {part.from && <span className="var-from"> from {part.from}</span>}
+        </span>
+      ))}
+    </span>
+  )
+}
+
+function tone(text: string) {
+  if (text === 'new') return 'new'
+  if (/^-\d/.test(text)) return 'down'
+  if (/^\+\d/.test(text)) return 'up'
+  return 'set'
+}
+
 function ListView({
   name,
   value,
   pointers,
   colorOf,
+  summary,
+  itemBadges,
+  changed,
 }: {
   name: string
   value: Value
   pointers: PlacedPointer[]
   colorOf: (label: string) => string
+  summary: ReactNode
+  itemBadges: (index: number) => ReactNode
+  changed: (index: number) => boolean
 }) {
   if (value.type !== 'list' && value.type !== 'tuple') return null
   // One extra slot so a pointer one past the end (e.g. `i == len(a)`) has somewhere to sit.
   const slots = value.items.length + (pointers.some((p) => p.index === value.items.length) ? 1 : 0)
   return (
     <div className="list">
-      <div className="list-name">{name}</div>
+      <div className="list-name">
+        {name}
+        {summary}
+      </div>
       <div className="list-grid" style={{ gridTemplateColumns: `repeat(${slots}, 3.25rem)` }}>
         {value.items.map((item, i) => {
           const here = pointers.filter((p) => p.index === i)
           return (
             <div
               key={i}
-              className="box"
+              className={changed(i) ? 'box changed' : 'box'}
               style={here.length ? { borderColor: colorOf(here[0].label), borderWidth: 3 } : undefined}
             >
-              {formatValue(item)}
+              <span className="box-value">{formatValue(item)}</span>
+              {itemBadges(i)}
             </div>
           )
         })}
@@ -134,13 +191,25 @@ function ListView({
   )
 }
 
-function DictView({ name, value, prev }: { name: string; value: Value; prev?: Value }) {
+function DictView({
+  name,
+  value,
+  summary,
+  rowBadges,
+  changed,
+}: {
+  name: string
+  value: Value
+  summary: ReactNode
+  rowBadges: (key: string) => ReactNode
+  changed: (key: string) => boolean
+}) {
   if (value.type !== 'dict') return null
-  const before = new Map(prev?.type === 'dict' ? prev.entries.map(([k, v]) => [formatValue(k), formatValue(v)]) : [])
   return (
     <div className="dict">
       <div className="list-name">
         {name} <span className="muted">(dict)</span>
+        {summary}
       </div>
       {value.entries.length === 0 ? (
         <div className="muted">empty {'{}'}</div>
@@ -150,16 +219,17 @@ function DictView({ name, value, prev }: { name: string; value: Value; prev?: Va
             <tr>
               <th>key</th>
               <th>value</th>
+              <th aria-hidden />
             </tr>
           </thead>
           <tbody>
             {value.entries.map(([k, v]) => {
               const key = formatValue(k)
-              const changed = prev !== undefined && before.get(key) !== formatValue(v)
               return (
-                <tr key={key} className={changed ? 'changed' : undefined}>
+                <tr key={key} className={changed(key) ? 'changed' : undefined}>
                   <td>{key}</td>
                   <td>{formatValue(v)}</td>
+                  <td className="badge-cell">{rowBadges(key)}</td>
                 </tr>
               )
             })}
@@ -169,18 +239,4 @@ function DictView({ name, value, prev }: { name: string; value: Value; prev?: Va
       {value.truncated && <div className="muted">(showing the first {value.entries.length} entries)</div>}
     </div>
   )
-}
-
-export function formatValue(v: Value): string {
-  switch (v.type) {
-    case 'prim':
-    case 'other':
-      return v.repr
-    case 'list':
-      return `[${v.items.map(formatValue).join(', ')}${v.truncated ? ', …' : ''}]`
-    case 'tuple':
-      return `(${v.items.map(formatValue).join(', ')}${v.items.length === 1 ? ',' : ''})`
-    case 'dict':
-      return `{${v.entries.map(([k, val]) => `${formatValue(k)}: ${formatValue(val)}`).join(', ')}}`
-  }
 }
