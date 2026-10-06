@@ -21,7 +21,7 @@ For a production build on your own server: `npm run build && ANTHROPIC_API_KEY=.
 
 ## How it works
 
-- **Editor:** Monaco (the editor inside VS Code), bundled locally.
+- **Editor:** Monaco (the editor inside VS Code), bundled locally. `src/monaco.ts` imports the editor features behind VS Code's shortcuts one by one, since the bare editor API has none of them.
 - **Running Python:** [Pyodide](https://pyodide.org) runs real CPython in a Web Worker (`src/runner/pyodide.worker.ts`), so a runaway loop never freezes the page. The runtime is copied from `node_modules` into `public/pyodide` on install.
 - **Live updates:** 300ms after you stop typing, the code is parsed. A syntax error gets a red squiggle and the last good visual stays up; otherwise the code runs and the visual redraws. Runs are capped at 2000 steps, and a run stuck on one slow line is stopped after 5 seconds.
 - **Tracing:** `src/python/tracer.py` runs the code under `sys.settrace` and records the variables at every line. It also reads the code to find pointers:
@@ -32,6 +32,17 @@ For a production build on your own server: `npm run build && ANTHROPIC_API_KEY=.
 - **Ask Claude:** a chat panel (`src/chat`) that streams answers from `server/chat.mjs`, which calls the Claude API with your current code and problem as context. Code blocks in answers have an Insert button. The same handler runs inside the Vite dev server and the production server (`server/index.mjs`).
 - **Syntax cards:** built-in Python examples with an Insert button (`src/syntax`) that work without an API key.
 - **Galaxy theme:** `src/galaxy/GalaxyBackground.tsx` draws `public/galaxy.webp` with a WebGL shader behind the app. The mouse swirls and lights the nebula, pushes stars aside and leaves ripples. Touch devices get a slow drift, and reduced-motion users get a still image. The panes are tinted glass over it (`src/styles.css`), and Monaco uses a matching `galaxy` theme (`src/monaco.ts`).
+
+## Keyboard shortcuts
+
+Press `?` (or the keyboard button in the header) for the full list. The editor has VS Code's own shortcuts: Ctrl+/ to comment, Ctrl+F to find, Ctrl+D for the next match, Alt+↑/↓ to move a line, F1 for every command, and so on. On top of those:
+
+- **Ctrl+Enter** plays or pauses the run, and **Alt+.** / **Alt+,** step forward and back (add Shift for the last and first step). These work while you type.
+- When you're not typing in the editor, **Space** plays or pauses, **→ / ←** step, and **Home / End** jump to the first and last step.
+- **Ctrl+I** jumps to Ask Claude and back, and **Esc** in the chat box returns to the code.
+- **Ctrl+S** no longer opens the browser's Save Page dialog, since the code already runs as you type.
+
+On a Mac, use ⌘ for Ctrl and ⌥ for Alt. The keys are defined in `src/shortcuts.ts`.
 
 ## Tests
 

@@ -352,6 +352,48 @@ button:disabled { opacity: 0.4; cursor: default; }
 .chat-form { display: flex; gap: 0.45rem; }
 .chat-form button { flex-shrink: 0; }
 
+/* ---------- Keyboard shortcuts: header button and the ? cheat sheet ---------- */
+.keys-btn { align-self: center; margin-right: 0.75rem; width: 1.8rem; height: 1.8rem; }
+.shortcuts {
+  width: min(56rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); overflow: auto;
+  padding: 0; border: 1px solid var(--line-strong); border-radius: 14px;
+  background: rgba(13, 10, 26, 0.94); color: var(--text);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  scrollbar-width: thin; scrollbar-color: rgba(200, 180, 255, 0.2) transparent;
+}
+.shortcuts::backdrop { background: rgba(5, 4, 10, 0.6); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+.shortcuts-body { padding: 1rem 1.3rem 0.4rem; }
+.shortcuts-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  margin-bottom: 0.9rem; padding-bottom: 0.7rem; border-bottom: 1px solid var(--line);
+}
+.shortcuts-head h2 {
+  margin: 0; font-family: var(--font-mono); font-size: 0.72rem; font-weight: 400;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent);
+}
+.shortcuts-head h2::before { content: ':'; }
+.shortcuts-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); column-gap: 2.2rem; }
+/* Stepping and moving around on the left, the longer editing list on the right. */
+.shortcuts-grid > section:nth-child(3) { grid-column: 2; grid-row: 1 / span 2; }
+.shortcuts h3 { margin: 0 0 0.35rem; font-size: 0.85rem; font-weight: 400; }
+.shortcuts .muted { margin: 0 0 0.3rem; font-size: 0.75rem; color: var(--faint); }
+.shortcuts dl { margin: 0 0 1.2rem; }
+.shortcut-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: 0.3rem 0; border-bottom: 1px solid var(--line);
+}
+.shortcut-row:last-child { border-bottom: 0; }
+.shortcut-row dt { font-size: 0.82rem; color: var(--muted); }
+.shortcut-row dd { margin: 0; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 0.3rem; }
+.combo { display: inline-flex; gap: 0.2rem; white-space: nowrap; }
+.or { font-size: 0.7rem; color: var(--faint); }
+kbd {
+  min-width: 1.45rem; padding: 0.2rem 0.38rem;
+  font-family: var(--font-mono); font-size: 0.72rem; line-height: 1; text-align: center;
+  border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 5px;
+  background: var(--box); color: var(--text);
+}
+
 /* ---------- Small screens ---------- */
 @media (max-width: 900px) {
   .app { height: auto; min-height: 100vh; padding: 10px; }
@@ -365,6 +407,8 @@ button:disabled { opacity: 0.4; cursor: default; }
   .pane { border-right: 0; border-bottom: 1px solid var(--line); }
   .editor-pane { min-height: 420px; }
   .tick { display: none; }
+  .shortcuts-grid { grid-template-columns: minmax(0, 1fr); }
+  .shortcuts-grid > section:nth-child(3) { grid-column: auto; grid-row: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {

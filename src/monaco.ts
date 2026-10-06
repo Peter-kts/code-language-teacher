@@ -1,5 +1,23 @@
-// Bundle Monaco locally (no CDN) with only the core editor and Python highlighting.
+// Bundle Monaco locally (no CDN) with the core editor and Python highlighting.
 import * as monaco from 'monaco-editor/editor/editor.api'
+// The API above is the bare editor: without these, VS Code's standard shortcuts do nothing.
+import 'monaco-editor/features/codicon/register'
+import 'monaco-editor/features/comment/register' // Ctrl+/, Shift+Alt+A
+import 'monaco-editor/features/find/register' // Ctrl+F, Ctrl+H, F3
+import 'monaco-editor/features/multicursor/register' // Ctrl+D, Ctrl+Shift+L, Ctrl+Alt+Up/Down
+import 'monaco-editor/features/linesOperations/register' // Alt+Up/Down, Shift+Alt+Up/Down, Ctrl+Shift+K, Ctrl+]/[
+import 'monaco-editor/features/wordOperations/register' // Ctrl+Left/Right, Ctrl+Backspace
+import 'monaco-editor/features/wordPartOperations/register'
+import 'monaco-editor/features/lineSelection/register' // Ctrl+L
+import 'monaco-editor/features/cursorUndo/register' // Ctrl+U
+import 'monaco-editor/features/bracketMatching/register' // Ctrl+Shift+\
+import 'monaco-editor/features/folding/register' // Ctrl+Shift+[ / ]
+import 'monaco-editor/features/smartSelect/register' // Shift+Alt+Left/Right
+import 'monaco-editor/editor/contrib/suggest/browser/suggestController' // Ctrl+Space
+import 'monaco-editor/features/quickCommand/register' // F1
+import 'monaco-editor/features/gotoLine/register' // Ctrl+G
+import 'monaco-editor/features/quickHelp/register'
+import 'monaco-editor/features/toggleTabFocusMode/register' // Ctrl+M: Tab moves focus out
 import 'monaco-editor/languages/definitions/python/register'
 import EditorWorker from 'monaco-editor/editor/editor.worker?worker'
 import { loader } from '@monaco-editor/react'
@@ -47,6 +65,26 @@ monaco.editor.defineTheme(EDITOR_THEME, {
     'editorHoverWidget.background': '#0d0a1a',
     'editorHoverWidget.border': '#3a3350',
     'editorOverviewRuler.border': '#00000000',
+    // Find (Ctrl+F) and the F1 list. Find matches are pink so they don't read as the amber "read" highlight.
+    'editor.findMatchBackground': '#f0a7cf59',
+    'editor.findMatchHighlightBackground': '#f0a7cf26',
+    'editorOverviewRuler.findMatchForeground': '#f0a7cf99',
+    'editor.selectionHighlightBackground': '#c8b4ff1f',
+    'focusBorder': '#c8b4ff80',
+    'input.background': '#05040a',
+    'input.border': '#3a3350',
+    'input.placeholderForeground': '#625b78',
+    'inputOption.activeBorder': '#c8b4ff',
+    'inputOption.activeBackground': '#c8b4ff33',
+    'quickInput.background': '#0d0a1a',
+    'quickInputList.focusBackground': '#c8b4ff26',
+    'list.hoverBackground': '#ffffff0a',
+    'list.highlightForeground': '#c8b4ff',
+    'keybindingLabel.background': '#ffffff0d',
+    'keybindingLabel.border': '#3a3350',
+    'keybindingLabel.bottomBorder': '#3a3350',
+    'keybindingLabel.foreground': '#f2eefa',
+    'widget.shadow': '#00000099',
     'scrollbarSlider.background': '#c8b4ff1f',
     'scrollbarSlider.hoverBackground': '#c8b4ff33',
     'scrollbarSlider.activeBackground': '#c8b4ff4d',
