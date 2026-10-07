@@ -10,6 +10,7 @@ import { Visualizer } from './viz/Visualizer'
 import { findNames, previousInFrame, stepRoles } from './viz/changes'
 import { buildHistory } from './viz/history'
 import { HistoryPanel } from './viz/HistoryPanel'
+import { ConsolePanel } from './console/ConsolePanel'
 import { SyntaxHelper } from './syntax/SyntaxHelper'
 import { Chat } from './chat/Chat'
 import { PROBLEMS, type Problem } from './problems/problems'
@@ -379,10 +380,19 @@ export default function App() {
             ) : (
               <p className="muted">{status === 'loading' ? 'Starting Python in your browser…' : 'Write some code.'}</p>
             )}
-            <div className="output">
-              <div className="output-title">Output</div>
-              <pre>{step?.stdout ?? ''}</pre>
-            </div>
+            {trace && (
+              <ConsolePanel
+                entries={trace.console}
+                error={error}
+                code={trace.code}
+                current={shownStep}
+                isLast={shownStep === steps.length - 1}
+                onJump={(i) => {
+                  setPlaying(false)
+                  setStepIndex(Math.min(i, steps.length - 1))
+                }}
+              />
+            )}
           </section>
           <section className="pane syntax-pane">
             <div className="side-tabs">

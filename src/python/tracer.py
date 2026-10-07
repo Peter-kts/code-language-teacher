@@ -28,6 +28,30 @@ class StepLimitExceeded(Exception):
     pass
 
 
+class _ConsoleStream(io.TextIOBase):
+    """Stands in for sys.stdout or sys.stderr and hands every write to `sink`."""
+
+    def __init__(self, name, sink):
+        self.name = name
+        self.sink = sink
+
+    def writable(self):
+        return True
+
+    def write(self, text):
+        if text:
+            self.sink(self.name, text)
+        return len(text)
+
+
+def _user_line():
+    """The line of the user's code running right now, if any."""
+    frame = sys._getframe(2)
+    while frame is not None and frame.f_code.co_filename != USER_FILENAME:
+        frame = frame.f_back
+    return frame.f_lineno if frame is not None else None
+
+
 class _LoopIndexer(ast.NodeTransformer):
     """Rewrite `for v in xs:` to `for _ct_idx_N, v in enumerate(xs):`.
 
@@ -390,6 +414,19 @@ def run_traced(source, max_steps=2000, call=None):
 
     steps = []
     stdout = io.StringIO()
+    # What the program wrote, in order: which stream, which line wrote it, and the
+    # step it first shows on (the one after the line ran).
+    console = []
+
+    def write(stream, text):
+        if stream == "stdout":
+            stdout.write(text)
+        line = _user_line()
+        last = console[-1] if console else None
+        if last and (last["stream"], last["line"], last["step"]) == (stream, line, len(steps)):
+            last["text"] += text
+        else:
+            console.append({"stream": stream, "text": text, "line": line, "step": len(steps)})
     # Part values recorded per frame since its last step (see _Recorder).
     pending = {}
     # A number per running call, so recursive calls of one function keep their steps apart.
@@ -460,8 +497,9 @@ def run_traced(source, max_steps=2000, call=None):
     error = None
     truncated = False
     result = None
-    old_stdout = sys.stdout
-    sys.stdout = stdout
+    old_stdout, old_stderr = sys.stdout, sys.stderr
+    sys.stdout = _ConsoleStream("stdout", write)
+    sys.stderr = _ConsoleStream("stderr", write)
     sys.settrace(tracer)
     try:
         exec(code, user_globals)
@@ -474,15 +512,29 @@ def run_traced(source, max_steps=2000, call=None):
         truncated = True
     except Exception as exc:  # noqa: BLE001 - user code may raise anything
         tb = exc.__traceback__
-        line = None
+        frames = []
         while tb is not None:
             if tb.tb_frame.f_code.co_filename == USER_FILENAME:
-                line = tb.tb_lineno
+                frames.append({"line": tb.tb_lineno, "func": tb.tb_frame.f_code.co_name})
             tb = tb.tb_next
-        error = {"kind": "runtime", "message": f"{type(exc).__name__}: {exc}", "line": line}
+        error = {
+            "kind": "runtime",
+            "message": f"{type(exc).__name__}: {exc}",
+            "line": frames[-1]["line"] if frames else None,
+            "traceback": frames,
+        }
     finally:
         sys.settrace(None)
-        sys.stdout = old_stdout
+        sys.stdout, sys.stderr = old_stdout, old_stderr
+        # Logging handlers keep the stream they were given; drop ours so the
+        # next run (Pyodide keeps the interpreter) doesn't log into a dead console.
+        logging = sys.modules.get("logging")
+        if logging is not None:
+            loggers = [logging.root, *logging.Logger.manager.loggerDict.values()]
+            for logger in loggers:
+                for handler in getattr(logger, "handlers", [])[:]:
+                    if isinstance(getattr(handler, "stream", None), _ConsoleStream):
+                        logger.removeHandler(handler)
 
     return json.dumps(
         {
@@ -492,6 +544,7 @@ def run_traced(source, max_steps=2000, call=None):
             "truncated": truncated,
             "error": error,
             "stdout": stdout.getvalue(),
+            "console": console,
             "result": result,
             "call": _call_desc(call) if call is not None else None,
             "plans": recorder.plans,

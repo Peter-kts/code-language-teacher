@@ -47,6 +47,50 @@ class TracerTest(unittest.TestCase):
         self.assertIn("IndexError", result["error"]["message"])
         self.assertGreater(len(result["steps"]), 0)
 
+    def test_console_notes_the_line_and_step_of_each_print(self):
+        src = "def show(x):\n    print('x is', x)\n\nfor n in [1, 2]:\n    show(n)\nprint('done', end='')\n"
+        result = run(src)
+        console = result["console"]
+        self.assertEqual([(c["text"], c["line"], c["stream"]) for c in console], [
+            ("x is 1\n", 2, "stdout"),
+            ("x is 2\n", 2, "stdout"),
+            ("done", 6, "stdout"),
+        ])
+        steps = result["steps"]
+        for entry in console:
+            # It shows on the step after its line ran, which already has it in stdout.
+            self.assertEqual(steps[entry["step"] - 1]["line"], entry["line"])
+            self.assertTrue(steps[entry["step"]]["stdout"].endswith(entry["text"]))
+
+    def test_console_catches_stderr_and_logging(self):
+        src = "import sys, logging\nprint('oops', file=sys.stderr)\nlogging.basicConfig(format='%(levelname)s %(message)s')\nlogging.warning('careful')\n"
+        result = run(src)
+        self.assertEqual([(c["stream"], c["text"], c["line"]) for c in result["console"]], [
+            ("stderr", "oops\n", 2),
+            ("stderr", "WARNING careful\n", 4),
+        ])
+        self.assertEqual(result["stdout"], "")
+        # The next run starts with a fresh console rather than the old one.
+        again = run("import logging\nlogging.warning('again')\n")
+        self.assertEqual([c["text"] for c in again["console"]], ["WARNING:root:again\n"])
+
+    def test_named_logger_handlers_do_not_outlive_their_run(self):
+        src = "import logging\nlog = logging.getLogger('ct-test')\nif not log.handlers:\n    log.addHandler(logging.StreamHandler())\nlog.warning('hi')\n"
+        self.assertEqual([c["text"] for c in run(src)["console"]], ["hi\n"])
+        self.assertEqual([c["text"] for c in run(src)["console"]], ["hi\n"])
+
+    def test_runtime_error_has_a_traceback_of_user_frames(self):
+        src = "def inner(xs):\n    return xs[3]\n\ndef outer():\n    return inner([1])\n\nprint('start')\nouter()\n"
+        result = run(src)
+        error = result["error"]
+        self.assertEqual(error["traceback"], [
+            {"line": 8, "func": "<module>"},
+            {"line": 5, "func": "outer"},
+            {"line": 2, "func": "inner"},
+        ])
+        self.assertEqual(error["line"], 2)
+        self.assertEqual(result["console"][0]["text"], "start\n")
+
     def test_infinite_loop_is_cut_off(self):
         result = run("i = 0\nwhile True:\n    i += 1\n", max_steps=100)
         self.assertTrue(result["truncated"])

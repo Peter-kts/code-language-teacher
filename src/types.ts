@@ -85,6 +85,18 @@ export interface CodeError {
   message: string
   line: number | null
   col?: number
+  /** For a runtime error: the calls of the user's code it went through, outermost first. */
+  traceback?: { line: number; func: string }[]
+}
+
+/** A piece of what the program wrote, merged per line of code and step. */
+export interface ConsoleEntry {
+  stream: 'stdout' | 'stderr'
+  text: string
+  /** The line of code that wrote it (null if it came from outside the user's code). */
+  line: number | null
+  /** The first step that shows it: the one after its line ran. */
+  step: number
 }
 
 export type TraceResult =
@@ -96,6 +108,8 @@ export type TraceResult =
       truncated: boolean
       error: CodeError | null
       stdout: string
+      /** print(), sys.stderr and logging output, with the line that wrote each piece. */
+      console: ConsoleEntry[]
       /** Return value of the problem's function, when one was called. */
       result: Value | null
       /** e.g. `twoSum([2, 7, 11, 15], 9)` */
