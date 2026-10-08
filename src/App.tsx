@@ -54,7 +54,9 @@ export default function App() {
         tests: problem.tests,
       }
     : { code }
-  const { status, trace, error, tests } = usePythonRunner(request)
+  const { status, trace, error, tests, ranFor } = usePythonRunner(request)
+  // Right after switching problems, the last results are still the old problem's until the new run lands.
+  const resultsFresh = problem !== undefined && ranFor === problem.functionName
   const [stepIndex, setStepIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
@@ -290,11 +292,11 @@ export default function App() {
               <ProblemPanel
                 key={problem.id}
                 problem={problem}
-                tests={tests}
+                tests={resultsFresh ? tests : null}
                 caseIndex={caseIndex}
                 onSelectCase={setCaseIndex}
-                result={trace?.result ?? null}
-                call={trace?.call ?? null}
+                result={resultsFresh ? (trace?.result ?? null) : null}
+                call={resultsFresh ? (trace?.call ?? null) : null}
                 stale={error?.kind === 'syntax'}
                 onOpenConcept={(id) => {
                   setGlossaryFocus(id)

@@ -31,9 +31,12 @@ export function usePythonRunner(request: RunRequest) {
   const [trace, setTrace] = useState<GoodTrace | null>(null)
   const [error, setError] = useState<CodeError | null>(null)
   const [tests, setTests] = useState<TestResult[] | null>(null)
+  // The function the trace and tests above called, so a caller can tell they're from another problem.
+  const [ranFor, setRanFor] = useState<string | null>(null)
   const workerRef = useRef<Worker | null>(null)
   const latestId = useRef(0)
   const latestCode = useRef('')
+  const latestCall = useRef<string | null>(null)
   const timeoutRef = useRef<number | undefined>(undefined)
 
   const attach = (worker: Worker) => {
@@ -50,6 +53,7 @@ export function usePythonRunner(request: RunRequest) {
         setTrace({ ...msg.result, code: latestCode.current })
         setError(msg.result.error)
         setTests(msg.tests)
+        setRanFor(latestCall.current)
       } else {
         setError(msg.result.error)
       }
@@ -70,6 +74,7 @@ export function usePythonRunner(request: RunRequest) {
       const id = ++latestId.current
       const req = JSON.parse(requestKey) as RunRequest
       latestCode.current = req.code
+      latestCall.current = req.call?.name ?? null
       if (statusRef.current !== 'loading') setStatus('running')
       workerRef.current?.postMessage({ id, ...req } satisfies WorkerRequest)
       window.clearTimeout(timeoutRef.current)
@@ -86,5 +91,5 @@ export function usePythonRunner(request: RunRequest) {
     return () => window.clearTimeout(handle)
   }, [requestKey])
 
-  return { status, trace, error, tests }
+  return { status, trace, error, tests, ranFor }
 }
