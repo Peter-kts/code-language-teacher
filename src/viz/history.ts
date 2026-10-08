@@ -132,6 +132,35 @@ export function buildHistory(steps: Step[], plans?: Plans): HistoryEntry[] {
   return out
 }
 
+/** Where a step sits relative to the one on screen. */
+export type When = 'past' | 'current' | 'later'
+
+/** The rows of one step, under a header with the line that made them. */
+export interface HistoryGroup {
+  step: number
+  line: number
+  when: When
+  entries: HistoryEntry[]
+}
+
+/**
+ * The whole run's changes grouped by step, each marked as before, at or after
+ * `current`. Later steps stay listed so going back never loses them.
+ */
+export function historyGroups(entries: HistoryEntry[], current: number, only: string | null = null): HistoryGroup[] {
+  const groups: HistoryGroup[] = []
+  for (const e of entries) {
+    if (only !== null && e.name !== only) continue
+    const g = groups[groups.length - 1]
+    if (g && g.step === e.step) g.entries.push(e)
+    else {
+      const when: When = e.step < current ? 'past' : e.step === current ? 'current' : 'later'
+      groups.push({ step: e.step, line: e.line, when, entries: [e] })
+    }
+  }
+  return groups
+}
+
 function itemText(v: Step['vars'][string] | undefined, item: string): string | null {
   if (!v) return null
   if (v.type === 'dict') {
