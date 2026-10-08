@@ -13,7 +13,7 @@ import { HistoryPanel } from './viz/HistoryPanel'
 import { ConsolePanel } from './console/ConsolePanel'
 import { SyntaxHelper } from './syntax/SyntaxHelper'
 import { Chat } from './chat/Chat'
-import { PROBLEMS, type Problem } from './problems/problems'
+import { DIFFICULTIES, PROBLEMS, type Problem } from './problems/problems'
 import { ProblemPanel } from './problems/ProblemPanel'
 import { commandFor, focusKind, withShortcut, type Command } from './shortcuts'
 import { ShortcutsDialog } from './ShortcutsDialog'
@@ -39,6 +39,12 @@ export default function App() {
   const [caseIndex, setCaseIndex] = useState(0)
   const [sidePanel, setSidePanel] = useState<'chat' | 'history' | 'cards'>('chat')
   const problem: Problem | undefined = PROBLEMS.find((p) => p.id === mode)
+  // The glossary entry a concept chip opened, shown on its own until the learner goes back to the list.
+  const [glossaryFocus, setGlossaryFocus] = useState<string | null>(null)
+  const openProblem = (id: string) => {
+    setMode(id)
+    setCaseIndex(0)
+  }
   const code = codeByMode[mode]
   const setCode = (next: string) => setCodeByMode((c) => ({ ...c, [mode]: next }))
   const request: RunRequest = problem
@@ -235,18 +241,35 @@ export default function App() {
       <div className="frame">
         <header className="top">
           <nav className="tabs">
-            {[{ id: PLAYGROUND, title: 'Playground' }, ...PROBLEMS].map((m) => (
-              <button
-                key={m.id}
-                className={m.id === mode ? 'tab active' : 'tab'}
-                onClick={() => {
-                  setMode(m.id)
-                  setCaseIndex(0)
-                }}
-              >
-                {m.title}
-              </button>
-            ))}
+            <button className={mode === PLAYGROUND ? 'tab active' : 'tab'} onClick={() => openProblem(PLAYGROUND)}>
+              Playground
+            </button>
+            <select
+              className={problem ? 'problem-select active' : 'problem-select'}
+              value={problem ? problem.id : ''}
+              onChange={(e) => openProblem(e.target.value)}
+              aria-label="Problem"
+            >
+              {!problem && (
+                <option value="" disabled>
+                  Problems ({PROBLEMS.length})
+                </option>
+              )}
+              {DIFFICULTIES.map((d) => {
+                const group = PROBLEMS.filter((p) => p.difficulty === d)
+                return (
+                  group.length > 0 && (
+                    <optgroup key={d} label={d}>
+                      {group.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.title}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )
+                )
+              })}
+            </select>
           </nav>
           <h1 className="wordmark">Code Language Teacher</h1>
           <div className="top-right">
@@ -265,6 +288,7 @@ export default function App() {
           <section className="pane editor-pane">
             {problem && (
               <ProblemPanel
+                key={problem.id}
                 problem={problem}
                 tests={tests}
                 caseIndex={caseIndex}
@@ -272,6 +296,10 @@ export default function App() {
                 result={trace?.result ?? null}
                 call={trace?.call ?? null}
                 stale={error?.kind === 'syntax'}
+                onOpenConcept={(id) => {
+                  setGlossaryFocus(id)
+                  setSidePanel('cards')
+                }}
               />
             )}
             <div className="editor-wrap">
@@ -423,7 +451,14 @@ export default function App() {
               />
               </div>
             )}
-            {sidePanel === 'cards' && <SyntaxHelper onInsert={insert} />}
+            {sidePanel === 'cards' && (
+              <SyntaxHelper
+                onInsert={insert}
+                focus={glossaryFocus}
+                onFocus={setGlossaryFocus}
+                onOpenProblem={openProblem}
+              />
+            )}
           </section>
         </main>
       </div>

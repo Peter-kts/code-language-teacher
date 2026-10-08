@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { groupCards, searchCards, type GroupBy } from './cards'
+import { PROBLEMS } from '../problems/problems'
+import { groupCards, PYTHON_CARDS, searchCards, type GroupBy, type SyntaxCard } from './cards'
 
 const GROUP_BYS: { id: GroupBy; label: string }[] = [
   { id: 'topic', label: 'Topic' },
@@ -19,7 +20,50 @@ function savedGroupBy(): GroupBy {
   return 'topic'
 }
 
-export function SyntaxHelper({ onInsert }: { onInsert: (code: string) => void }) {
+function CardView({
+  card,
+  onInsert,
+  onOpenProblem,
+}: {
+  card: SyntaxCard
+  onInsert: (code: string) => void
+  onOpenProblem: (id: string) => void
+}) {
+  const practice = PROBLEMS.filter((p) => p.concepts.includes(card.id))
+  return (
+    <div className="card">
+      <div className="card-head">
+        <strong>{card.title}</strong>
+        <button onClick={() => onInsert(card.code)}>Insert</button>
+      </div>
+      <p>{card.explanation}</p>
+      <pre>{card.code}</pre>
+      {practice.length > 0 && (
+        <div className="card-practice">
+          <span className="muted">Practice it in</span>
+          {practice.map((p) => (
+            <button key={p.id} className="chip" onClick={() => onOpenProblem(p.id)}>
+              {p.title}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function SyntaxHelper({
+  onInsert,
+  focus,
+  onFocus,
+  onOpenProblem,
+}: {
+  onInsert: (code: string) => void
+  /** Id of an entry to show on its own (opened from a problem's concept chip), or null for the full list. */
+  focus: string | null
+  onFocus: (id: string | null) => void
+  onOpenProblem: (id: string) => void
+}) {
   const [query, setQuery] = useState('')
   const [groupBy, setGroupBy] = useState<GroupBy>(savedGroupBy)
   const searching = query.trim() !== ''
@@ -32,6 +76,20 @@ export function SyntaxHelper({ onInsert }: { onInsert: (code: string) => void })
     } catch {
       // not remembered, which is fine
     }
+  }
+
+  const focused = PYTHON_CARDS.find((c) => c.id === focus)
+  if (focused) {
+    return (
+      <div className="syntax">
+        <button className="chip glossary-back" onClick={() => onFocus(null)}>
+          ← All glossary entries
+        </button>
+        <div className="cards">
+          <CardView card={focused} onInsert={onInsert} onOpenProblem={onOpenProblem} />
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -59,14 +117,7 @@ export function SyntaxHelper({ onInsert }: { onInsert: (code: string) => void })
               {group.label} <span className="muted">{group.cards.length}</span>
             </summary>
             {group.cards.map((card) => (
-              <div key={card.id} className="card">
-                <div className="card-head">
-                  <strong>{card.title}</strong>
-                  <button onClick={() => onInsert(card.code)}>Insert</button>
-                </div>
-                <p>{card.explanation}</p>
-                <pre>{card.code}</pre>
-              </div>
+              <CardView key={card.id} card={card} onInsert={onInsert} onOpenProblem={onOpenProblem} />
             ))}
           </details>
         ))}
