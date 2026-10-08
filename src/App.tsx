@@ -403,7 +403,7 @@ export default function App() {
                 History
               </button>
               <button className={sidePanel === 'cards' ? 'tab active' : 'tab'} onClick={() => setSidePanel('cards')}>
-                Syntax cards
+                Glossary
               </button>
             </div>
             {/* Keep the chat mounted so switching tabs doesn't lose the conversation. */}

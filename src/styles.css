@@ -396,6 +396,11 @@ button.console-at:hover { color: var(--accent); background: none; box-shadow: no
 .syntax-input::placeholder { color: var(--faint); }
 .syntax-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .cards { display: flex; flex-direction: column; gap: 0.7rem; margin-top: 0.8rem; }
+.glossary-groupby { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.6rem; font-size: 0.82rem; }
+.card-group > summary { cursor: pointer; font-size: 0.92rem; padding: 0.2rem 0; }
+.card-group > summary .muted { font-size: 0.78rem; margin-left: 0.3rem; }
+.card-group[open] > summary { margin-bottom: 0.5rem; }
+.card-group > .card + .card { margin-top: 0.7rem; }
 .card { border: 1px solid var(--line); border-radius: 10px; padding: 0.65rem 0.8rem; background: rgba(5, 4, 10, 0.3); }
 .card-head { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
 .card-head strong { font-weight: 400; }
