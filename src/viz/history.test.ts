@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildHistory, deltaText, entryLabel, type HistoryEntry } from './history'
+import { buildHistory, deltaText, entryLabel, historyGroups, type HistoryEntry } from './history'
 import type { TraceResult } from '../types'
 import sumTrace from './fixtures/sum.json'
 import twoSumTrace from './fixtures/twosum.json'
@@ -49,5 +49,21 @@ describe('buildHistory', () => {
     expect(rows).toContain('step 2 line 2: seen new → {}')
     expect(rows).toContain('step 4 line 4: pair new → {3: 0} = {n: i}')
     expect(rows).toContain('step 5 line 5: zeros new → [0, 0]')
+  })
+})
+
+describe('historyGroups', () => {
+  it('keeps the steps after the current one when going back, marked as later', () => {
+    const all = history(sumTrace)
+    const back = historyGroups(all, 4)
+    expect(back.flatMap((g) => g.entries)).toEqual(all)
+    expect(back.slice(0, 5).map((g) => `${g.step} ${g.when}`)).toEqual(['1 past', '2 past', '3 past', '4 current', '5 later'])
+    expect(back.filter((g) => g.when === 'later').length).toBe(historyGroups(all, 0).length - 4)
+  })
+
+  it('filters to one variable without changing which steps count as past', () => {
+    const totals = historyGroups(history(sumTrace), 5, 'total')
+    expect(totals.every((g) => g.entries.every((e) => e.name === 'total'))).toBe(true)
+    expect(totals.slice(0, 3).map((g) => `${g.step} ${g.when}`)).toEqual(['2 past', '4 past', '6 later'])
   })
 })

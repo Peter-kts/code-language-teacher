@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { deltaText, entryLabel, type HistoryEntry } from './history'
+import { deltaText, entryLabel, historyGroups, type HistoryEntry } from './history'
 
 /**
- * Every change up to the current step, one row per change: what changed, how,
- * and where the values it used came from. Clicking a row or an origin jumps there.
+ * Every change in the run, one row per change: what changed, how, and where the
+ * values it used came from. Rows after the current step stay listed but dimmed,
+ * so going back and forth is a replay. Clicking a row or an origin jumps there.
  */
 export function HistoryPanel({
   entries,
@@ -12,7 +13,7 @@ export function HistoryPanel({
   onJump,
 }: {
   entries: HistoryEntry[]
-  /** The step on screen; its rows are highlighted and later ones are hidden. */
+  /** The step on screen; its rows are highlighted and later ones dimmed. */
   current: number
   /** The code that ran, to show each row's line. */
   code: string
@@ -20,7 +21,6 @@ export function HistoryPanel({
 }) {
   const [only, setOnly] = useState<string | null>(null)
   const names = [...new Set(entries.map((e) => e.name))]
-  const shown = entries.filter((e) => e.step <= current && (only === null || e.name === only))
   const lines = code.split('\n')
   const listRef = useRef<HTMLOListElement>(null)
 
@@ -28,7 +28,9 @@ export function HistoryPanel({
   useEffect(() => {
     // Only the list scrolls, so the tabs above it stay put.
     const list = listRef.current
-    const row = list?.querySelector<HTMLElement>('.hist-row.current') ?? list?.lastElementChild
+    // The current step's rows, else the last change before it, else the top.
+    const past = list?.querySelectorAll<HTMLElement>('.hist-row.past')
+    const row = list?.querySelector<HTMLElement>('.hist-row.current') ?? past?.[past.length - 1] ?? list?.firstElementChild
     if (!list || !(row instanceof HTMLElement)) return
     // The list is positioned, so offsetTop is measured from its top.
     const top = row.offsetTop
@@ -44,12 +46,7 @@ export function HistoryPanel({
   if (!entries.length) return <p className="muted">Changes to variables show up here as the code runs.</p>
 
   // Rows of one step share a header with the line that made them.
-  const groups: HistoryEntry[][] = []
-  for (const e of shown) {
-    const g = groups[groups.length - 1]
-    if (g && g[0].step === e.step) g.push(e)
-    else groups.push([e])
-  }
+  const groups = historyGroups(entries, current, only)
 
   return (
     <div className="history">
@@ -64,16 +61,15 @@ export function HistoryPanel({
         ))}
       </div>
       <ol className="hist-list" ref={listRef}>
-        {groups.map((g) => {
-          const { step, line } = g[0]
+        {groups.map(({ step, line, when, entries: changes }) => {
           return (
-            <li key={`${step}:${g[0].name}`} className={step === current ? 'hist-row current' : 'hist-row'}>
+            <li key={`${step}:${changes[0].name}`} className={`hist-row ${when}`}>
               <button className="hist-head" onClick={() => onJump(step)} title={`Go to step ${step + 1}`}>
                 <span className="hist-step">step {step + 1}</span>
                 <span className="hist-line">line {line}</span>
                 <code className="hist-code">{lines[line - 1]?.trim()}</code>
               </button>
-              {g.map((e, i) => (
+              {changes.map((e, i) => (
                 <div key={i} className="hist-change">
                   <div className="hist-what">
                     <span className="hist-name">{entryLabel(e)}</span>
