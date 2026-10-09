@@ -106,13 +106,24 @@ export const BUILTIN_METHODS: Builtin[] = [
 const FUNCTIONS = new Map(BUILTIN_FUNCTIONS.map((b) => [b.name, b]))
 const METHODS = new Map(BUILTIN_METHODS.map((b) => [b.name, b]))
 
-/** True if position i of the line is inside a string or a # comment. Strings spanning lines aren't tracked. */
+/**
+ * True if position i of the line is inside a string or a # comment.
+ * The {...} parts of an f-string count as code. Strings spanning lines aren't tracked.
+ */
 function inStringOrComment(line: string, i: number): boolean {
   let quote = ''
+  let fstring = false
+  // How deep inside an f-string's {...} we are: code, not text.
+  let depth = 0
   for (let j = 0; j < i; j++) {
     const ch = line[j]
-    if (quote) {
+    if (quote && depth > 0) {
+      if (ch === '{') depth++
+      else if (ch === '}') depth--
+    } else if (quote) {
       if (ch === '\\') j++
+      else if (fstring && (ch === '{' || ch === '}') && line[j + 1] === ch) j++
+      else if (fstring && ch === '{') depth = 1
       else if (line.startsWith(quote, j)) {
         j += quote.length - 1
         quote = ''
@@ -120,10 +131,11 @@ function inStringOrComment(line: string, i: number): boolean {
     } else if (ch === '#') return true
     else if (ch === '"' || ch === "'") {
       quote = line.startsWith(ch.repeat(3), j) ? ch.repeat(3) : ch
+      fstring = /(^|[^\w])[rRbB]?[fF][rR]?$/.test(line.slice(0, j))
       j += quote.length - 1
     }
   }
-  return quote !== ''
+  return quote !== '' && depth === 0
 }
 
 /** A name in a line of code, with 0-based start and end (exclusive). */

@@ -11,6 +11,8 @@ import { builtinAt, nameAt, type Builtin } from './builtins'
 
 const SHOW_MS = 350
 const HIDE_MS = 250
+// With a pop-up already open, switching to another name waits a little, so passing over one on the way into the pop-up doesn't swap it.
+const SWITCH_MS = 150
 const WIDTH = 340
 const MAX_VALUE = 400
 
@@ -98,12 +100,13 @@ export function CodeHover({
           if (!at) return
           const { width, height } = editor.getLayoutInfo()
           const left = Math.max(8, Math.min(at.left, width - WIDTH - 8))
-          // Near the bottom of the editor, open above the line so the pop-up isn't cut off.
-          const place = at.top > height * 0.55 ? { bottom: height - at.top + 4 } : { top: at.top + at.height + 4 }
+          // Touching the line, so the mouse reaches it without crossing the next line.
+          // Near the bottom of the editor it opens above the line so it isn't cut off.
+          const place = at.top > height * 0.55 ? { bottom: height - at.top } : { top: at.top + at.height }
           cancelHide()
           shownKey.current = key
           setShown({ target: hit.target, key, left, ...place })
-        }, shownKey.current ? 0 : SHOW_MS)
+        }, shownKey.current ? SWITCH_MS : SHOW_MS)
       }),
       editor.onMouseLeave(hideSoon),
       editor.onMouseDown(hideNow),
@@ -129,6 +132,8 @@ export function CodeHover({
       style={{ left: shown.left, top: shown.top, bottom: shown.bottom, maxWidth: WIDTH }}
       onMouseEnter={() => {
         overPopup.current = true
+        // A name passed over on the way in shouldn't replace this pop-up.
+        window.clearTimeout(showTimer.current)
         cancelHide()
       }}
       onMouseLeave={() => {

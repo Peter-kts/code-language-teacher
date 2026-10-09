@@ -39,6 +39,12 @@ describe('built-in hover', () => {
     expect(builtinNamed('x = 1  # use len(x)', 'len')).toBeNull()
     expect(builtinNamed('print("#", len(x))', 'len')).toBe('len')
     expect(builtinNamed('print("a") or len(x)', 'len')).toBe('len')
+    // Inside an f-string, the {...} parts are code.
+    expect(builtinNamed('print(f"size {len(xs)}")', 'len')).toBe('len')
+    expect(builtinNamed("print(rf'{max(a, b)} wins')", 'max')).toBe('max')
+    expect(builtinNamed('print(f"{{len(xs)}}")', 'len')).toBeNull()
+    expect(builtinNamed('print(f"{n} is len(x)")', 'len')).toBeNull()
+    expect(builtinNamed('print(elf"len(x)")', 'len')).toBeNull()
   })
 
   it('finds the name under the mouse for variable values', () => {
