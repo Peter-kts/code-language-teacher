@@ -12,6 +12,7 @@ import { buildHistory } from './viz/history'
 import { HistoryPanel } from './viz/HistoryPanel'
 import { ConsolePanel } from './console/ConsolePanel'
 import { SyntaxHelper } from './syntax/SyntaxHelper'
+import { BuiltinHover } from './syntax/BuiltinHover'
 import { Chat } from './chat/Chat'
 import { DIFFICULTIES, PROBLEMS, type Problem } from './problems/problems'
 import { ProblemPanel } from './problems/ProblemPanel'
@@ -41,6 +42,10 @@ export default function App() {
   const problem: Problem | undefined = PROBLEMS.find((p) => p.id === mode)
   // The glossary entry a concept chip opened, shown on its own until the learner goes back to the list.
   const [glossaryFocus, setGlossaryFocus] = useState<string | null>(null)
+  const openConcept = (id: string) => {
+    setGlossaryFocus(id)
+    setSidePanel('cards')
+  }
   const openProblem = (id: string) => {
     setMode(id)
     setCaseIndex(0)
@@ -61,6 +66,8 @@ export default function App() {
   const [playing, setPlaying] = useState(false)
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
   const monacoRef = useRef<typeof monaco | null>(null)
+  // The same editor as state, for the parts that render once it exists.
+  const [mounted, setMounted] = useState<{ editor: monaco.editor.IStandaloneCodeEditor; api: typeof monaco } | null>(null)
   const decorations = useRef<monaco.editor.IEditorDecorationsCollection | null>(null)
   const chatInputRef = useRef<HTMLInputElement>(null)
   const shortcutsRef = useRef<HTMLDialogElement>(null)
@@ -202,6 +209,7 @@ export default function App() {
   const onMount: OnMount = (editor, m) => {
     editorRef.current = editor
     monacoRef.current = m
+    setMounted({ editor, api: m })
     // The same shortcuts while typing. As editor actions they also show up in F1.
     const { KeyMod, KeyCode } = m
     const action = (id: Command, label: string, keybindings: number[] = []) =>
@@ -298,10 +306,7 @@ export default function App() {
                 result={resultsFresh ? (trace?.result ?? null) : null}
                 call={resultsFresh ? (trace?.call ?? null) : null}
                 stale={error?.kind === 'syntax'}
-                onOpenConcept={(id) => {
-                  setGlossaryFocus(id)
-                  setSidePanel('cards')
-                }}
+                onOpenConcept={openConcept}
               />
             )}
             <div className="editor-wrap">
@@ -325,6 +330,7 @@ export default function App() {
                 quickSuggestions: false,
               }}
             />
+            <BuiltinHover editor={mounted?.editor ?? null} monacoApi={mounted?.api ?? null} onOpenConcept={openConcept} />
             </div>
           </section>
           <section className="pane viz-pane">

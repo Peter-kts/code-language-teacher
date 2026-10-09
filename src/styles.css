@@ -337,7 +337,23 @@ button.console-at:hover { color: var(--accent); background: none; box-shadow: no
 
 /* ---------- Problem ---------- */
 .editor-pane { display: flex; flex-direction: column; overflow: hidden; }
-.editor-wrap { flex: 1; min-height: 200px; }
+.editor-wrap { flex: 1; min-height: 200px; position: relative; }
+/* The pop-up for a built-in under the mouse (src/syntax/BuiltinHover.tsx). */
+.builtin-hover {
+  position: absolute; z-index: 20;
+  padding: 0.6rem 0.75rem; border-radius: 10px;
+  background: var(--panel-solid); border: 1px solid #3a3350;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.6);
+  font-size: 0.85rem;
+}
+.builtin-sig { font-family: var(--font-mono); color: var(--accent); font-size: 0.82rem; }
+.builtin-hover p { margin: 0.35rem 0 0.45rem; color: var(--muted); line-height: 1.4; }
+.builtin-hover pre {
+  margin: 0; font-size: 0.78rem; white-space: pre-wrap;
+  background: rgba(5, 4, 10, 0.6); border: 1px solid var(--line);
+  padding: 0.45rem 0.55rem; border-radius: 6px;
+}
+.builtin-more { margin-top: 0.5rem; font-size: 0.78rem; padding: 0.15rem 0.6rem; }
 .problem {
   padding: 0.8rem 1.1rem; border-bottom: 1px solid var(--line);
   max-height: 45%; overflow: auto; font-size: 0.9rem; color: var(--muted);
