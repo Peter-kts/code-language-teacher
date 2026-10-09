@@ -494,6 +494,7 @@ button.console-at:hover { color: var(--accent); background: none; box-shadow: no
 .chat-code button { position: absolute; top: 0.3rem; right: 0.3rem; font-size: 0.7rem; padding: 0.1rem 0.55rem; background: var(--panel-solid); }
 .chat-form { display: flex; gap: 0.45rem; }
 .chat-form button { flex-shrink: 0; }
+.chat-new { align-self: flex-start; font-size: 0.75rem; padding: 0.15rem 0.6rem; color: var(--muted); }
 
 /* ---------- Keyboard shortcuts: header button and the ? cheat sheet ---------- */
 .keys-btn { align-self: center; margin-right: 0.75rem; width: 1.8rem; height: 1.8rem; }
