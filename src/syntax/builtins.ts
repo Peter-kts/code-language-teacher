@@ -126,6 +126,30 @@ function inStringOrComment(line: string, i: number): boolean {
   return quote !== ''
 }
 
+/** A name in a line of code, with 0-based start and end (exclusive). */
+export interface NameHit {
+  name: string
+  start: number
+  end: number
+  /** Written after a dot, like the append in nums.append. */
+  afterDot: boolean
+}
+
+/** The name under the given 0-based column of a line of code, unless it's inside a string or comment. */
+export function nameAt(line: string, column: number): NameHit | null {
+  const word = /[A-Za-z_]\w*/g
+  let m: RegExpExecArray | null
+  while ((m = word.exec(line))) {
+    const start = m.index
+    const end = start + m[0].length
+    if (column < start) return null
+    if (column >= end) continue
+    if (inStringOrComment(line, start)) return null
+    return { name: m[0], start, end, afterDot: line.slice(0, start).trimEnd().endsWith('.') }
+  }
+  return null
+}
+
 export interface BuiltinHit {
   builtin: Builtin
   /** 0-based start and end (exclusive) of the name in the line. */
@@ -138,25 +162,16 @@ export interface BuiltinHit {
  * A bare name counts only when it's called, so a variable named max or sum doesn't get the tooltip.
  */
 export function builtinAt(line: string, column: number): BuiltinHit | null {
-  const word = /[A-Za-z_]\w*/g
-  let m: RegExpExecArray | null
-  while ((m = word.exec(line))) {
-    const start = m.index
-    const end = start + m[0].length
-    if (column < start) return null
-    if (column >= end) continue
-    if (inStringOrComment(line, start)) return null
-    const before = line.slice(0, start).trimEnd()
-    const isMethod = before.endsWith('.')
-    if (isMethod) {
-      const builtin = METHODS.get(m[0])
-      return builtin ? { builtin, start, end } : null
-    }
-    // def sum(...) or class list: is the learner's own name.
-    if (/(^|\W)(def|class)$/.test(before)) return null
-    if (!/^\s*\(/.test(line.slice(end))) return null
-    const builtin = FUNCTIONS.get(m[0])
+  const hit = nameAt(line, column)
+  if (!hit) return null
+  const { name, start, end } = hit
+  if (hit.afterDot) {
+    const builtin = METHODS.get(name)
     return builtin ? { builtin, start, end } : null
   }
-  return null
+  // def sum(...) or class list: is the learner's own name.
+  if (/(^|\W)(def|class)$/.test(line.slice(0, start).trimEnd())) return null
+  if (!/^\s*\(/.test(line.slice(end))) return null
+  const builtin = FUNCTIONS.get(name)
+  return builtin ? { builtin, start, end } : null
 }

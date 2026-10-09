@@ -12,7 +12,7 @@ import { buildHistory } from './viz/history'
 import { HistoryPanel } from './viz/HistoryPanel'
 import { ConsolePanel } from './console/ConsolePanel'
 import { SyntaxHelper } from './syntax/SyntaxHelper'
-import { BuiltinHover } from './syntax/BuiltinHover'
+import { CodeHover } from './syntax/CodeHover'
 import { Chat } from './chat/Chat'
 import { DIFFICULTIES, PROBLEMS, type Problem } from './problems/problems'
 import { ProblemPanel } from './problems/ProblemPanel'
@@ -77,6 +77,7 @@ export default function App() {
   const step = steps[shownStep]
   const prevStep = previousInFrame(steps, shownStep)
   const history = useMemo(() => (trace ? buildHistory(trace.steps, trace) : []), [trace])
+  const variables = useMemo(() => new Set(steps.flatMap((s) => Object.keys(s.vars))), [trace])
 
   // What the step buttons and the keyboard shortcuts do (keys in src/shortcuts.ts).
   const stepTo = (next: (i: number) => number) => {
@@ -330,7 +331,14 @@ export default function App() {
                 quickSuggestions: false,
               }}
             />
-            <BuiltinHover editor={mounted?.editor ?? null} monacoApi={mounted?.api ?? null} onOpenConcept={openConcept} />
+            <CodeHover
+              editor={mounted?.editor ?? null}
+              monacoApi={mounted?.api ?? null}
+              step={step}
+              stepNumber={shownStep + 1}
+              variables={variables}
+              onOpenConcept={openConcept}
+            />
             </div>
           </section>
           <section className="pane viz-pane">
