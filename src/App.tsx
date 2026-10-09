@@ -17,6 +17,7 @@ import { DIFFICULTIES, PROBLEMS, type Problem } from './problems/problems'
 import { ProblemPanel } from './problems/ProblemPanel'
 import { commandFor, focusKind, withShortcut, type Command } from './shortcuts'
 import { ShortcutsDialog } from './ShortcutsDialog'
+import { usePaneLayout } from './layout/usePaneLayout'
 import type { RunRequest } from './types'
 
 const STARTER = `nums = [4, 8, 15, 16, 23, 42]
@@ -37,6 +38,7 @@ export default function App() {
     ...Object.fromEntries(PROBLEMS.map((p) => [p.id, p.starter])),
   }))
   const [caseIndex, setCaseIndex] = useState(0)
+  const layout = usePaneLayout()
   const [sidePanel, setSidePanel] = useState<'chat' | 'history' | 'cards'>('chat')
   const problem: Problem | undefined = PROBLEMS.find((p) => p.id === mode)
   // The glossary entry a concept chip opened, shown on its own until the learner goes back to the list.
@@ -286,8 +288,8 @@ export default function App() {
             <span className={`status status-${error ? 'error' : status}`}>{statusText}</span>
           </div>
         </header>
-        <main className="panes">
-          <section className="pane editor-pane">
+        <main className="panes" ref={layout.panesRef} style={layout.panesStyle}>
+          <section className={`pane editor-pane${layout.paneClass(0)}`}>
             {problem && (
               <ProblemPanel
                 key={problem.id}
@@ -323,11 +325,15 @@ export default function App() {
                 tabSize: 4,
                 // Word suggestions only on Ctrl+Space, so they don't pop up (and grab Enter) while typing.
                 quickSuggestions: false,
+                // Re-measure when a divider drag resizes the pane.
+                automaticLayout: true,
               }}
             />
             </div>
           </section>
-          <section className="pane viz-pane">
+          <div {...layout.columnDivider(0)} />
+          <section className={`pane viz-pane${layout.paneClass(1)}`} ref={layout.vizRef}>
+            <div className="viz-scroll">
             <div className="controls">
               <button
                 className="icon-btn"
@@ -410,7 +416,10 @@ export default function App() {
             ) : (
               <p className="muted">{status === 'loading' ? 'Starting Python in your browser…' : 'Write some code.'}</p>
             )}
+            </div>
+            {trace && <div {...layout.consoleDivider} />}
             {trace && (
+              <div className={`console-dock${layout.consoleCollapsed ? ' collapsed' : ''}`} style={layout.consoleStyle}>
               <ConsolePanel
                 entries={trace.console}
                 error={error}
@@ -422,9 +431,11 @@ export default function App() {
                   setStepIndex(Math.min(i, steps.length - 1))
                 }}
               />
+              </div>
             )}
           </section>
-          <section className="pane syntax-pane">
+          <div {...layout.columnDivider(1)} />
+          <section className={`pane syntax-pane${layout.paneClass(2)}`}>
             <div className="side-tabs">
               <button className={sidePanel === 'chat' ? 'tab active' : 'tab'} onClick={() => setSidePanel('chat')}>
                 Ask Claude

@@ -139,17 +139,49 @@ strong { font-weight: 500; }
 }
 .pane {
   min-height: 0; overflow: auto;
-  border-right: 1px solid var(--line);
   background: var(--panel);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
   scrollbar-width: thin; scrollbar-color: rgba(200, 180, 255, 0.2) transparent;
 }
-.pane:last-child { border-right: 0; }
+/* A pane dragged shut keeps its state (chat, scroll) but takes no room. */
+@media (min-width: 901px) {
+  .pane-collapsed { padding: 0 !important; overflow: hidden !important; visibility: hidden; }
+}
+
+/* ---------- Dividers between panes ---------- */
+.divider {
+  position: relative; z-index: 4;
+  background: var(--line);
+  background-clip: content-box;
+  touch-action: none; outline: none;
+  transition: background-color 0.15s;
+}
+.divider-col { padding: 0 3px; cursor: col-resize; }
+.divider-row { flex: none; height: 7px; padding: 3px 0; cursor: row-resize; }
+.divider:hover, .divider:focus-visible, body.resizing .divider:active { background-color: var(--accent); }
+/* A wider grab handle in the middle, so the 1px line is easy to hit. */
+.divider::after {
+  content: ''; position: absolute; border-radius: 3px;
+  background: rgba(200, 180, 255, 0.28); transition: background 0.15s;
+}
+.divider-col::after { top: 50%; left: 1px; width: 5px; height: 36px; transform: translateY(-50%); }
+.divider-row::after { left: 50%; top: 1px; height: 5px; width: 36px; transform: translateX(-50%); }
+.divider:hover::after, .divider:focus-visible::after { background: var(--accent); }
+/* Next to a hidden pane the handle becomes a chevron pointing where the pane will open. */
+.divider-closed::after { background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent); }
+.divider-col.divider-closed::after { width: 7px; left: 0; height: 52px; }
+body.resizing { user-select: none; -webkit-user-select: none; }
+body.resizing .pane { pointer-events: none; }
 .editor-pane { background: var(--editor-glass); }
-.viz-pane, .syntax-pane { padding: 0.9rem 1.1rem; }
-/* A column, so the console sits at the bottom even when the visualizer is short. */
-.viz-pane { display: flex; flex-direction: column; }
-.viz-pane > * { flex-shrink: 0; }
+.viz-scroll, .syntax-pane { padding: 0.9rem 1.1rem; }
+/* The visualizer scrolls on its own; the console sits below it at the height its divider sets. */
+.viz-pane { display: flex; flex-direction: column; overflow: hidden; }
+.viz-scroll {
+  flex: 1; min-height: 0; overflow: auto;
+  scrollbar-width: thin; scrollbar-color: rgba(200, 180, 255, 0.2) transparent;
+}
+.viz-scroll > * { flex-shrink: 0; }
+.console-dock { flex: none; min-height: 0; max-height: calc(100% - 7px); }
 .syntax-pane h2 { font-size: 1rem; margin: 0 0 0.5rem; }
 
 /* ---------- Controls ---------- */
@@ -296,16 +328,17 @@ button:disabled { opacity: 0.4; cursor: default; }
 .output-title::before { content: ':'; }
 /* Console: pinned to the bottom of the visualizer pane, scrolling on its own. */
 .console {
-  position: sticky; bottom: -0.9rem; z-index: 2;
-  margin: auto -1.1rem -0.9rem; padding: 0.55rem 1.1rem 0.7rem;
-  border-top: 1px solid var(--line-strong);
+  height: 100%; display: flex; flex-direction: column;
+  padding: 0.55rem 1.1rem 0.7rem;
   background: rgba(7, 5, 14, 0.9);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
 }
+.console-dock.collapsed .console-body { display: none; }
+.console-dock.collapsed .console { padding-bottom: 0.55rem; }
 .console-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
 .console-later { font-family: var(--font-mono); font-size: 0.68rem; color: var(--faint); }
 .console-body {
-  max-height: 11rem; overflow: auto; margin-top: 0.4rem;
+  flex: 1; min-height: 0; overflow: auto; margin-top: 0.4rem;
   font-family: var(--font-mono); font-size: 0.85rem; line-height: 1.55;
   scrollbar-width: thin; scrollbar-color: rgba(200, 180, 255, 0.2) transparent;
 }
@@ -494,7 +527,9 @@ kbd {
   .top .tabs { grid-row: 2; padding: 0.5rem 1rem 0.7rem; }
   .top-right { grid-row: 2; }
   .status { border-left: 0; padding: 0 1rem; }
-  .panes { grid-template-columns: minmax(0, 1fr); grid-auto-rows: minmax(320px, auto); }
+  .panes { grid-template-columns: minmax(0, 1fr) !important; grid-auto-rows: minmax(320px, auto); }
+  /* Stacked panes: no side-by-side dividers. */
+  .divider-col { display: none; }
   .pane { border-right: 0; border-bottom: 1px solid var(--line); }
   .editor-pane { min-height: 420px; }
   .hist-list { flex: none; max-height: 60vh; }
