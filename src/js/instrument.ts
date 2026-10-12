@@ -287,7 +287,8 @@ class Instrumenter {
     const outer = new Set(this.current.filter((s) => !this.module.includes(s)).flat())
     const used = referencedNames([fn.params, body])
     const captured = [...used].filter((n) => outer.has(n) && !mine.has(n) && !n.startsWith('__ct'))
-    const scopes: Scopes = [captured, ...own]
+    // Its own names first, then everything around it (a callback's `total`, say), since it can read and change those too.
+    const scopes: Scopes = [...own, ...this.current]
     const saved = this.current
     this.current = scopes
     this.depth++
@@ -429,6 +430,12 @@ class Instrumenter {
         const inLoop = [...scopes, names]
         this.expressions(s.right)
         s.body = this.body(s.body, inLoop)
+        if (!s.body.body.length) {
+          // With nothing in the body yet (just a comment, say), still step once per pass so the loop
+          // variables show: on the body's first line, as Python steps on a `pass`.
+          const { start, end } = s.loc
+          s.body.body.push(stmt(this.step(end.line > start.line + 1 ? start.line + 1 : line, inLoop)))
+        }
         const over = s.type === 'ForInStatement' ? rt('k', [s.right]) : s.right
         // Each pass after the first steps on the loop line before taking the next item.
         s.right = rt('i', [

@@ -108,6 +108,32 @@ let u
     expect(typeLabel(last.u)).toBe('undefined')
   })
 
+  it('shows the variables a callback closes over, next to its own', () => {
+    const t = trace(`let total = 0
+const nums = [1, 2]
+nums.forEach((n) => {
+  total += n
+})
+`)
+    const inside = t.steps.filter((s) => s.func === '<anonymous>')
+    expect(lines(inside)).toEqual(['4: n=1 total=0 nums=[1, 2]', '4: n=2 total=1 nums=[1, 2]'])
+  })
+
+  it('shows loop variables even while the loop body is empty', () => {
+    const t = trace(
+      `function twoSum(nums, target) {
+  for (const [i, num] of nums.entries()) {
+    // what number would pair with num?
+  }
+}`,
+      { name: 'twoSum', args: [[2, 7], 9] },
+    )
+    expect(lines(t.steps.filter((s) => s.line === 3))).toEqual([
+      '3: nums=[2, 7] target=9 i=0 num=2',
+      '3: nums=[2, 7] target=9 i=1 num=7',
+    ])
+  })
+
   it('reports a runtime error on the line that threw, through the calls it went through', () => {
     const t = trace(`function boom(x) {
   return x.y.z
