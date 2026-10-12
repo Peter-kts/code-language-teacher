@@ -8,9 +8,10 @@ export const HISTORY_KEY = 'clt.chat.v1'
 export const MAX_SAVED = 200
 
 /** The saved conversation, or [] when there is none or storage is blocked. */
-export function loadHistory(storage: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage): ChatMessage[] {
+export function loadHistory(storage?: Pick<Storage, 'getItem'>): ChatMessage[] {
   try {
-    const saved = JSON.parse(storage?.getItem(HISTORY_KEY) ?? 'null') as unknown
+    // Read localStorage inside the try: with storage blocked, merely touching it throws.
+    const saved = JSON.parse((storage ?? globalThis.localStorage)?.getItem(HISTORY_KEY) ?? 'null') as unknown
     if (!Array.isArray(saved)) return []
     return saved.filter(
       (m): m is ChatMessage =>
@@ -21,8 +22,9 @@ export function loadHistory(storage: Pick<Storage, 'getItem'> | undefined = glob
   }
 }
 
-export function saveHistory(messages: ChatMessage[], storage: Pick<Storage, 'setItem' | 'removeItem'> | undefined = globalThis.localStorage) {
+export function saveHistory(messages: ChatMessage[], storage?: Pick<Storage, 'setItem' | 'removeItem'>) {
   try {
+    storage ??= globalThis.localStorage
     if (messages.length === 0) storage?.removeItem(HISTORY_KEY)
     else storage?.setItem(HISTORY_KEY, JSON.stringify(messages.slice(-MAX_SAVED)))
   } catch {

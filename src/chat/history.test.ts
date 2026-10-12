@@ -61,4 +61,20 @@ describe('chat history', () => {
     expect(loadHistory(blocked)).toEqual([])
     expect(() => saveHistory([{ role: 'user', content: 'x' }], blocked)).not.toThrow()
   })
+  it('survives a localStorage getter that throws', () => {
+    const desc = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new Error('SecurityError')
+      },
+    })
+    try {
+      expect(loadHistory()).toEqual([])
+      expect(() => saveHistory([{ role: 'user', content: 'x' }])).not.toThrow()
+    } finally {
+      if (desc) Object.defineProperty(globalThis, 'localStorage', desc)
+      else delete (globalThis as { localStorage?: unknown }).localStorage
+    }
+  })
 })
