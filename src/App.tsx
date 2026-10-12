@@ -127,7 +127,8 @@ export default function App() {
   const chatInputRef = useRef<HTMLInputElement>(null)
   const shortcutsRef = useRef<HTMLDialogElement>(null)
 
-  const steps = trace?.steps ?? []
+  // While a predict problem is covered there are no steps to walk, so nothing (line highlights, the scrubber) gives the answer away.
+  const steps = covered ? [] : (trace?.steps ?? [])
   const shownStep = Math.min(stepIndex, Math.max(0, steps.length - 1))
   const step = steps[shownStep]
   const prevStep = previousInFrame(steps, shownStep)

@@ -202,6 +202,25 @@ console.log(g(), fs[0](), fs[1]())
     expect(t.console[0].text).toBe('10 0 1\n')
   })
 
+  it('registers a closure made by a function declaration before its line runs (hoisting)', () => {
+    const t = trace(`function makeCounter() {
+  let count = 0
+  return increment
+  function increment() {
+    count++
+    return count
+  }
+}
+const counter = makeCounter()
+counter()
+switch (1) {
+  case 1:
+    function inCase() {}
+}
+`)
+    expect(formatValue(t.steps[t.steps.length - 1].vars.counter)).toBe('ƒ increment ⟨count: 1⟩')
+  })
+
   it('gives each object one id for the whole run', () => {
     const t = trace(`const a = [1]
 const b = a

@@ -184,6 +184,8 @@ class Instrumenter {
   private module: Scopes = []
   /** How many functions the code being rewritten is inside. */
   private depth = 0
+  /** Where closures made by function declarations are registered: the top of their block, since the functions exist from there (hoisting). */
+  private hoisted: Node[] | null = null
 
   constructor(private source: string) {
     this.lines = source.split('\n')
@@ -343,7 +345,11 @@ class Instrumenter {
   /** A statement list with a step in front of each statement. `nested` adds a block scope. */
   private statements(body: Node[], scopes: Scopes, nested = true): Node[] {
     const inner = nested ? [...scopes, blockNames(body)] : scopes
-    return body.flatMap((s) => this.statement(s, inner, true))
+    const saved = this.hoisted
+    const hoisted: Node[] = (this.hoisted = [])
+    const out = body.flatMap((s) => this.statement(s, inner, true))
+    this.hoisted = saved
+    return [...hoisted, ...out]
   }
 
   /** A loop or if body as a block, so steps can go inside it. */
@@ -370,7 +376,11 @@ class Instrumenter {
       case 'FunctionDeclaration': {
         // Declared before the code runs (hoisted), so nothing happens on its line.
         const captured = this.function(s, s.id.name)
-        return this.isClosure(captured) ? [s, stmt(this.closure(id(s.id.name), captured, s.id.name))] : [s]
+        if (!this.isClosure(captured)) return [s]
+        const register = stmt(this.closure(id(s.id.name), captured, s.id.name))
+        if (!this.hoisted) return [s, register]
+        this.hoisted.push(register)
+        return [s]
       }
       case 'VariableDeclaration':
         for (const d of s.declarations) {
@@ -442,10 +452,14 @@ class Instrumenter {
       case 'SwitchStatement': {
         this.expressions(s.discriminant)
         const inner = [...scopes, blockNames(s.cases.flatMap((c: Node) => c.consequent))]
+        // A function declared in a case belongs to the switch's own block: register it in place.
+        const outerHoisted = this.hoisted
+        this.hoisted = null
         for (const c of s.cases) {
           this.expressions(c.test)
           c.consequent = c.consequent.flatMap((x: Node) => this.statement(x, inner, true))
         }
+        this.hoisted = outerHoisted
         return [...pre, s]
       }
       case 'LabeledStatement':
