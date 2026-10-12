@@ -154,6 +154,8 @@ class Instrumenter {
   private lines: string[]
   /** Hidden index counters for `for (const n of nums)`, keyed by the loop node. */
   private hidden = new Map<Node, string>()
+  /** The scopes around the statement being rewritten, so a function inside it can show what it closes over. */
+  private around: Scopes = []
 
   constructor(private source: string) {
     this.lines = source.split('\n')
@@ -245,7 +247,8 @@ class Instrumenter {
       body = [{ type: 'ReturnStatement', argument: fn.body, loc: fn.body.loc, start: fn.body.start, end: fn.body.end } as Node]
       fn.expression = false
     }
-    const scopes: Scopes = [params, varNames(body), blockNames(body)]
+    // Its own names first, then the ones it closes over (a callback's `total`, say), since it can read and change those too.
+    const scopes: Scopes = [params, varNames(body), blockNames(body), ...this.around]
     fn.body = this.frame(name, this.statements(body, scopes, false))
   }
 
@@ -285,6 +288,16 @@ class Instrumenter {
   }
 
   private statement(s: Node, scopes: Scopes, withStep: boolean): Node[] {
+    const outside = this.around
+    this.around = scopes
+    try {
+      return this.rewrite(s, scopes, withStep)
+    } finally {
+      this.around = outside
+    }
+  }
+
+  private rewrite(s: Node, scopes: Scopes, withStep: boolean): Node[] {
     const line: number = s.loc.start.line
     const pre = withStep ? [stmt(this.step(line, scopes))] : []
     switch (s.type) {
@@ -341,6 +354,12 @@ class Instrumenter {
         const inLoop = [...scopes, names]
         this.expressions(s.right)
         s.body = this.body(s.body, inLoop)
+        if (!s.body.body.length) {
+          // With nothing in the body yet (just a comment, say), still step once per pass so the loop
+          // variables show: on the body's first line, as Python steps on a `pass`.
+          const { start, end } = s.loc
+          s.body.body.push(stmt(this.step(end.line > start.line + 1 ? start.line + 1 : line, inLoop)))
+        }
         const over = s.type === 'ForInStatement' ? rt('k', [s.right]) : s.right
         // Each pass after the first steps on the loop line before taking the next item.
         s.right = rt('i', [
