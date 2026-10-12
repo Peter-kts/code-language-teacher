@@ -27,6 +27,8 @@ interface Frame {
   pending: Record<string, Brief> | null
   /** Its last step, so a loop line can keep showing the item from the pass that just ended. */
   last: Step | null
+  /** Outer variables it can read, when it is a closure. */
+  captured: string[]
 }
 
 type Getters = Record<string, () => unknown>
@@ -35,8 +37,9 @@ type Getters = Record<string, () => unknown>
 interface Hooks {
   s(line: number, getters: Getters): void
   r<T>(id: number, value: T): T
-  e(func: string): void
+  e(func: string, captured?: string[]): void
   o(): void
+  f<F extends object>(fn: F, getters: Getters, name: string): F
   x(err: unknown): void
   i(line: number, iterable: Iterable<unknown>, getters: Getters, carry: string[], hidden: string | null): Iterable<unknown>
   k(obj: object): string[]
@@ -48,6 +51,16 @@ function forInKeys(obj: object): string[] {
   for (const k in obj) out.push(k)
   return out
 }
+
+/** What each closure the program made remembers, and how to read it; and which object is which. */
+interface Memory {
+  closures: WeakMap<object, { getters: Getters; name: string }>
+  ids: WeakMap<object, number>
+  nextId: number
+}
+
+/** Set while a traced run is going, so serialize can draw closures and tell objects apart. */
+let memory: Memory | null = null
 
 class Tracer implements Hooks {
   steps: Step[] = []
@@ -75,8 +88,13 @@ class Tracer implements Hooks {
     return value
   }
 
-  e(func: string) {
-    this.stack.push({ id: this.nextFrame++, func, line: this.top()?.line ?? 1, getters: null, hidden: {}, pending: null, last: null })
+  e(func: string, captured: string[] = []) {
+    this.stack.push({ id: this.nextFrame++, func, line: this.top()?.line ?? 1, getters: null, hidden: {}, pending: null, last: null, captured })
+  }
+
+  f<F extends object>(fn: F, getters: Getters, name: string): F {
+    memory?.closures.set(fn, { getters, name })
+    return fn
   }
 
   o() {
@@ -144,11 +162,14 @@ class Tracer implements Hooks {
       } catch {
         continue // declared with let or const further down: not there yet
       }
-      if (typeof value === 'function') continue
+      // Plain functions are code, not data; closures are drawn with what they remember.
+      if (typeof value === 'function' && !memory?.closures.has(value)) continue
       vars[name] = serialize(value)
     }
     for (const [name, value] of Object.entries(extra)) if (!(name in vars)) vars[name] = value
     const step: Step = { line, func: frame.func, frame: frame.id, vars, hidden: { ...frame.hidden }, stdout: this.stdout }
+    const captured = frame.captured.filter((n) => n in vars)
+    if (captured.length) step.captured = captured
     if (frame.pending) {
       step.ran = frame.pending
       frame.pending = null
@@ -175,6 +196,9 @@ class Guard implements Hooks {
   }
   e() {}
   o() {}
+  f<F extends object>(fn: F) {
+    return fn
+  }
   x() {}
   *i(_line: number, iterable: Iterable<unknown>) {
     for (const item of iterable) {
@@ -224,6 +248,7 @@ export function runTraced(source: string, call: { name: string; args: unknown[] 
   const console = makeConsole((stream, text) => tracer.write(stream, text))
   let error: CodeError | null = null
   let result: Value | null = null
+  memory = { closures: new WeakMap(), ids: new WeakMap(), nextId: 1 }
   try {
     const fn = compile(made.code)(tracer, console)
     if (call) {
@@ -235,6 +260,8 @@ export function runTraced(source: string, call: { name: string; args: unknown[] 
       const frames = (err !== null && typeof err === 'object' ? tracer.traces.get(err) : tracer.lastTrace) ?? []
       error = { kind: 'runtime', message: errorText(err), line: frames.length ? frames[frames.length - 1].line : null, traceback: frames }
     }
+  } finally {
+    memory = null
   }
   return {
     ok: true,
@@ -251,8 +278,15 @@ export function runTraced(source: string, call: { name: string; args: unknown[] 
   }
 }
 
-/** Run `name(...case.args)` for each case without tracing. Answers are compared in any order when `case.unordered` is set. */
-export function runTests(source: string, name: string, cases: { args: unknown[]; expected: unknown; unordered?: boolean }[]): TestResult[] {
+/**
+ * Run `name(...case.args)` for each case without tracing. Answers are compared in any order when `case.unordered` is set.
+ * A case with `run` instead runs that code (a function body that can use `name`) and checks what it returns.
+ */
+export function runTests(
+  source: string,
+  name: string,
+  cases: { args: unknown[]; expected: unknown; unordered?: boolean; run?: string }[],
+): TestResult[] {
   const made = instrument(source, name)
   if ('error' in made) return cases.map(() => ({ passed: false, got: null, error: `SyntaxError: ${made.error.message}` }))
   const guard = new Guard()
@@ -268,7 +302,7 @@ export function runTests(source: string, name: string, cases: { args: unknown[];
     if (typeof fn !== 'function') return { passed: false, got: null, error: `define a function named ${name}` }
     try {
       guard.start()
-      const got = fn(...copy(c.args))
+      const got = c.run ? new Function(name, `"use strict";\n${c.run}`)(fn) : fn(...copy(c.args))
       const passed = c.unordered && Array.isArray(got) && Array.isArray(c.expected) ? sameItems(got, c.expected) : equal(got, c.expected)
       return { passed, got: show(got), error: null }
     } catch (err) {
@@ -322,20 +356,34 @@ export function serialize(value: unknown, depth = 0): Value {
       return { type: 'prim', repr: `${value}n`, t: 'bigint' }
     case 'symbol':
       return { type: 'other', repr: String(value), t: 'symbol' }
-    case 'function':
-      return { type: 'other', repr: `[Function: ${value.name || 'anonymous'}]`, t: 'function' }
+    case 'function': {
+      const closure = memory?.closures.get(value)
+      const name = closure?.name && !closure.name.startsWith('<') ? closure.name : value.name
+      const repr = `[Function: ${name || 'anonymous'}]`
+      if (!closure || depth >= MAX_DEPTH) return { type: 'other', repr, t: 'function' }
+      const captured: Record<string, Value> = {}
+      for (const [n, get] of Object.entries(closure.getters)) {
+        try {
+          captured[n] = serialize(get(), depth + 1)
+        } catch {
+          // not set yet (its let or const line hasn't run)
+        }
+      }
+      return { type: 'other', repr, t: 'function', captured }
+    }
   }
   if (value === null) return { type: 'prim', repr: 'null', value: null, t: 'null' }
   const obj = value as object
   if (depth >= MAX_DEPTH) return { type: 'other', repr: shortText(obj), t: constructorName(obj) }
+  const id = objectId(obj)
   if (Array.isArray(obj)) {
     const items: Value[] = []
     for (let i = 0; i < Math.min(obj.length, MAX_LIST_ITEMS); i++) items.push(serialize(obj[i], depth + 1))
-    return { type: 'list', items, truncated: obj.length > MAX_LIST_ITEMS, t: 'Array' }
+    return { type: 'list', items, truncated: obj.length > MAX_LIST_ITEMS, t: 'Array', id }
   }
   if (obj instanceof Set) {
     const all = [...obj]
-    return { type: 'list', items: all.slice(0, MAX_LIST_ITEMS).map((v) => serialize(v, depth + 1)), truncated: all.length > MAX_LIST_ITEMS, t: 'Set' }
+    return { type: 'list', items: all.slice(0, MAX_LIST_ITEMS).map((v) => serialize(v, depth + 1)), truncated: all.length > MAX_LIST_ITEMS, t: 'Set', id }
   }
   if (obj instanceof Map) {
     const all = [...obj]
@@ -344,6 +392,7 @@ export function serialize(value: unknown, depth = 0): Value {
       entries: all.slice(0, MAX_LIST_ITEMS).map(([k, v]) => [serialize(k, depth + 1), serialize(v, depth + 1)]),
       truncated: all.length > MAX_LIST_ITEMS,
       t: 'Map',
+      id,
     }
   }
   if (obj instanceof Date || obj instanceof RegExp || obj instanceof Error || ArrayBuffer.isView(obj)) {
@@ -358,7 +407,18 @@ export function serialize(value: unknown, depth = 0): Value {
     const v = desc && 'value' in desc ? serialize(desc.value, depth + 1) : ({ type: 'other', repr: '[Getter]' } as Value)
     entries.push([{ type: 'prim', repr: JSON.stringify(key), value: key, t: 'string' }, v])
   }
-  return { type: 'dict', entries, truncated: keys.length > MAX_LIST_ITEMS, t: constructorName(obj) }
+  return { type: 'dict', entries, truncated: keys.length > MAX_LIST_ITEMS, t: constructorName(obj), id }
+}
+
+/** The same number for the same object for the whole run (none outside a traced run). */
+function objectId(obj: object): number | undefined {
+  if (!memory) return undefined
+  let id = memory.ids.get(obj)
+  if (id === undefined) {
+    id = memory.nextId++
+    memory.ids.set(obj, id)
+  }
+  return id
 }
 
 const clip = (text: string, max = MAX_OTHER) => (text.length > max ? `${text.slice(0, max - 1)}…` : text)

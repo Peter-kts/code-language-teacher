@@ -3,6 +3,7 @@ import type { PointerSpec, Step, Value } from '../types'
 import { containerChanges, scalarChanges, stepRoles, type DeltaPart, type Plans, type Read } from './changes'
 import { formatValue } from './format'
 import { placePointers, type PlacedPointer } from './pointers'
+import { sharedObjects, type SharedNote } from './sharing'
 
 // Bright enough to read on the dark galaxy panels, and distinct from each other.
 const POINTER_COLORS = ['#c8b4ff', '#f0a7cf', '#8fb4ff', '#7ee0b8', '#ffc978', '#6fd8e8']
@@ -32,6 +33,19 @@ export function Visualizer({
   const lists = entries.filter(([, v]) => v.type === 'list' || v.type === 'tuple')
   const dicts = entries.filter(([, v]) => v.type === 'dict')
   const others = entries.filter(([, v]) => v.type !== 'list' && v.type !== 'tuple' && v.type !== 'dict')
+  const shared = sharedObjects(step.vars)
+  const remembered = new Set(step.captured ?? [])
+  // A closure's variables (count, in makeCounter's returned function) and objects two names share.
+  const notes = (name: string) => (
+    <>
+      {remembered.has(name) && (
+        <span className="remembered" title="This variable belongs to the function this one was made in. This function remembers it: a closure.">
+          remembered
+        </span>
+      )}
+      {shared[name]?.map((n) => <SharedChip key={n.path} name={name} note={n} />)}
+    </>
+  )
   const changes = scalarChanges(step, prevStep, plans)
   const boxes = containerChanges(step, prevStep, plans)
   const { sources: sourceNames, reads } = stepRoles(step, prevStep, plans)
@@ -56,6 +70,7 @@ export function Visualizer({
         <ListView
           key={name}
           name={name}
+          notes={notes(name)}
           value={value}
           pointers={placed[name] ?? []}
           colorOf={colorOf}
@@ -71,6 +86,7 @@ export function Visualizer({
         <DictView
           key={name}
           name={name}
+          notes={notes(name)}
           value={value}
           summary={badges(boxes[name]?.summary, [], 'inline')}
           rowBadges={(key) => badges(boxes[name]?.parts[key], readsOf(name, key), 'inline')}
@@ -87,17 +103,24 @@ export function Visualizer({
             return (
               <div key={name} className={cls} style={color ? ({ '--var-color': color } as CSSProperties) : undefined}>
                 {sources.has(name) && <span key={`p${tick}`} className="var-pulse" aria-hidden />}
-                <div className="var-name">{name}</div>
-                <div className="var-value">
-                  {change && (
-                    <span key={`old${tick}`} className="var-old" aria-hidden>
-                      {change.before}
-                    </span>
-                  )}
-                  <span key={change ? `new${tick}` : 'same'} className={change ? 'var-new' : undefined}>
-                    {formatValue(value)}
-                  </span>
+                <div className="var-name">
+                  {name}
+                  {notes(name)}
                 </div>
+                {value.type === 'other' && value.captured ? (
+                  <ClosureView value={value} changed={!!change} tick={tick} />
+                ) : (
+                  <div className="var-value">
+                    {change && (
+                      <span key={`old${tick}`} className="var-old" aria-hidden>
+                        {change.before}
+                      </span>
+                    )}
+                    <span key={change ? `new${tick}` : 'same'} className={change ? 'var-new' : undefined}>
+                      {formatValue(value)}
+                    </span>
+                  </div>
+                )}
                 {badges(change?.deltas, readsOf(name))}
               </div>
             )
@@ -105,6 +128,43 @@ export function Visualizer({
         </div>
       )}
       {entries.length === 0 && <p className="muted">No variables yet.</p>}
+    </div>
+  )
+}
+
+const SHARED_COLORS = ['#6fd8e8', '#f0a7cf', '#ffc978', '#c8b4ff', '#7ee0b8', '#8fb4ff']
+
+/** `🔗 same array as b`, or `🔗 .tags: same array as user.tags` for a part of the variable. */
+function SharedChip({ name, note }: { name: string; note: SharedNote }) {
+  const part = note.path === name ? '' : `${note.path.slice(name.length)}: `
+  return (
+    <span
+      className="shared-chip"
+      style={{ '--share-color': SHARED_COLORS[note.group % SHARED_COLORS.length] } as CSSProperties}
+      title="Not a copy: both names point at one object, so a change made through either shows up in both."
+    >
+      <span aria-hidden>🔗 </span>
+      {part}same {note.kind} as {note.others.join(', ')}
+    </span>
+  )
+}
+
+/** A closure: the function, and the outer variables it remembers with their values now. */
+function ClosureView({ value, changed, tick }: { value: Extract<Value, { type: 'other' }>; changed: boolean; tick?: number }) {
+  const name = /^\[Function: (.*)\]$/.exec(value.repr)?.[1]
+  const entries = Object.entries(value.captured ?? {})
+  return (
+    <div className="closure">
+      <div className="var-value">ƒ {name && name !== 'anonymous' ? name : <span className="muted">(no name)</span>}</div>
+      <div className="closure-label">{entries.length ? 'remembers' : 'remembers nothing yet'}</div>
+      {entries.map(([k, v]) => (
+        <div key={k} className="closure-row">
+          <span className="closure-name">{k}</span>
+          <span key={changed ? `c${tick}` : 'same'} className={changed ? 'var-new' : undefined}>
+            {formatValue(v)}
+          </span>
+        </div>
+      ))}
     </div>
   )
 }
@@ -183,6 +243,7 @@ function tone(text: string) {
 
 function ListView({
   name,
+  notes,
   value,
   pointers,
   colorOf,
@@ -193,6 +254,7 @@ function ListView({
   read,
 }: {
   name: string
+  notes: ReactNode
   value: Value
   pointers: PlacedPointer[]
   colorOf: (label: string) => string
@@ -211,6 +273,7 @@ function ListView({
     <div className="list">
       <div className="list-name">
         {name}
+        {notes}
         {summary}
       </div>
       <div className="list-grid" style={{ gridTemplateColumns: `repeat(${slots}, 3.25rem)` }}>
@@ -256,6 +319,7 @@ function ListView({
 
 function DictView({
   name,
+  notes,
   value,
   summary,
   rowBadges,
@@ -263,6 +327,7 @@ function DictView({
   read,
 }: {
   name: string
+  notes: ReactNode
   value: Value
   summary: ReactNode
   rowBadges: (key: string) => ReactNode
@@ -275,6 +340,7 @@ function DictView({
     <div className="dict">
       <div className="list-name">
         {name} <span className="muted">({value.t ?? 'dict'})</span>
+        {notes}
         {summary}
       </div>
       {value.entries.length === 0 ? (

@@ -23,8 +23,9 @@ export function formatValue(v: Value): string {
 function formatJs(v: Value): string {
   switch (v.type) {
     case 'prim':
-    case 'other':
       return v.repr
+    case 'other':
+      return v.captured ? closureText(v.repr, v.captured) : v.repr
     case 'list':
     case 'tuple': {
       const inner = `${v.items.map(formatValue).join(', ')}${v.truncated ? ', …' : ''}`
@@ -38,6 +39,16 @@ function formatJs(v: Value): string {
       return inner ? `${prefix}{ ${inner}${more} }` : `${prefix}{}`
     }
   }
+}
+
+/** A closure, with what it remembers: `ƒ increment ⟨count: 2⟩`. */
+function closureText(repr: string, captured: Record<string, Value>): string {
+  const name = /^\[Function: (.*)\]$/.exec(repr)?.[1]
+  const head = name && name !== 'anonymous' ? `ƒ ${name}` : 'ƒ'
+  const inner = Object.entries(captured)
+    .map(([k, val]) => `${k}: ${formatValue(val)}`)
+    .join(', ')
+  return inner ? `${head} ⟨${inner}⟩` : head
 }
 
 /** An object key as code: `a`, or `"two words"` when it isn't a plain name. */
