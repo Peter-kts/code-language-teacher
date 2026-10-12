@@ -6,6 +6,10 @@
 // that hands the runtime (runtime.ts) a way to read every variable in scope. The
 // parts of each assignment are wrapped in `__ct.r(id, value)` so the visualizer can
 // say what a change was made of, and every function reports when it starts and ends.
+//
+// A function that uses variables of a function around it (a closure) is handed to
+// `__ct.f(fn, {count: () => count}, name)`, so the runtime can show what it remembers,
+// and its own steps can read those variables too.
 
 import { parse } from 'acorn'
 import { generate } from 'astring'
@@ -137,6 +141,26 @@ function walk(node: Node | Node[], visit: (n: Node) => void) {
   }
 }
 
+/** Every plain name read or written under `node`: not property names like the `length` of `xs.length`. */
+function referencedNames(node: Node | Node[], out = new Set<string>()): Set<string> {
+  if (!node || typeof node !== 'object') return out
+  if (Array.isArray(node)) {
+    node.forEach((n) => referencedNames(n, out))
+    return out
+  }
+  if (node.type === 'Identifier') out.add(node.name)
+  else if (node.type === 'MemberExpression' && !node.computed) referencedNames(node.object, out)
+  else if ((node.type === 'Property' || node.type === 'MethodDefinition' || node.type === 'PropertyDefinition') && !node.computed)
+    referencedNames(node.value, out)
+  else
+    for (const key of Object.keys(node)) {
+      if (key === 'loc') continue
+      const v = node[key]
+      if (v && typeof v === 'object') referencedNames(v, out)
+    }
+  return out
+}
+
 const AUG_OPS: Record<string, string> = {
   '+=': '+', '-=': '-', '*=': '*', '/=': '/', '%=': '%', '**=': '**', '<<=': '<<', '>>=': '>>', '>>>=': '>>>',
   '|=': '|', '^=': '^', '&=': '&', '&&=': '&&', '||=': '||', '??=': '??',
@@ -154,8 +178,14 @@ class Instrumenter {
   private lines: string[]
   /** Hidden index counters for `for (const n of nums)`, keyed by the loop node. */
   private hidden = new Map<Node, string>()
-  /** The scopes around the statement being rewritten, so a function inside it can show what it closes over. */
-  private around: Scopes = []
+  /** The scopes the statement being rewritten can see, innermost last. */
+  private current: Scopes = []
+  /** The program's own scopes: globals, which a function uses but doesn't count as remembering. */
+  private module: Scopes = []
+  /** How many functions the code being rewritten is inside. */
+  private depth = 0
+  /** Where closures made by function declarations are registered: the top of their block, since the functions exist from there (hoisting). */
+  private hoisted: Node[] | null = null
 
   constructor(private source: string) {
     this.lines = source.split('\n')
@@ -163,6 +193,8 @@ class Instrumenter {
 
   program(program: Node, callName: string | null): Node {
     const scopes: Scopes = [varNames(program.body), blockNames(program.body)]
+    this.module = scopes
+    this.current = scopes
     const body = this.statements(program.body, scopes, false)
     // Hand the problem's function back from inside the block that declares it.
     if (callName && /^[A-Za-z_$][\w$]*$/.test(callName)) {
@@ -199,10 +231,11 @@ class Instrumenter {
   }
 
   /** `{ __ct.e(name); try { body } catch (e) { __ct.x(e); throw e } finally { __ct.o() } }` */
-  private frame(name: string, body: Node[]): Node {
+  private frame(name: string, body: Node[], captured: string[] = []): Node {
     const err = '__ct_err'
+    const names = { type: 'ArrayExpression', elements: captured.map((n) => lit(n)) } as Node
     return block([
-      stmt(rt('e', [lit(name)])),
+      stmt(rt('e', captured.length ? [lit(name), names] : [lit(name)])),
       {
         type: 'TryStatement',
         block: block(body),
@@ -237,7 +270,8 @@ class Instrumenter {
     return rt('s', [lit(line), this.getters(scopes)])
   }
 
-  private function(fn: Node, name: string) {
+  /** Rewrites a function; returns the outer variables it uses (what it remembers as a closure). */
+  private function(fn: Node, name: string): string[] {
     const params: string[] = []
     fn.params.forEach((p: Node) => patternNames(p, params))
     let body: Node[]
@@ -247,9 +281,31 @@ class Instrumenter {
       body = [{ type: 'ReturnStatement', argument: fn.body, loc: fn.body.loc, start: fn.body.start, end: fn.body.end } as Node]
       fn.expression = false
     }
-    // Its own names first, then the ones it closes over (a callback's `total`, say), since it can read and change those too.
-    const scopes: Scopes = [params, varNames(body), blockNames(body), ...this.around]
-    fn.body = this.frame(name, this.statements(body, scopes, false))
+    const own = [params, varNames(body), blockNames(body)]
+    const mine = new Set([...own.flat(), ...(fn.id ? [fn.id.name] : [])])
+    // Names of enclosing functions and blocks (not globals) that this one reads or writes.
+    const outer = new Set(this.current.filter((s) => !this.module.includes(s)).flat())
+    const used = referencedNames([fn.params, body])
+    const captured = [...used].filter((n) => outer.has(n) && !mine.has(n) && !n.startsWith('__ct'))
+    // Its own names first, then everything around it (a callback's `total`, say), since it can read and change those too.
+    const scopes: Scopes = [...own, ...this.current]
+    const saved = this.current
+    this.current = scopes
+    this.depth++
+    fn.body = this.frame(name, this.statements(body, scopes, false), captured)
+    this.depth--
+    this.current = saved
+    return captured
+  }
+
+  /** Functions made inside a function are shown as closures, even before they use anything from it. */
+  private isClosure(captured: string[]) {
+    return captured.length > 0 || this.depth > 0
+  }
+
+  /** `__ct.f(fn, {count: () => count}, "name")`: lets the runtime read what a closure remembers. */
+  private closure(fn: Node, captured: string[], name: string): Node {
+    return rt('f', [fn, this.getters([captured]), lit(name)])
   }
 
   /** Rewrite every function inside an expression (callbacks, arrow functions, class methods). */
@@ -264,22 +320,37 @@ class Instrumenter {
       const v = node[key]
       if (!v || typeof v !== 'object') continue
       const children: Node[] = Array.isArray(v) ? v : [v]
-      for (const child of children) {
-        if (!child || typeof child.type !== 'string') continue
+      children.forEach((child, i) => {
+        if (!child || typeof child.type !== 'string') return
         let hint = '<anonymous>'
         if (node.type === 'VariableDeclarator' && key === 'init' && node.id.type === 'Identifier') hint = node.id.name
         else if ((node.type === 'Property' || node.type === 'MethodDefinition' || node.type === 'PropertyDefinition') && key === 'value')
           hint = node.key.name ?? String(node.key.value ?? hint)
         else if (node.type === 'AssignmentExpression' && key === 'right' && node.left.type === 'Identifier') hint = node.left.name
-        this.expressions(child, hint)
-      }
+        if (!isFunction(child)) {
+          this.expressions(child, hint)
+          return
+        }
+        const name = child.id?.name ?? hint
+        const captured = this.function(child, name)
+        // A method's function can't be wrapped in a call; it can only use what its class or object can.
+        const isMethod = node.type === 'MethodDefinition' || (node.type === 'Property' && (node.method || node.kind !== 'init'))
+        if (!this.isClosure(captured) || isMethod) return
+        const wrapped = this.closure(child, captured, name)
+        if (Array.isArray(v)) v[i] = wrapped
+        else node[key] = wrapped
+      })
     }
   }
 
   /** A statement list with a step in front of each statement. `nested` adds a block scope. */
   private statements(body: Node[], scopes: Scopes, nested = true): Node[] {
     const inner = nested ? [...scopes, blockNames(body)] : scopes
-    return body.flatMap((s) => this.statement(s, inner, true))
+    const saved = this.hoisted
+    const hoisted: Node[] = (this.hoisted = [])
+    const out = body.flatMap((s) => this.statement(s, inner, true))
+    this.hoisted = saved
+    return [...hoisted, ...out]
   }
 
   /** A loop or if body as a block, so steps can go inside it. */
@@ -288,12 +359,12 @@ class Instrumenter {
   }
 
   private statement(s: Node, scopes: Scopes, withStep: boolean): Node[] {
-    const outside = this.around
-    this.around = scopes
+    const saved = this.current
+    this.current = scopes
     try {
       return this.rewrite(s, scopes, withStep)
     } finally {
-      this.around = outside
+      this.current = saved
     }
   }
 
@@ -303,10 +374,15 @@ class Instrumenter {
     switch (s.type) {
       case 'EmptyStatement':
         return []
-      case 'FunctionDeclaration':
+      case 'FunctionDeclaration': {
         // Declared before the code runs (hoisted), so nothing happens on its line.
-        this.function(s, s.id.name)
+        const captured = this.function(s, s.id.name)
+        if (!this.isClosure(captured)) return [s]
+        const register = stmt(this.closure(id(s.id.name), captured, s.id.name))
+        if (!this.hoisted) return [s, register]
+        this.hoisted.push(register)
         return [s]
+      }
       case 'VariableDeclaration':
         for (const d of s.declarations) {
           if (!d.init) continue
@@ -383,10 +459,14 @@ class Instrumenter {
       case 'SwitchStatement': {
         this.expressions(s.discriminant)
         const inner = [...scopes, blockNames(s.cases.flatMap((c: Node) => c.consequent))]
+        // A function declared in a case belongs to the switch's own block: register it in place.
+        const outerHoisted = this.hoisted
+        this.hoisted = null
         for (const c of s.cases) {
           this.expressions(c.test)
           c.consequent = c.consequent.flatMap((x: Node) => this.statement(x, inner, true))
         }
+        this.hoisted = outerHoisted
         return [...pre, s]
       }
       case 'LabeledStatement':

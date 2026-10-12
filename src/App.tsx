@@ -16,6 +16,7 @@ import { CodeHover } from './syntax/CodeHover'
 import { Chat } from './chat/Chat'
 import { DIFFICULTIES, PROBLEMS, type Problem } from './problems/problems'
 import { ProblemPanel } from './problems/ProblemPanel'
+import { JS_CONCEPTS } from './problems/concepts'
 import { commandFor, focusKind, withShortcut, type Command } from './shortcuts'
 import { ShortcutsDialog } from './ShortcutsDialog'
 import { usePaneLayout } from './layout/usePaneLayout'
@@ -57,7 +58,10 @@ function savedLanguage(): Language {
 /** Everyone's starting code: the playground and each problem, in each language. */
 const startingCode = (): Record<Language, Record<string, string>> => ({
   python: { [PLAYGROUND]: STARTERS.python, ...Object.fromEntries(PROBLEMS.map((p) => [p.id, p.starters.python])) },
-  javascript: { [PLAYGROUND]: STARTERS.javascript, ...Object.fromEntries(PROBLEMS.map((p) => [p.id, p.starters.javascript])) },
+  javascript: {
+    [PLAYGROUND]: STARTERS.javascript,
+    ...Object.fromEntries([...PROBLEMS, ...JS_CONCEPTS].map((p) => [p.id, p.starters.javascript])),
+  },
 })
 
 const PLAY_MS = 700
@@ -69,6 +73,8 @@ export default function App() {
   const [language, setLanguageState] = useState<Language>(savedLanguage)
   const setLanguage = (next: Language) => {
     setLanguageState(next)
+    // The concept problems are JavaScript only.
+    if (next !== 'javascript' && JS_CONCEPTS.some((p) => p.id === mode)) setMode(PLAYGROUND)
     try {
       localStorage.setItem(LANGUAGE_KEY, next)
     } catch {
@@ -80,7 +86,10 @@ export default function App() {
   const [caseIndex, setCaseIndex] = useState(0)
   const layout = usePaneLayout()
   const [sidePanel, setSidePanel] = useState<'chat' | 'history' | 'cards'>('chat')
-  const problem: Problem | undefined = PROBLEMS.find((p) => p.id === mode)
+  const problem: Problem | undefined = PROBLEMS.find((p) => p.id === mode) ?? JS_CONCEPTS.find((p) => p.id === mode)
+  // Predict problems keep the output and steps covered until the learner has guessed (or skipped).
+  const [revealed, setRevealed] = useState<Set<string>>(() => new Set())
+  const covered = problem?.kind === 'predict' && !revealed.has(problem.id)
   // The glossary entry a concept chip opened, shown on its own until the learner goes back to the list.
   const [glossaryFocus, setGlossaryFocus] = useState<string | null>(null)
   const openConcept = (id: string) => {
@@ -93,16 +102,21 @@ export default function App() {
   }
   const code = codeByMode[language][mode]
   const setCode = (next: string) => setCodeByMode((c) => ({ ...c, [language]: { ...c[language], [mode]: next } }))
-  const request: RunRequest = problem
-    ? {
-        code,
-        call: { name: problem.functionName, args: problem.tests[caseIndex].args },
-        tests: problem.tests,
-      }
-    : { code }
+  // Concept problems run their code as a whole, examples and all; their tests are separate.
+  const request: RunRequest = !problem
+    ? { code }
+    : problem.track
+      ? problem.tests.length
+        ? { code, tests: problem.tests, testFor: problem.functionName }
+        : { code }
+      : {
+          code,
+          call: { name: problem.functionName, args: problem.tests[caseIndex].args },
+          tests: problem.tests,
+        }
   const { status, trace, error, tests, ranFor } = useRunner(request, language)
   // Right after switching problems, the last results are still the old problem's until the new run lands.
-  const resultsFresh = problem !== undefined && ranFor === problem.functionName
+  const resultsFresh = problem !== undefined && (ranFor ?? '') === problem.functionName
   const [stepIndex, setStepIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
@@ -113,11 +127,12 @@ export default function App() {
   const chatInputRef = useRef<HTMLInputElement>(null)
   const shortcutsRef = useRef<HTMLDialogElement>(null)
 
-  const steps = trace?.steps ?? []
+  // While a predict problem is covered there are no steps to walk, so nothing (line highlights, the scrubber) gives the answer away.
+  const steps = covered ? [] : (trace?.steps ?? [])
   const shownStep = Math.min(stepIndex, Math.max(0, steps.length - 1))
   const step = steps[shownStep]
   const prevStep = previousInFrame(steps, shownStep)
-  const history = useMemo(() => (trace ? buildHistory(trace.steps, trace) : []), [trace])
+  const history = useMemo(() => (trace && !covered ? buildHistory(trace.steps, trace) : []), [trace, covered])
   const variables = useMemo(() => new Set(steps.flatMap((s) => Object.keys(s.vars))), [trace])
 
   // What the step buttons and the keyboard shortcuts do (keys in src/shortcuts.ts).
@@ -297,12 +312,12 @@ export default function App() {
               Playground
             </button>
             <select
-              className={problem ? 'problem-select active' : 'problem-select'}
-              value={problem ? problem.id : ''}
+              className={problem && !problem.track ? 'problem-select active' : 'problem-select'}
+              value={problem && !problem.track ? problem.id : ''}
               onChange={(e) => openProblem(e.target.value)}
               aria-label="Problem"
             >
-              {!problem && (
+              {(!problem || problem.track) && (
                 <option value="" disabled>
                   Problems ({PROBLEMS.length})
                 </option>
@@ -322,6 +337,26 @@ export default function App() {
                 )
               })}
             </select>
+            {language === 'javascript' && (
+              <select
+                className={problem?.track ? 'problem-select concept-select active' : 'problem-select concept-select'}
+                value={problem?.track ? problem.id : ''}
+                onChange={(e) => openProblem(e.target.value)}
+                aria-label="JavaScript concept"
+                title="How JavaScript itself behaves: closures, references, array methods"
+              >
+                {!problem?.track && (
+                  <option value="" disabled>
+                    JS concepts ({JS_CONCEPTS.length})
+                  </option>
+                )}
+                {JS_CONCEPTS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.kind === 'predict' ? `${p.title} (predict)` : p.title}
+                  </option>
+                ))}
+              </select>
+            )}
           </nav>
           <h1 className="wordmark">Code Language Teacher</h1>
           <div className="top-right">
@@ -361,6 +396,9 @@ export default function App() {
                 call={resultsFresh ? (trace?.call ?? null) : null}
                 stale={error?.kind === 'syntax'}
                 onOpenConcept={openConcept}
+                output={trace && !error ? trace.stdout : null}
+                revealed={!covered}
+                onReveal={() => setRevealed((r) => new Set(r).add(problem.id))}
               />
             )}
             <div className="editor-wrap">
@@ -389,7 +427,7 @@ export default function App() {
             <CodeHover
               editor={mounted?.editor ?? null}
               monacoApi={mounted?.api ?? null}
-              step={step}
+              step={covered ? undefined : step}
               stepNumber={shownStep + 1}
               variables={variables}
               builtins={language === 'python'}
@@ -471,7 +509,12 @@ export default function App() {
                 {error.kind === 'syntax' && trace ? ' (showing the last version that ran)' : ''}
               </div>
             )}
-            {step ? (
+            {covered ? (
+              <div className="predict-cover">
+                <p>Guess what this prints first, in the box under the problem.</p>
+                <p className="muted">Then step through it here to see why.</p>
+              </div>
+            ) : step ? (
               <Visualizer
                 step={step}
                 prevStep={prevStep}
@@ -483,8 +526,8 @@ export default function App() {
               <p className="muted">{status === 'loading' && language === 'python' ? 'Starting Python in your browser…' : 'Write some code.'}</p>
             )}
             </div>
-            {trace && <div {...layout.consoleDivider} />}
-            {trace && (
+            {trace && !covered && <div {...layout.consoleDivider} />}
+            {trace && !covered && (
               <div className={`console-dock${layout.consoleCollapsed ? ' collapsed' : ''}`} style={layout.consoleStyle}>
               <ConsolePanel
                 entries={trace.console}

@@ -5,6 +5,13 @@ export interface TestCase {
   expected: unknown
   /** Accept the answer in any order (e.g. a pair of indexes). */
   unordered?: boolean
+  /**
+   * JavaScript concept problems: code that uses the learner's function and returns
+   * what to check (a function body), for answers that are functions or need several calls.
+   */
+  run?: string
+  /** What the case checks, in words, when it isn't plain arguments. */
+  name?: string
 }
 
 export type Difficulty = 'Warm-up' | 'Easy' | 'Medium' | 'Hard'
@@ -21,10 +28,21 @@ export interface Problem {
   hints: string[]
   /** Ids of the glossary entries (src/syntax/cards.ts) this problem practices. */
   concepts: string[]
+  /** The function the tests call; empty for a predict problem. */
   functionName: string
   /** The code the learner starts from, in each language. */
   starters: Record<Language, string>
   tests: TestCase[]
+  /**
+   * Set on the JavaScript concept problems (src/problems/concepts.ts). They only exist in
+   * JavaScript, and their code runs as a whole (with its example lines) instead of calling
+   * the function once per test case.
+   */
+  track?: 'js-concepts'
+  /** `predict`: guess what the code prints, then step through it. `build`: write a function the tests check. */
+  kind?: 'build' | 'predict'
+  /** A predict problem's explanation, shown once the guess is in. */
+  explain?: string[]
 }
 
 // Listed in the order they're meant to be tried; the picker groups them by difficulty.

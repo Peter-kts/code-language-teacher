@@ -85,7 +85,7 @@ export function useRunner(request: RunRequest, language: Language) {
       const id = ++latestId.current
       const req = JSON.parse(requestKey) as RunRequest
       latestCode.current = req.code
-      latestCall.current = req.call?.name ?? null
+      latestCall.current = req.call?.name ?? req.testFor ?? null
       if (statusRef.current !== 'loading') setStatus('running')
       workerRef.current?.postMessage({ id, ...req } satisfies WorkerRequest)
       window.clearTimeout(timeoutRef.current)

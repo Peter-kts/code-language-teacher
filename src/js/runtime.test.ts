@@ -184,3 +184,89 @@ describe('runTests', () => {
     ])
   })
 })
+
+describe('closures and shared objects', () => {
+  it('draws a closure with the outer variables it remembers', () => {
+    const t = trace(`function makeCounter() {
+  let count = 0
+  return () => {
+    count++
+    return count
+  }
+}
+const counter = makeCounter()
+counter()
+counter()
+`)
+    const last = t.steps[t.steps.length - 1]
+    expect(formatValue(last.vars.counter)).toBe('ƒ ⟨count: 2⟩')
+    // makeCounter remembers nothing, so it stays out of the way like any plain function.
+    expect(last.vars.makeCounter).toBeUndefined()
+    // Inside the closure, count shows up and is marked as remembered.
+    const inside = t.steps.find((s) => s.func === '<anonymous>' && s.line === 5)!
+    expect(formatValue(inside.vars.count)).toBe('1')
+    expect(inside.captured).toEqual(['count'])
+  })
+
+  it('handles closures made by function declarations and in loops', () => {
+    const t = trace(`function outer(x) {
+  function inner() {
+    return x * 2
+  }
+  return inner
+}
+const fs = []
+for (let i = 0; i < 2; i++) {
+  fs.push(() => i)
+}
+const g = outer(5)
+console.log(g(), fs[0](), fs[1]())
+`)
+    const last = t.steps[t.steps.length - 1]
+    expect(formatValue(last.vars.g)).toBe('ƒ inner ⟨x: 5⟩')
+    expect(formatValue(last.vars.fs)).toBe('[ƒ ⟨i: 0⟩, ƒ ⟨i: 1⟩]')
+    expect(t.console[0].text).toBe('10 0 1\n')
+  })
+
+  it('registers a closure made by a function declaration before its line runs (hoisting)', () => {
+    const t = trace(`function makeCounter() {
+  let count = 0
+  return increment
+  function increment() {
+    count++
+    return count
+  }
+}
+const counter = makeCounter()
+counter()
+switch (1) {
+  case 1:
+    function inCase() {}
+}
+`)
+    expect(formatValue(t.steps[t.steps.length - 1].vars.counter)).toBe('ƒ increment ⟨count: 1⟩')
+  })
+
+  it('gives each object one id for the whole run', () => {
+    const t = trace(`const a = [1]
+const b = a
+const c = [...a]
+`)
+    const { a, b, c } = t.steps[t.steps.length - 1].vars
+    expect(a.type === 'list' && a.id).toBeTruthy()
+    expect((a as { id?: number }).id).toBe((b as { id?: number }).id)
+    expect((a as { id?: number }).id).not.toBe((c as { id?: number }).id)
+  })
+
+  it('runs test cases written as code', () => {
+    const results = runTests(
+      `function makeCounter() { let n = 0; return () => ++n }`,
+      'makeCounter',
+      [
+        { args: [], run: 'const c = makeCounter(); c(); return c()', expected: 2 },
+        { args: [], run: 'return makeCounter()()', expected: 5 },
+      ],
+    )
+    expect(results.map((r) => r.passed)).toEqual([true, false])
+  })
+})
