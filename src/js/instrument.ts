@@ -655,6 +655,19 @@ class Instrumenter {
         parts.push(...this.each(node, 'arguments'))
       } else if (node.type === 'ArrayExpression' && node.elements.some((e: Node | null) => e?.type === 'SpreadElement')) {
         parts = this.each(node, 'elements')
+      } else if (node.type === 'ObjectExpression') {
+        // `{ ...state, user: next }` reads state and next, so they light up as sources.
+        for (const prop of node.properties) {
+          if (prop.type === 'SpreadElement') {
+            parts.push(this.record(prop, 'argument'))
+          } else if (prop.type === 'Property' && prop.kind === 'init' && !prop.method) {
+            const [value, part] = this.expr(prop.value)
+            if (!part) continue
+            prop.value = value
+            prop.shorthand = false // `{ name }` becomes `{ name: __ct.r(.., name) }`
+            parts.push(part)
+          }
+        }
       } else if (node.type === 'LogicalExpression' || node.type === 'BinaryExpression') {
         parts = [this.record(node, 'left'), this.record(node, 'right')]
       } else if (node.type === 'ConditionalExpression') {

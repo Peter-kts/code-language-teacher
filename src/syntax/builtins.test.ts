@@ -47,6 +47,8 @@ describe('built-in hover', () => {
     expect(builtinNamed('print(f"{{len(xs)}}")', 'len')).toBeNull()
     expect(builtinNamed('print(f"{n} is len(x)")', 'len')).toBeNull()
     expect(builtinNamed('print(elf"len(x)")', 'len')).toBeNull()
+    // # inside an f-string's {...} is a format spec, not a comment.
+    expect(builtinNamed('print(f"{n:#x}", len(xs))', 'len')).toBe('len')
   })
 
   it('finds the name under the mouse for variable values', () => {

@@ -178,6 +178,19 @@ stack.push(key)
     expect(readsAfter(5)).toEqual(['key'])
   })
 
+  it('reads what an object is copied from, as in { ...state, user }', () => {
+    const t = trace(`const state = { theme: "dark" }
+const user = { name: "Ada" }
+const next = { ...state, user }
+`)
+    const i = t.steps.findIndex((_, j) => j > 0 && t.steps[j - 1].line === 3)
+    const prev = previousInFrame(t.steps, i)
+    const reads = [...stepRoles(t.steps[i], prev, t).reads, ...newVars(t.steps[i], prev, t).reads].map((r) => r.name)
+    expect(reads).toEqual(['state', 'user'])
+    // The shorthand still makes a `user` key holding the same object.
+    expect(formatValue(t.steps[t.steps.length - 1].vars.next)).toBe('{ theme: "dark", user: { name: "Ada" } }')
+  })
+
   it('moves one pointer for two loops with the same name over the same array', () => {
     const t = trace(`const xs = [4, 8]
 for (const x of xs) {

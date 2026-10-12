@@ -19,7 +19,8 @@ export function codeMask(line: string, language: Language): boolean[] {
     const top = stack[stack.length - 1]
     const ch = line[j]
     if (top.kind === 'code') {
-      if (python ? ch === '#' : line.startsWith('//', j)) break
+      // Inside a string's {...}, # is part of a format spec like {n:#x}, not a comment.
+      if (stack.length === 1 && (python ? ch === '#' : line.startsWith('//', j))) break
       if (!python && line.startsWith('/*', j)) {
         const end = line.indexOf('*/', j + 2)
         if (end < 0) break
