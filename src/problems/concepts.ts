@@ -5,9 +5,10 @@ import type { Problem } from './problems'
 // visualizer shows closures and shared objects in action; the tests use `run` code instead.
 // Ideas and later batches: /mnt/project-files/plans/javascript-concept-problems.md
 
-const concept = (p: Omit<Problem, 'starters' | 'track' | 'concepts'> & { starter: string }): Problem => {
+// `concepts` are JavaScript glossary ids reserved for the JS glossary; their chips show once those cards exist.
+const concept = (p: Omit<Problem, 'starters' | 'track'> & { starter: string }): Problem => {
   const { starter, ...rest } = p
-  return { ...rest, concepts: [], track: 'js-concepts', starters: { python: '', javascript: starter } }
+  return { ...rest, track: 'js-concepts', starters: { python: '', javascript: starter } }
 }
 
 /** A typical React-style state object, fresh for each test. */
@@ -16,6 +17,7 @@ const STATE = `{ user: { name: "Ada", friends: ["Grace"], address: { city: "Lond
 export const JS_CONCEPTS: Problem[] = [
   concept({
     id: 'js-counter',
+    concepts: ['closures'],
     title: 'Make a Counter',
     difficulty: 'Warm-up',
     kind: 'build',
@@ -57,6 +59,7 @@ console.log(counter(), other())
   }),
   concept({
     id: 'js-why-both-changed',
+    concepts: ['references-vs-copies', 'spread-immutable'],
     title: 'Why Did Both Change?',
     difficulty: 'Warm-up',
     kind: 'predict',
@@ -94,6 +97,7 @@ console.log(user.name, user.tags)
   }),
   concept({
     id: 'js-memoize',
+    concepts: ['closures'],
     title: 'Memoize',
     difficulty: 'Easy',
     kind: 'build',
@@ -151,6 +155,7 @@ console.log("slowSquare ran", calls, "times")
   }),
   concept({
     id: 'js-stale-closure',
+    concepts: ['closures'],
     title: 'Stale Closures',
     difficulty: 'Easy',
     kind: 'predict',
@@ -191,6 +196,7 @@ handlers[2]()
   }),
   concept({
     id: 'js-group-by',
+    concepts: ['reduce'],
     title: 'Group By with reduce',
     difficulty: 'Easy',
     kind: 'build',
@@ -237,6 +243,7 @@ console.log(groupBy(people, (p) => p.city))
   }),
   concept({
     id: 'js-update-state',
+    concepts: ['spread-immutable', 'references-vs-copies'],
     title: 'Update State Without Mutating',
     difficulty: 'Medium',
     kind: 'build',
