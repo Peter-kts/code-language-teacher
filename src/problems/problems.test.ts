@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { runTests, runTraced } from '../js/runtime'
-import { PYTHON_CARDS } from '../syntax/cards'
-import { PROBLEMS } from './problems'
+import { CARDS } from '../syntax/cards'
+import { JS_CONCEPTS } from './concepts'
+import { PROBLEMS, say } from './problems'
 
 describe('problems', () => {
   it('have unique ids, hints and tests', () => {
@@ -29,9 +30,30 @@ describe('problems', () => {
     }
   })
 
-  it('link only to glossary entries that exist', () => {
-    const cards = new Set(PYTHON_CARDS.map((c) => c.id))
-    for (const p of PROBLEMS) for (const c of p.concepts) expect(cards.has(c), `${p.id} → ${c}`).toBe(true)
+  it('link only to glossary entries that exist, in each language', () => {
+    for (const [language, cards] of Object.entries(CARDS)) {
+      const ids = new Set(cards.map((c) => c.id))
+      for (const p of [...PROBLEMS, ...JS_CONCEPTS]) {
+        for (const c of p.concepts[language as keyof typeof CARDS]) expect(ids.has(c), `${language}: ${p.id} → ${c}`).toBe(true)
+      }
+    }
+    for (const p of PROBLEMS) {
+      expect(p.concepts.python.length, p.id).toBeGreaterThan(0)
+      expect(p.concepts.javascript.length, p.id).toBeGreaterThan(0)
+    }
+    for (const p of JS_CONCEPTS) expect(p.concepts.javascript.length, p.id).toBeGreaterThan(0)
+  })
+
+  it("use each language's own words", () => {
+    // Python words that would mislead in JavaScript, and the other way round.
+    const python = /\b(True|False|None|dict|elif|append|lists?|tuple)\b|(?<!\.)\b(sorted|max|len)\(| \/\/ /
+    const javascript = /\b(true|false|null|undefined|Map|push|Math)\b|===/
+    for (const p of PROBLEMS) {
+      for (const text of [...p.statement, ...p.hints]) {
+        expect(say(text, 'javascript'), p.id).not.toMatch(python)
+        expect(say(text, 'python'), p.id).not.toMatch(javascript)
+      }
+    }
   })
 })
 

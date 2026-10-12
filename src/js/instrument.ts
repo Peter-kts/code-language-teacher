@@ -219,12 +219,18 @@ class Instrumenter {
   /** `for (const n of nums)` loops over a plain name: they get a hidden counter, so the arrow under nums knows which box n came from. */
   hiddenPointers(program: Node): PointerSpec[] {
     const out: PointerSpec[] = []
+    // Loops with the same name over the same array share one counter (and pointer), so a second
+    // `for (const c of s)` moves the arrow rather than leaving it where the first loop ended.
+    const shared = new Map<string, string>()
     walk(program, (n) => {
       if (n.type !== 'ForOfStatement' || n.right.type !== 'Identifier') return
       const names = n.left.type === 'VariableDeclaration' ? patternNames(n.left.declarations[0].id) : []
       if (n.left.type !== 'VariableDeclaration' || n.left.declarations[0].id.type !== 'Identifier' || names.length !== 1) return
-      const key = `${HIDDEN_PREFIX}${n.loc.start.line}_${n.loc.start.column}`
+      const pair = `${names[0]}\0${n.right.name}`
+      const key = shared.get(pair) ?? `${HIDDEN_PREFIX}${n.loc.start.line}_${n.loc.start.column}`
       this.hidden.set(n, key)
+      if (shared.has(pair)) return
+      shared.set(pair, key)
       out.push({ label: names[0], var: key, target: n.right.name })
     })
     return out
@@ -509,6 +515,13 @@ class Instrumenter {
     } else if (e.type === 'UpdateExpression' && e.argument.type === 'MemberExpression') {
       const target = this.target(e.argument)
       this.plans.push({ line, op: e.operator === '++' ? '+' : '-', targets: [target], value: one() })
+    } else if (isMapSet(e)) {
+      // `counts.set(c, n)` is the Map's `counts[c] = n`: planned the same way, so the row gets `= from n`.
+      const name = e.callee.object.name
+      const text = `${name}.get(${this.text(e.arguments[0])})`
+      const key = this.record(e.arguments, '0')
+      const target: TargetPlan = { kind: 'item', name, key, text }
+      this.plans.push({ line, op: null, targets: [target], value: this.record(e.arguments, '1') })
     } else if (
       e.type === 'CallExpression' &&
       e.callee.type === 'MemberExpression' &&
@@ -517,7 +530,8 @@ class Instrumenter {
     ) {
       // `stack.push(n)` changes `stack`: record what it was given, so `n` lights up.
       const target: TargetPlan = { kind: 'name', name: e.callee.object.name }
-      const value = this.record(s, 'expression')
+      const [node, value] = this.expr(e, false)
+      s.expression = node
       this.plans.push({ line, op: 'call', targets: [target], value })
     }
   }
@@ -553,6 +567,12 @@ class Instrumenter {
     const plans: ExprPlan[] = []
     list.forEach((n, i) => {
       if (!n) return
+      if (n.type === 'SpreadElement') {
+        // `f(...xs)` and `[...xs]` read xs.
+        const plan = this.record(n, 'argument')
+        if (plan) plans.push(plan)
+        return
+      }
       const [node, plan] = this.expr(n)
       list[i] = node
       if (plan) plans.push(plan)
@@ -560,8 +580,11 @@ class Instrumenter {
     return plans
   }
 
-  /** Wrap `node` as `__ct.r(id, node)` so its value is recorded; returns (new node, plan). */
-  private expr(node: Node): [Node, ExprPlan | null] {
+  /**
+   * Wrap `node` as `__ct.r(id, node)` so its value is recorded; returns (new node, plan).
+   * `receiver` false leaves the object of a method call unrecorded (the `stack` of `stack.push(n)`, which is the target).
+   */
+  private expr(node: Node, receiver = true): [Node, ExprPlan | null] {
     if (node.type === 'Literal' && !node.regex) {
       return [node, { kind: 'const', text: this.text(node), value: brief(node.value) }]
     }
@@ -570,6 +593,10 @@ class Instrumenter {
     }
     if (node.type === 'Identifier' && CONSTANT_NAMES.has(node.name)) {
       return [node, { kind: 'const', text: node.name, value: [node.name, null] }]
+    }
+    if ((node.type === 'ObjectExpression' && node.properties.length) || node.type === 'NewExpression') {
+      // `{ x: 1 }` and `new Map()` read no variables, like Python's `{"x": 1}` and `{}`: a constant, not a source.
+      if (isLiteralNode(node)) return [node, { kind: 'const', text: this.text(node), value: [this.text(node), null] }]
     }
     // Only valid where they stand, or values that would mean nothing as a part.
     if (['SpreadElement', 'FunctionExpression', 'ArrowFunctionExpression', 'ClassExpression', 'Super'].includes(node.type)) return [node, null]
@@ -581,6 +608,16 @@ class Instrumenter {
       // `counts.get(c)` reads counts[c] like an index does, so it lights up that row.
       const key = this.each(node, 'arguments')[0] ?? null
       plan = { kind: 'sub', name: node.callee.object.name, of: null, key, text }
+    } else if (isDefaulted(node)) {
+      // `counts.get(c) ?? 0` and `seen[c] || 0` are Python's `counts.get(c, 0)`: a read of counts[c],
+      // with the default when it's missing, so `counts.set(c, (counts.get(c) ?? 0) + 1)` reads as +1.
+      const read = node.left
+      const name = read.type === 'CallExpression' ? read.callee.object.name : read.object.name
+      let key: ExprPlan | null
+      if (read.type === 'CallExpression') key = this.each(read, 'arguments')[0] ?? null
+      else if (read.computed) key = this.record(read, 'property')
+      else key = { kind: 'const', text: read.property.name, value: [JSON.stringify(read.property.name), null] }
+      plan = { kind: 'sub', name, of: null, key, text }
     } else if (node.type === 'MemberExpression' && !node.computed && ['length', 'size'].includes(node.property.name)) {
       // `nums.length` reads nums as a whole.
       plan = { kind: 'other', parts: [this.record(node, 'object')].filter(Boolean) as ExprPlan[], text }
@@ -609,9 +646,33 @@ class Instrumenter {
       // Calls, comparisons and the like are one part each, but the names they
       // read are recorded too, so they still light up as sources.
       let parts: (ExprPlan | null)[] = []
-      if ((node.type === 'CallExpression' || node.type === 'NewExpression') && !node.optional) parts = this.each(node, 'arguments')
-      else if (node.type === 'LogicalExpression' || node.type === 'BinaryExpression') parts = [this.record(node, 'left'), this.record(node, 'right')]
-      else if (node.type === 'ConditionalExpression') parts = [this.record(node, 'test'), this.record(node, 'consequent'), this.record(node, 'alternate')]
+      if ((node.type === 'CallExpression' || node.type === 'NewExpression') && !node.optional) {
+        // What a method is called on is read too: `nums.slice(1)` and `[...word].sort()` are
+        // Python's `nums[1:]` and `sorted(word)`. Not globals like Math, which aren't data.
+        const on = node.type === 'CallExpression' && node.callee.type === 'MemberExpression' && !node.callee.optional ? node.callee.object : null
+        const isData = on && (on.type !== 'Identifier' || (receiver && this.current.some((s) => s.includes(on.name))))
+        if (isData && !['Super', 'ThisExpression'].includes(on.type)) parts.push(this.record(node.callee, 'object'))
+        parts.push(...this.each(node, 'arguments'))
+      } else if (node.type === 'ArrayExpression' && node.elements.some((e: Node | null) => e?.type === 'SpreadElement')) {
+        parts = this.each(node, 'elements')
+      } else if (node.type === 'ObjectExpression') {
+        // `{ ...state, user: next }` reads state and next, so they light up as sources.
+        for (const prop of node.properties) {
+          if (prop.type === 'SpreadElement') {
+            parts.push(this.record(prop, 'argument'))
+          } else if (prop.type === 'Property' && prop.kind === 'init' && !prop.method) {
+            const [value, part] = this.expr(prop.value)
+            if (!part) continue
+            prop.value = value
+            prop.shorthand = false // `{ name }` becomes `{ name: __ct.r(.., name) }`
+            parts.push(part)
+          }
+        }
+      } else if (node.type === 'LogicalExpression' || node.type === 'BinaryExpression') {
+        parts = [this.record(node, 'left'), this.record(node, 'right')]
+      } else if (node.type === 'ConditionalExpression') {
+        parts = [this.record(node, 'test'), this.record(node, 'consequent'), this.record(node, 'alternate')]
+      }
       plan = { kind: 'other', parts: parts.filter(Boolean) as ExprPlan[], text }
     }
     this.ids += 1
@@ -644,6 +705,56 @@ function isMapGet(node: Node) {
     node.arguments.length === 1 &&
     node.arguments[0].type !== 'SpreadElement'
   )
+}
+
+/** `counts.set(key, value)` on a plain name. */
+function isMapSet(node: Node) {
+  return (
+    node.type === 'CallExpression' &&
+    node.callee.type === 'MemberExpression' &&
+    !node.callee.computed &&
+    !node.callee.optional &&
+    node.callee.property.name === 'set' &&
+    node.callee.object.type === 'Identifier' &&
+    node.arguments.length === 2 &&
+    node.arguments.every((a: Node) => a.type !== 'SpreadElement')
+  )
+}
+
+/** `counts.get(c) ?? 0` or `seen[c] || 0`: an item read, with a written-out default. */
+function isDefaulted(node: Node) {
+  if (node.type !== 'LogicalExpression' || !['??', '||'].includes(node.operator)) return false
+  const { left, right } = node
+  if (right.type !== 'Literal' || right.regex) return false
+  if (isMapGet(left)) return true
+  return (
+    left.type === 'MemberExpression' &&
+    !left.optional &&
+    left.object.type === 'Identifier' &&
+    !(!left.computed && ['length', 'size'].includes(left.property.name))
+  )
+}
+
+/** Code that makes a value out of nothing but literals: `{ x: 1 }`, `new Map()`, `new Set([1, 2])`. */
+function isLiteralNode(node: Node | null): boolean {
+  if (!node) return false
+  switch (node.type) {
+    case 'Literal':
+      return !node.regex
+    case 'TemplateLiteral':
+      return node.expressions.length === 0
+    case 'UnaryExpression':
+      return ['-', '+'].includes(node.operator) && isLiteralNode(node.argument)
+    case 'ArrayExpression':
+      return node.elements.every(isLiteralNode)
+    case 'ObjectExpression':
+      return node.properties.every(
+        (p: Node) => p.type === 'Property' && p.kind === 'init' && !p.method && !p.shorthand && !p.computed && isLiteralNode(p.value),
+      )
+    case 'NewExpression':
+      return node.callee.type === 'Identifier' && ['Map', 'Set', 'Array', 'Object'].includes(node.callee.name) && node.arguments.every(isLiteralNode)
+  }
+  return false
 }
 
 /** Where a node sits on its line, as 1-based columns (none if it spans lines). */

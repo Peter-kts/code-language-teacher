@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import { PYTHON_CARDS } from '../syntax/cards'
-import type { TestResult, Value } from '../types'
+import { cardFor } from '../syntax/cards'
+import type { Language, TestResult, Value } from '../types'
 import { formatValue } from '../viz/format'
-import type { Problem } from './problems'
+import { say, type Problem } from './problems'
 import { checkGuess, type GuessCheck } from './guess'
 
 export function ProblemPanel({
   problem,
+  language,
   tests,
   caseIndex,
   onSelectCase,
@@ -19,6 +20,7 @@ export function ProblemPanel({
   onReveal,
 }: {
   problem: Problem
+  language: Language
   tests: TestResult[] | null
   caseIndex: number
   onSelectCase: (i: number) => void
@@ -36,7 +38,7 @@ export function ProblemPanel({
 }) {
   // How many hints are showing. The panel is keyed on the problem, so this resets when it changes.
   const [hintsShown, setHintsShown] = useState(0)
-  const concepts = problem.concepts.flatMap((id) => PYTHON_CARDS.filter((c) => c.id === id))
+  const concepts = problem.concepts[language].flatMap((id) => cardFor(language, id) ?? [])
   const passed = tests?.filter((t) => t.passed).length ?? 0
   const current = tests?.[caseIndex]
   const concept = problem.track === 'js-concepts'
@@ -52,11 +54,11 @@ export function ProblemPanel({
         )}
       </div>
       {problem.statement.map((para, i) => (
-        <p key={i}>{para}</p>
+        <p key={i}>{say(para, language)}</p>
       ))}
       {problem.hints.slice(0, hintsShown).map((hint, i) => (
         <p key={i} className="hint">
-          <span className="muted">Hint {i + 1}:</span> {hint}
+          <span className="muted">Hint {i + 1}:</span> {say(hint, language)}
         </p>
       ))}
       <div className="concepts">
@@ -110,7 +112,7 @@ export function ProblemPanel({
       )}
       {call && (
         <div className="call">
-          <code>{call}</code> returned <code>{result ? formatValue(result) : 'None'}</code>
+          <code>{call}</code> returned <code>{result ? formatValue(result) : language === 'python' ? 'None' : 'undefined'}</code>
           {stale && <span className="muted"> (from the last version that compiled)</span>}
           {!stale && current && !current.passed && (
             <span className="fail-text">

@@ -568,7 +568,6 @@ kbd {
 
 /* ---------- Language switch (header) ---------- */
 .lang-switch { display: flex; align-items: center; gap: 0.9rem; margin-right: 1.2rem; }
-.glossary-note { margin: 0 0 0.6rem; font-size: 0.8rem; }
 
 /* JavaScript concepts: what a closure remembers, and objects two names share. */
 .remembered {

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import type * as monaco from 'monaco-editor/editor/editor.api'
-import type { Step } from '../types'
+import type { Language, Step } from '../types'
 import { formatValue, typeLabel } from '../viz/format'
-import { PYTHON_CARDS } from './cards'
+import { cardFor } from './cards'
 import { builtinAt, nameAt, type Builtin } from './builtins'
+import { jsBuiltinAt } from './jsBuiltins'
 
 // A small pop-up for what's under the mouse in the editor: what a built-in like enumerate does,
 // or a variable's value at the step being shown.
@@ -34,7 +35,7 @@ export function CodeHover({
   step,
   stepNumber,
   variables,
-  builtins = true,
+  language,
   onOpenConcept,
 }: {
   editor: monaco.editor.IStandaloneCodeEditor | null
@@ -45,8 +46,8 @@ export function CodeHover({
   stepNumber: number
   /** Every variable name the run ever had, so a name without a value yet can say so. */
   variables: Set<string>
-  /** Explain the built-in functions under the mouse (Python only, for now). */
-  builtins?: boolean
+  /** Which language's built-ins and glossary to explain. */
+  language: Language
   onOpenConcept: (id: string) => void
 }) {
   const [shown, setShown] = useState<Shown | null>(null)
@@ -58,8 +59,8 @@ export function CodeHover({
   // The mouse listener is set up once; this keeps the variables it checks current.
   const variablesRef = useRef(variables)
   variablesRef.current = variables
-  const builtinsRef = useRef(builtins)
-  builtinsRef.current = builtins
+  const languageRef = useRef(language)
+  languageRef.current = language
 
   const cancelHide = () => window.clearTimeout(hideTimer.current)
   const hideSoon = () => {
@@ -82,9 +83,10 @@ export function CodeHover({
       setShown(null)
     }
     const targetAt = (line: string, column: number): { target: Target; start: number } | null => {
-      const builtin = builtinsRef.current ? builtinAt(line, column) : null
+      const language = languageRef.current
+      const builtin = language === 'python' ? builtinAt(line, column) : jsBuiltinAt(line, column)
       if (builtin) return { target: { kind: 'builtin', builtin: builtin.builtin }, start: builtin.start }
-      const name = nameAt(line, column)
+      const name = nameAt(line, column, language)
       if (name && !name.afterDot && variablesRef.current.has(name.name)) {
         return { target: { kind: 'var', name: name.name }, start: name.start }
       }
@@ -149,6 +151,7 @@ export function CodeHover({
       {target.kind === 'builtin' ? (
         <BuiltinView
           builtin={target.builtin}
+          language={language}
           onOpenConcept={(id) => {
             overPopup.current = false
             shownKey.current = null
@@ -163,8 +166,16 @@ export function CodeHover({
   )
 }
 
-function BuiltinView({ builtin, onOpenConcept }: { builtin: Builtin; onOpenConcept: (id: string) => void }) {
-  const card = builtin.card ? PYTHON_CARDS.find((c) => c.id === builtin.card) : undefined
+function BuiltinView({
+  builtin,
+  language,
+  onOpenConcept,
+}: {
+  builtin: Builtin
+  language: Language
+  onOpenConcept: (id: string) => void
+}) {
+  const card = builtin.card ? cardFor(language, builtin.card) : undefined
   return (
     <>
       <code className="code-hover-head">{builtin.signature}</code>

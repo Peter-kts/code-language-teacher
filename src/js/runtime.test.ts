@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { runTests, runTraced } from './runtime'
-import { previousInFrame, scalarChanges, stepRoles } from '../viz/changes'
+import { containerChanges, newVars, previousInFrame, scalarChanges, stepRoles } from '../viz/changes'
+import { placePointers } from '../viz/pointers'
 import { formatValue, typeLabel } from '../viz/format'
 import type { Step, TraceResult } from '../types'
 
@@ -132,6 +133,79 @@ nums.forEach((n) => {
       '3: nums=[2, 7] target=9 i=0 num=2',
       '3: nums=[2, 7] target=9 i=1 num=7',
     ])
+  })
+
+  it('plans counts.set(c, ...) like Python\'s counts[c] = ..., and get(c) ?? 0 like get(c, 0)', () => {
+    const t = trace(`const counts = new Map([["a", 1]])
+const c = "a"
+const right = 5
+counts.set(c, (counts.get(c) ?? 0) + 1)
+counts.set(c, right)
+`)
+    const after = (line: number) => t.steps.findIndex((_, j) => j > 0 && t.steps[j - 1].line === line)
+    const at = (i: number) => [t.steps[i], previousInFrame(t.steps, i), t] as const
+    // The count goes up by the 1, as Python's `counts[c] = counts.get(c, 0) + 1` does.
+    expect(containerChanges(...at(after(4))).counts.parts['"a"']).toEqual([{ text: '+1', from: null }])
+    expect(containerChanges(...at(after(5))).counts.parts['"a"']).toEqual([{ text: '=', from: 'right' }])
+    expect(stepRoles(...at(after(5))).reads).toContainEqual(expect.objectContaining({ name: 'right', gave: [{ value: '5', to: 'counts["a"]' }] }))
+  })
+
+  it('takes new Map() and { x: 1 } as written-out values, like Python\'s {} and {"x": 1}', () => {
+    const t = trace(`const seen = new Map()
+const o = { x: 1, y: [2] }
+const n = 0
+`)
+    // No `= from new Map()` badge: the new value says it all.
+    expect(newVars(t.steps[1], t.steps[0], t).deltas).toEqual({ seen: [] })
+    expect(newVars(t.steps[2], t.steps[1], t).deltas).toEqual({ o: [] })
+  })
+
+  it('reads what a method is called on, as Python reads the word in "".join(sorted(word))', () => {
+    const t = trace(`const word = "tea"
+const stack = []
+const key = [...word].sort().join("")
+const rest = word.slice(1)
+stack.push(key)
+`)
+    const readsAfter = (line: number) => {
+      const i = t.steps.findIndex((_, j) => j > 0 && t.steps[j - 1].line === line)
+      const prev = previousInFrame(t.steps, i)
+      return [...stepRoles(t.steps[i], prev, t).reads, ...newVars(t.steps[i], prev, t).reads].map((r) => r.name)
+    }
+    expect(readsAfter(3)).toEqual(['word'])
+    expect(readsAfter(4)).toEqual(['word'])
+    // The list a value is pushed onto is what changes, not something read.
+    expect(readsAfter(5)).toEqual(['key'])
+  })
+
+  it('reads what an object is copied from, as in { ...state, user }', () => {
+    const t = trace(`const state = { theme: "dark" }
+const user = { name: "Ada" }
+const next = { ...state, user }
+`)
+    const i = t.steps.findIndex((_, j) => j > 0 && t.steps[j - 1].line === 3)
+    const prev = previousInFrame(t.steps, i)
+    const reads = [...stepRoles(t.steps[i], prev, t).reads, ...newVars(t.steps[i], prev, t).reads].map((r) => r.name)
+    expect(reads).toEqual(['state', 'user'])
+    // The shorthand still makes a `user` key holding the same object.
+    expect(formatValue(t.steps[t.steps.length - 1].vars.next)).toBe('{ theme: "dark", user: { name: "Ada" } }')
+  })
+
+  it('moves one pointer for two loops with the same name over the same array', () => {
+    const t = trace(`const xs = [4, 8]
+for (const x of xs) {
+  const a = x
+}
+for (const x of xs) {
+  const b = x
+}
+`)
+    expect(t.pointers).toEqual([{ label: 'x', var: '_ct_idx_2_0', target: 'xs' }])
+    // The second loop's first pass is at xs[0], not where the first loop ended.
+    const i = t.steps.findIndex((s) => s.line === 6)
+    expect(t.steps[i].hidden).toEqual({ _ct_idx_2_0: 0 })
+    expect(placePointers(t.steps[i], t.pointers)).toEqual({ xs: [{ label: 'x', index: 0 }] })
+    expect(newVars(t.steps[i], previousInFrame(t.steps, i), t).deltas.x).toEqual([{ text: '=', from: 'xs[0]' }])
   })
 
   it('reports a runtime error on the line that threw, through the calls it went through', () => {

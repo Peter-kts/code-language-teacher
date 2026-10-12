@@ -1,4 +1,8 @@
-// The glossary: Python terms with a short explanation and an example to insert.
+import type { Language } from '../types'
+import { JS_CARDS } from './jsCards'
+
+// The glossary: terms with a short explanation and an example to insert, one set per language
+// (the JavaScript set is in jsCards.ts).
 // Each entry is tagged three ways, so the panel can group it by topic, by learning path or by question.
 // Within a level, entries are listed in the order they're meant to be learned.
 
@@ -691,6 +695,12 @@ export const PYTHON_CARDS: SyntaxCard[] = [
     code: 'class Node:\n    def __init__(self, val, next=None):\n        self.val = val\n        self.next = next\n\nhead = Node(1, Node(2))\nsecond = head.next.val\n',
   },
 ]
+
+/** Each language's glossary. */
+export const CARDS: Record<Language, SyntaxCard[]> = { python: PYTHON_CARDS, javascript: JS_CARDS }
+
+/** The glossary entry with that id in a language's glossary. */
+export const cardFor = (language: Language, id: string) => CARDS[language].find((c) => c.id === id)
 
 export type GroupBy = 'topic' | 'level' | 'question'
 

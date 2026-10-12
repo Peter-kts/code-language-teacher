@@ -338,5 +338,12 @@ describe('findNames', () => {
       { name: 'n', start: 14, end: 15 },
     ])
     expect(findNames("print('n', nums[n])", ['n'])).toEqual([{ name: 'n', start: 17, end: 18 }])
+    expect(findNames('print(f"n={n}")', ['n'])).toEqual([{ name: 'n', start: 12, end: 13 }])
+  })
+
+  it('reads JavaScript comments, template literals and $ names', () => {
+    expect(findNames('total += n // add n', ['total', 'n'], 'javascript').map((r) => r.start)).toEqual([1, 10])
+    expect(findNames('console.log(`n is ${n}`, "n")', ['n'], 'javascript')).toEqual([{ name: 'n', start: 21, end: 22 }])
+    expect(findNames('$el = el + 1e5', ['$el', 'el', 'e5'], 'javascript').map((r) => r.name)).toEqual(['$el', 'el'])
   })
 })

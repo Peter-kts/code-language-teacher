@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { BUILTIN_FUNCTIONS, BUILTIN_METHODS, builtinAt, nameAt } from './builtins'
 import { PYTHON_CARDS } from './cards'
+import { jsBuiltinAt, JS_FUNCTIONS, JS_METHODS, JS_STATICS } from './jsBuiltins'
+import { JS_CARDS } from './jsCards'
 
 const builtinNamed = (line: string, word: string) => builtinAt(line, line.indexOf(word) + 1)?.builtin.name ?? null
 
@@ -45,6 +47,8 @@ describe('built-in hover', () => {
     expect(builtinNamed('print(f"{{len(xs)}}")', 'len')).toBeNull()
     expect(builtinNamed('print(f"{n} is len(x)")', 'len')).toBeNull()
     expect(builtinNamed('print(elf"len(x)")', 'len')).toBeNull()
+    // # inside an f-string's {...} is a format spec, not a comment.
+    expect(builtinNamed('print(f"{n:#x}", len(xs))', 'len')).toBe('len')
   })
 
   it('finds the name under the mouse for variable values', () => {
@@ -54,5 +58,51 @@ describe('built-in hover', () => {
     expect(nameAt(line, line.indexOf('index'))).toBeNull()
     expect(nameAt('seen.add(n)', 6)?.afterDot).toBe(true)
     expect(nameAt('x = 1', 2)).toBeNull()
+  })
+})
+
+const jsNamed = (line: string, word: string) => jsBuiltinAt(line, line.indexOf(word) + 1)?.builtin.name ?? null
+
+describe('JavaScript built-in hover', () => {
+  it('links only to JavaScript glossary entries that exist', () => {
+    const ids = new Set(JS_CARDS.map((c) => c.id))
+    for (const b of [...JS_STATICS, ...JS_FUNCTIONS, ...JS_METHODS]) expect(ids, b.name).toContain(b.card)
+  })
+
+  it('explains Math.max and friends from either half of the name', () => {
+    const line = 'best = Math.max(best, n)'
+    expect(jsNamed(line, 'max')).toBe('Math.max')
+    expect(jsNamed(line, 'Math')).toBe('Math.max')
+    expect(jsBuiltinAt(line, line.indexOf('max'))).toMatchObject({ start: line.indexOf('Math'), end: line.indexOf('(') })
+    expect(jsNamed('console.log(total)', 'log')).toBe('console.log')
+    expect(jsNamed('for (const [k, v] of Object.entries(o)) {', 'entries')).toBe('Object.entries')
+  })
+
+  it('finds methods and properties after a dot', () => {
+    expect(jsNamed('seen.add(n)', 'add')).toBe('add')
+    expect(jsNamed('counts.set(ch, (counts.get(ch) ?? 0) + 1)', 'get')).toBe('get')
+    expect(jsNamed('const total = nums.reduce((a, b) => a + b, 0)', 'reduce')).toBe('reduce')
+    expect(jsNamed('while (i < nums.length) {', 'length')).toBe('length')
+    expect(jsNamed('for (const [i, n] of nums.entries()) {', 'entries')).toBe('entries')
+  })
+
+  it('finds constructors and called functions, not plain names', () => {
+    expect(jsNamed('const seen = new Map()', 'Map')).toBe('Map')
+    expect(jsNamed('const n = parseInt(s, 10)', 'parseInt')).toBe('parseInt')
+    expect(jsNamed('const max = 0', 'max')).toBeNull()
+    expect(jsNamed('function Set(a) {', 'Set')).toBeNull()
+    expect(jsNamed('push(1)', 'push')).toBeNull()
+  })
+
+  it('ignores strings and comments, but not template literal code', () => {
+    expect(jsNamed('console.log("Math.max(a, b)")', 'max')).toBeNull()
+    expect(jsNamed('x = 1 // nums.push(2)', 'push')).toBeNull()
+    expect(jsNamed('x = 1 /* nums.push(2) */', 'push')).toBeNull()
+    expect(jsNamed('const s = `max ${Math.max(a, b)}`', 'max(')).toBe('Math.max')
+    expect(jsNamed('const s = `Math.max(a, b)`', 'max')).toBeNull()
+  })
+
+  it('finds names with $ for variable values', () => {
+    expect(nameAt('$el.push(x)', 1, 'javascript')).toEqual({ name: '$el', start: 0, end: 3, afterDot: false })
   })
 })
