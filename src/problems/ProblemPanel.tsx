@@ -3,6 +3,7 @@ import { PYTHON_CARDS } from '../syntax/cards'
 import type { TestResult, Value } from '../types'
 import { formatValue } from '../viz/format'
 import type { Problem } from './problems'
+import { checkGuess, type GuessCheck } from './guess'
 
 export function ProblemPanel({
   problem,
@@ -13,6 +14,9 @@ export function ProblemPanel({
   call,
   stale,
   onOpenConcept,
+  output,
+  revealed,
+  onReveal,
 }: {
   problem: Problem
   tests: TestResult[] | null
@@ -24,12 +28,18 @@ export function ProblemPanel({
   stale: boolean
   /** Show a glossary entry, by id. */
   onOpenConcept: (id: string) => void
+  /** What the code printed: a predict problem's answer. */
+  output: string | null
+  /** For a predict problem: whether the output and steps are showing yet. */
+  revealed: boolean
+  onReveal: () => void
 }) {
   // How many hints are showing. The panel is keyed on the problem, so this resets when it changes.
   const [hintsShown, setHintsShown] = useState(0)
   const concepts = problem.concepts.flatMap((id) => PYTHON_CARDS.filter((c) => c.id === id))
   const passed = tests?.filter((t) => t.passed).length ?? 0
   const current = tests?.[caseIndex]
+  const concept = problem.track === 'js-concepts'
   return (
     <div className="problem">
       <div className="problem-head">
@@ -62,6 +72,27 @@ export function ProblemPanel({
           </button>
         ))}
       </div>
+      {problem.kind === 'predict' && <Predict problem={problem} output={output} revealed={revealed} onReveal={onReveal} />}
+      {concept && problem.kind === 'build' && (
+        <ul className="check-list">
+          {problem.tests.map((t, i) => {
+            const r = tests?.[i]
+            return (
+              <li key={i} className={r ? (r.passed ? 'pass' : 'fail') : undefined}>
+                {r ? (r.passed ? '✓ ' : '✗ ') : '· '}
+                {t.name}
+                {r && !r.passed && (
+                  <span className="muted">
+                    {' '}
+                    ({r.error ?? `got ${r.got}, expected ${JSON.stringify(t.expected)}`})
+                  </span>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {!concept && (
       <div className="cases">
         <span className="muted">Visualize case:</span>
         {problem.tests.map((t, i) => (
@@ -76,6 +107,7 @@ export function ProblemPanel({
           </button>
         ))}
       </div>
+      )}
       {call && (
         <div className="call">
           <code>{call}</code> returned <code>{result ? formatValue(result) : 'None'}</code>
@@ -89,6 +121,62 @@ export function ProblemPanel({
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+/** Guess what the code prints, then see the real output and why. */
+function Predict({
+  problem,
+  output,
+  revealed,
+  onReveal,
+}: {
+  problem: Problem
+  output: string | null
+  revealed: boolean
+  onReveal: () => void
+}) {
+  const [guess, setGuess] = useState('')
+  const [checked, setChecked] = useState<GuessCheck | null>(null)
+  const check = () => {
+    if (output === null) return
+    setChecked(checkGuess(guess, output))
+    onReveal()
+  }
+  return (
+    <div className="guess">
+      <textarea
+        value={guess}
+        onChange={(e) => setGuess(e.target.value)}
+        placeholder="Your guess: what it prints, one line per console.log"
+        aria-label="Your guess"
+        spellCheck={false}
+      />
+      <div className="guess-actions">
+        <button className="chip" onClick={check} disabled={!guess.trim() || output === null}>
+          Check my guess
+        </button>
+        {!revealed && (
+          <button className="chip" onClick={onReveal}>
+            Just show me
+          </button>
+        )}
+        {checked && (
+          <span className={`guess-result ${checked.wrong ? 'fail' : 'pass'}`}>
+            {checked.wrong
+              ? `${checked.right} of ${checked.total} lines right. Line ${checked.wrong.line} printed ${checked.wrong.actual || 'nothing'}${checked.wrong.guess ? `, not ${checked.wrong.guess}` : ''}.`
+              : `Spot on: all ${checked.total} lines.`}
+          </span>
+        )}
+      </div>
+      {revealed &&
+        problem.explain?.map((para, i) => (
+          <p key={i} className="explain">
+            {i === 0 && <span className="muted">Why: </span>}
+            {para}
+          </p>
+        ))}
     </div>
   )
 }

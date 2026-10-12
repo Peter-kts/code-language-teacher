@@ -66,6 +66,26 @@ describe('tracebackLines', () => {
     ])
   })
 
+  it('writes a JavaScript error the JavaScript way: the error first, then the innermost call', () => {
+    const code = 'function f(xs) {\n  return xs.y.z\n}\nf([1])\n'
+    const error = {
+      kind: 'runtime' as const,
+      message: "TypeError: Cannot read properties of undefined (reading 'z')",
+      line: 2,
+      traceback: [
+        { line: 4, func: '<module>' },
+        { line: 2, func: 'f' },
+      ],
+    }
+    expect(tracebackLines(error, code, 'javascript').map((l) => l.text)).toEqual([
+      "TypeError: Cannot read properties of undefined (reading 'z')",
+      '    at f (line 2)',
+      '      return xs.y.z',
+      '    at <module> (line 4)',
+      '      f([1])',
+    ])
+  })
+
   it('leaves syntax errors to the error box', () => {
     expect(tracebackLines({ kind: 'syntax', message: 'bad', line: 1 }, 'x')).toEqual([])
   })

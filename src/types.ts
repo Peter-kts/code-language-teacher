@@ -1,10 +1,20 @@
-// Mirrors the JSON produced by src/python/tracer.py.
+// Mirrors the JSON produced by src/python/tracer.py, and by src/js/runtime.ts for JavaScript.
 
-export type Value =
+export type Language = 'python' | 'javascript'
+
+/**
+ * A traced value. JavaScript values also carry `t`, their type as JavaScript names it
+ * (`number`, `Array`, `Map`, a class name, ...); Python values leave it out.
+ */
+export type Value = { t?: string } & (
   | { type: 'prim'; repr: string; value?: string | number | boolean | null }
-  | { type: 'list' | 'tuple'; items: Value[]; truncated: boolean }
-  | { type: 'dict'; entries: [Value, Value][]; truncated: boolean }
-  | { type: 'other'; repr: string }
+  | { type: 'list' | 'tuple'; items: Value[]; truncated: boolean; id?: number }
+  | { type: 'dict'; entries: [Value, Value][]; truncated: boolean; id?: number }
+  /** A JavaScript closure carries `captured`: the outer variables it remembers, and their values now. */
+  | { type: 'other'; repr: string; captured?: Record<string, Value> }
+)
+// `id` (JavaScript only) names the object a list or dict is, so two variables holding
+// the same object can be told apart from two that hold equal copies.
 
 export interface Step {
   line: number
@@ -16,9 +26,11 @@ export interface Step {
   stdout: string
   /** Values the frame's previous line computed, by part id (see `ExprPlan`). */
   ran?: Record<string, Brief>
+  /** Variables in `vars` that belong to an outer function: the ones this closure remembers. */
+  captured?: string[]
 }
 
-/** A value recorded while a line ran: its Python repr, and the number when it is one. */
+/** A value recorded while a line ran: its text (Python's repr), and the number when it is one. */
 export type Brief = [repr: string, num: number | null]
 
 /**
@@ -130,5 +142,7 @@ export interface RunRequest {
   /** Problem function to call and trace after the module runs. */
   call?: { name: string; args: unknown[] }
   /** Test cases to run (untraced) against `call.name`. */
-  tests?: { args: unknown[]; expected: unknown; unordered?: boolean }[]
+  tests?: { args: unknown[]; expected: unknown; unordered?: boolean; run?: string }[]
+  /** The function the tests use when no `call` is traced (the JavaScript concept problems). */
+  testFor?: string
 }

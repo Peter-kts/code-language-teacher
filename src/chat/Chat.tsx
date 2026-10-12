@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type Ref } from 'react'
 import { loadHistory, saveHistory, type ChatMessage } from './history'
+import type { Language } from '../types'
 
 const PASSCODE_KEY = 'chat-passcode'
 
@@ -11,15 +12,20 @@ function loadPasscode() {
   }
 }
 
-const SUGGESTIONS = ['How do I write a for loop in Python?', 'How do dicts work?', 'Give me a hint for this problem']
+const SUGGESTIONS: Record<Language, string[]> = {
+  python: ['How do I write a for loop in Python?', 'How do dicts work?', 'Give me a hint for this problem'],
+  javascript: ['How do I write a for loop in JavaScript?', 'When should I use a Map instead of an object?', 'Give me a hint for this problem'],
+}
 
 export function Chat({
   code,
+  language,
   problem,
   onInsert,
   inputRef,
 }: {
   code: string
+  language: Language
   problem: string | null
   onInsert: (code: string) => void
   /** The question box, so a shortcut can jump to it. */
@@ -57,7 +63,7 @@ export function Chat({
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-chat-passcode': encodeURIComponent(passcode) },
-        body: JSON.stringify({ messages: history, code, problem }),
+        body: JSON.stringify({ messages: history, code, language, problem }),
       })
       if (res.status === 401) {
         setNeedsPasscode(true)
@@ -86,8 +92,10 @@ export function Chat({
       <div className="chat-log">
         {messages.length === 0 && (
           <div className="chat-empty">
-            <p className="muted">Ask how to write something in Python, or for a hint on the problem.</p>
-            {SUGGESTIONS.map((s) => (
+            <p className="muted">
+              Ask how to write something in {language === 'python' ? 'Python' : 'JavaScript'}, or for a hint on the problem.
+            </p>
+            {SUGGESTIONS[language].map((s) => (
               <button key={s} className="suggestion" onClick={() => send(s)}>
                 {s}
               </button>
@@ -148,7 +156,7 @@ export function Chat({
         <input
           ref={inputRef}
           className="syntax-input"
-          placeholder="e.g. how do I loop over a dict?"
+          placeholder={language === 'python' ? 'e.g. how do I loop over a dict?' : 'e.g. how do I loop over a Map?'}
           value={input}
           onChange={(e) => setInput(e.target.value)}
         />

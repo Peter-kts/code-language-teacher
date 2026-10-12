@@ -5,7 +5,7 @@ import type * as monaco from 'monaco-editor/editor/editor.api'
 import { EDITOR_THEME } from './monaco'
 import { GalaxyBackground } from './galaxy/GalaxyBackground'
 import { KeyboardIcon, PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon, StepBackIcon, StepForwardIcon } from './icons'
-import { usePythonRunner } from './runner/usePythonRunner'
+import { useRunner } from './runner/useRunner'
 import { Visualizer } from './viz/Visualizer'
 import { findNames, previousInFrame, stepRoles } from './viz/changes'
 import { buildHistory } from './viz/history'
@@ -16,17 +16,53 @@ import { CodeHover } from './syntax/CodeHover'
 import { Chat } from './chat/Chat'
 import { DIFFICULTIES, PROBLEMS, type Problem } from './problems/problems'
 import { ProblemPanel } from './problems/ProblemPanel'
+import { JS_CONCEPTS } from './problems/concepts'
 import { commandFor, focusKind, withShortcut, type Command } from './shortcuts'
 import { ShortcutsDialog } from './ShortcutsDialog'
 import { usePaneLayout } from './layout/usePaneLayout'
-import type { RunRequest } from './types'
+import type { Language, RunRequest } from './types'
 
-const STARTER = `nums = [4, 8, 15, 16, 23, 42]
+const STARTERS: Record<Language, string> = {
+  python: `nums = [4, 8, 15, 16, 23, 42]
 total = 0
 for n in nums:
     total += n
 print(total)
-`
+`,
+  javascript: `const nums = [4, 8, 15, 16, 23, 42]
+let total = 0
+for (const n of nums) {
+  total += n
+}
+console.log(total)
+`,
+}
+
+const LANGUAGES: { id: Language; label: string }[] = [
+  { id: 'python', label: 'Python' },
+  { id: 'javascript', label: 'JavaScript' },
+]
+
+const LANGUAGE_KEY = 'clt.language.v1'
+
+function savedLanguage(): Language {
+  try {
+    const saved = localStorage.getItem(LANGUAGE_KEY)
+    if (LANGUAGES.some((l) => l.id === saved)) return saved as Language
+  } catch {
+    // storage blocked: start in Python
+  }
+  return 'python'
+}
+
+/** Everyone's starting code: the playground and each problem, in each language. */
+const startingCode = (): Record<Language, Record<string, string>> => ({
+  python: { [PLAYGROUND]: STARTERS.python, ...Object.fromEntries(PROBLEMS.map((p) => [p.id, p.starters.python])) },
+  javascript: {
+    [PLAYGROUND]: STARTERS.javascript,
+    ...Object.fromEntries([...PROBLEMS, ...JS_CONCEPTS].map((p) => [p.id, p.starters.javascript])),
+  },
+})
 
 const PLAY_MS = 700
 
@@ -34,14 +70,26 @@ const PLAYGROUND = 'playground'
 
 export default function App() {
   const [mode, setMode] = useState<string>(PLAYGROUND)
-  const [codeByMode, setCodeByMode] = useState<Record<string, string>>(() => ({
-    [PLAYGROUND]: STARTER,
-    ...Object.fromEntries(PROBLEMS.map((p) => [p.id, p.starter])),
-  }))
+  const [language, setLanguageState] = useState<Language>(savedLanguage)
+  const setLanguage = (next: Language) => {
+    setLanguageState(next)
+    // The concept problems are JavaScript only.
+    if (next !== 'javascript' && JS_CONCEPTS.some((p) => p.id === mode)) setMode(PLAYGROUND)
+    try {
+      localStorage.setItem(LANGUAGE_KEY, next)
+    } catch {
+      // not remembered, which is fine
+    }
+  }
+  // Each language keeps its own code, so switching back finds the code where it was left.
+  const [codeByMode, setCodeByMode] = useState(startingCode)
   const [caseIndex, setCaseIndex] = useState(0)
   const layout = usePaneLayout()
   const [sidePanel, setSidePanel] = useState<'chat' | 'history' | 'cards'>('chat')
-  const problem: Problem | undefined = PROBLEMS.find((p) => p.id === mode)
+  const problem: Problem | undefined = PROBLEMS.find((p) => p.id === mode) ?? JS_CONCEPTS.find((p) => p.id === mode)
+  // Predict problems keep the output and steps covered until the learner has guessed (or skipped).
+  const [revealed, setRevealed] = useState<Set<string>>(() => new Set())
+  const covered = problem?.kind === 'predict' && !revealed.has(problem.id)
   // The glossary entry a concept chip opened, shown on its own until the learner goes back to the list.
   const [glossaryFocus, setGlossaryFocus] = useState<string | null>(null)
   const openConcept = (id: string) => {
@@ -52,18 +100,23 @@ export default function App() {
     setMode(id)
     setCaseIndex(0)
   }
-  const code = codeByMode[mode]
-  const setCode = (next: string) => setCodeByMode((c) => ({ ...c, [mode]: next }))
-  const request: RunRequest = problem
-    ? {
-        code,
-        call: { name: problem.functionName, args: problem.tests[caseIndex].args },
-        tests: problem.tests,
-      }
-    : { code }
-  const { status, trace, error, tests, ranFor } = usePythonRunner(request)
+  const code = codeByMode[language][mode]
+  const setCode = (next: string) => setCodeByMode((c) => ({ ...c, [language]: { ...c[language], [mode]: next } }))
+  // Concept problems run their code as a whole, examples and all; their tests are separate.
+  const request: RunRequest = !problem
+    ? { code }
+    : problem.track
+      ? problem.tests.length
+        ? { code, tests: problem.tests, testFor: problem.functionName }
+        : { code }
+      : {
+          code,
+          call: { name: problem.functionName, args: problem.tests[caseIndex].args },
+          tests: problem.tests,
+        }
+  const { status, trace, error, tests, ranFor } = useRunner(request, language)
   // Right after switching problems, the last results are still the old problem's until the new run lands.
-  const resultsFresh = problem !== undefined && ranFor === problem.functionName
+  const resultsFresh = problem !== undefined && (ranFor ?? '') === problem.functionName
   const [stepIndex, setStepIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
@@ -74,11 +127,12 @@ export default function App() {
   const chatInputRef = useRef<HTMLInputElement>(null)
   const shortcutsRef = useRef<HTMLDialogElement>(null)
 
-  const steps = trace?.steps ?? []
+  // While a predict problem is covered there are no steps to walk, so nothing (line highlights, the scrubber) gives the answer away.
+  const steps = covered ? [] : (trace?.steps ?? [])
   const shownStep = Math.min(stepIndex, Math.max(0, steps.length - 1))
   const step = steps[shownStep]
   const prevStep = previousInFrame(steps, shownStep)
-  const history = useMemo(() => (trace ? buildHistory(trace.steps, trace) : []), [trace])
+  const history = useMemo(() => (trace && !covered ? buildHistory(trace.steps, trace) : []), [trace, covered])
   const variables = useMemo(() => new Set(steps.flatMap((s) => Object.keys(s.vars))), [trace])
 
   // What the step buttons and the keyboard shortcuts do (keys in src/shortcuts.ts).
@@ -171,7 +225,7 @@ export default function App() {
     )
     m.editor.setModelMarkers(
       model,
-      'python',
+      'code',
       error?.line
         ? [
             {
@@ -202,7 +256,7 @@ export default function App() {
     const spots = reads.filter((r) => r.start && r.end && (r.item !== undefined || !targets.includes(r.name)))
     const spotted = new Set(spots.map((r) => r.name))
     return [
-      ...findNames(line, [...targets, ...sources.filter((s) => !spotted.has(s))]).map((r) =>
+      ...findNames(line, [...targets, ...sources.filter((s) => !spotted.has(s))], language).map((r) =>
         at(r.start, r.end, targets.includes(r.name) ? 'code-target' : 'code-source'),
       ),
       ...spots.map((r) => at(r.start!, r.end!, 'code-source')),
@@ -242,7 +296,7 @@ export default function App() {
   }
 
   const statusText =
-    status === 'loading' ? 'Loading Python…' : status === 'running' ? 'Running…' : error ? 'Error' : 'Up to date'
+    status === 'loading' ? (language === 'python' ? 'Loading Python…' : 'Starting…') : status === 'running' ? 'Running…' : error ? 'Error' : 'Up to date'
 
   return (
     <div className="app">
@@ -258,12 +312,12 @@ export default function App() {
               Playground
             </button>
             <select
-              className={problem ? 'problem-select active' : 'problem-select'}
-              value={problem ? problem.id : ''}
+              className={problem && !problem.track ? 'problem-select active' : 'problem-select'}
+              value={problem && !problem.track ? problem.id : ''}
               onChange={(e) => openProblem(e.target.value)}
               aria-label="Problem"
             >
-              {!problem && (
+              {(!problem || problem.track) && (
                 <option value="" disabled>
                   Problems ({PROBLEMS.length})
                 </option>
@@ -283,9 +337,41 @@ export default function App() {
                 )
               })}
             </select>
+            {language === 'javascript' && (
+              <select
+                className={problem?.track ? 'problem-select concept-select active' : 'problem-select concept-select'}
+                value={problem?.track ? problem.id : ''}
+                onChange={(e) => openProblem(e.target.value)}
+                aria-label="JavaScript concept"
+                title="How JavaScript itself behaves: closures, references, array methods"
+              >
+                {!problem?.track && (
+                  <option value="" disabled>
+                    JS concepts ({JS_CONCEPTS.length})
+                  </option>
+                )}
+                {JS_CONCEPTS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.kind === 'predict' ? `${p.title} (predict)` : p.title}
+                  </option>
+                ))}
+              </select>
+            )}
           </nav>
           <h1 className="wordmark">Code Language Teacher</h1>
           <div className="top-right">
+            <div className="lang-switch" role="group" aria-label="Language">
+              {LANGUAGES.map((l) => (
+                <button
+                  key={l.id}
+                  className={language === l.id ? 'tab active' : 'tab'}
+                  aria-pressed={language === l.id}
+                  onClick={() => setLanguage(l.id)}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
             <button
               className="icon-btn keys-btn"
               onClick={commands.showShortcuts}
@@ -310,13 +396,16 @@ export default function App() {
                 call={resultsFresh ? (trace?.call ?? null) : null}
                 stale={error?.kind === 'syntax'}
                 onOpenConcept={openConcept}
+                output={trace && !error ? trace.stdout : null}
+                revealed={!covered}
+                onReveal={() => setRevealed((r) => new Set(r).add(problem.id))}
               />
             )}
             <div className="editor-wrap">
             <Editor
               height="100%"
-              path={mode}
-              defaultLanguage="python"
+              path={`${language}/${mode}`}
+              language={language}
               value={code}
               onChange={(v) => setCode(v ?? '')}
               onMount={onMount}
@@ -328,7 +417,7 @@ export default function App() {
                 padding: { top: 14 },
                 minimap: { enabled: false },
                 scrollBeyondLastLine: false,
-                tabSize: 4,
+                tabSize: language === 'python' ? 4 : 2,
                 // Word suggestions only on Ctrl+Space, so they don't pop up (and grab Enter) while typing.
                 quickSuggestions: false,
                 // Re-measure when a divider drag resizes the pane.
@@ -338,9 +427,10 @@ export default function App() {
             <CodeHover
               editor={mounted?.editor ?? null}
               monacoApi={mounted?.api ?? null}
-              step={step}
+              step={covered ? undefined : step}
               stepNumber={shownStep + 1}
               variables={variables}
+              builtins={language === 'python'}
               onOpenConcept={openConcept}
             />
             </div>
@@ -419,7 +509,12 @@ export default function App() {
                 {error.kind === 'syntax' && trace ? ' (showing the last version that ran)' : ''}
               </div>
             )}
-            {step ? (
+            {covered ? (
+              <div className="predict-cover">
+                <p>Guess what this prints first, in the box under the problem.</p>
+                <p className="muted">Then step through it here to see why.</p>
+              </div>
+            ) : step ? (
               <Visualizer
                 step={step}
                 prevStep={prevStep}
@@ -428,16 +523,17 @@ export default function App() {
                 tick={stepIndex}
               />
             ) : (
-              <p className="muted">{status === 'loading' ? 'Starting Python in your browser…' : 'Write some code.'}</p>
+              <p className="muted">{status === 'loading' && language === 'python' ? 'Starting Python in your browser…' : 'Write some code.'}</p>
             )}
             </div>
-            {trace && <div {...layout.consoleDivider} />}
-            {trace && (
+            {trace && !covered && <div {...layout.consoleDivider} />}
+            {trace && !covered && (
               <div className={`console-dock${layout.consoleCollapsed ? ' collapsed' : ''}`} style={layout.consoleStyle}>
               <ConsolePanel
                 entries={trace.console}
                 error={error}
                 code={trace.code}
+                language={language}
                 current={shownStep}
                 isLast={shownStep === steps.length - 1}
                 onJump={(i) => {
@@ -463,7 +559,7 @@ export default function App() {
             </div>
             {/* Keep the chat mounted so switching tabs doesn't lose the conversation. */}
             <div hidden={sidePanel !== 'chat'} className="side-body">
-              <Chat code={code} problem={problem?.title ?? null} onInsert={insert} inputRef={chatInputRef} />
+              <Chat code={code} language={language} problem={problem?.title ?? null} onInsert={insert} inputRef={chatInputRef} />
             </div>
             {sidePanel === 'history' && (
               <div className="side-body">
@@ -480,6 +576,7 @@ export default function App() {
             )}
             {sidePanel === 'cards' && (
               <SyntaxHelper
+                language={language}
                 onInsert={insert}
                 focus={glossaryFocus}
                 onFocus={setGlossaryFocus}
