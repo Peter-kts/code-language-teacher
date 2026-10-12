@@ -1,10 +1,11 @@
 import type { AssignPlan, Brief, ExprPlan, Language, LoopPlan, PointerSpec, Step, TargetPlan, Value } from '../types'
 import { formatValue } from './format'
+import { codeMask, nameRegex } from '../syntax/scan'
 
 /** One value in a sum, e.g. the `12` from `ages["test"]` in `+16 = 4 + 12`. */
 export interface SumPart {
   sign: 1 | -1
-  /** The value as Python shows it, e.g. `12`. */
+  /** The value as its language shows it, e.g. `12`. */
   value: string
   /** The code it came from, e.g. `ages["test"]`; null for a literal like `1`. */
   label: string | null
@@ -488,17 +489,13 @@ export interface NameRange {
   end: number
 }
 
-/** Where each of `names` appears on a line of code, skipping strings and comments. */
+/** Where each of `names` appears on a line of code, skipping strings and comments (but not the {...} code inside an f-string or template literal). */
 export function findNames(line: string, names: string[], language: Language = 'python'): NameRange[] {
   const wanted = new Set(names)
+  const code = codeMask(line, language)
   const out: NameRange[] = []
-  // Strings and comments are matched first so names inside them are skipped.
-  const token =
-    language === 'python'
-      ? /#.*$|(['"])(?:\\.|(?!\1).)*\1?|[A-Za-z_]\w*/g
-      : /\/\/.*$|(['"`])(?:\\.|(?!\1).)*\1?|[A-Za-z_$][\w$]*/g
-  for (const m of line.matchAll(token)) {
-    if (wanted.has(m[0])) out.push({ name: m[0], start: m.index + 1, end: m.index + 1 + m[0].length })
+  for (const m of line.matchAll(nameRegex(language))) {
+    if (code[m.index] && wanted.has(m[0])) out.push({ name: m[0], start: m.index + 1, end: m.index + 1 + m[0].length })
   }
   return out
 }

@@ -5,10 +5,10 @@ import type { Problem } from './problems'
 // visualizer shows closures and shared objects in action; the tests use `run` code instead.
 // Ideas and later batches: /mnt/project-files/plans/javascript-concept-problems.md
 
-// `concepts` are JavaScript glossary ids reserved for the JS glossary; their chips show once those cards exist.
-const concept = (p: Omit<Problem, 'starters' | 'track'> & { starter: string }): Problem => {
-  const { starter, ...rest } = p
-  return { ...rest, track: 'js-concepts', starters: { python: '', javascript: starter } }
+// `concepts` are ids in the JavaScript glossary (src/syntax/jsCards.ts).
+const concept = (p: Omit<Problem, 'starters' | 'track' | 'concepts'> & { starter: string; concepts: string[] }): Problem => {
+  const { starter, concepts, ...rest } = p
+  return { ...rest, track: 'js-concepts', concepts: { python: [], javascript: concepts }, starters: { python: '', javascript: starter } }
 }
 
 /** A typical React-style state object, fresh for each test. */

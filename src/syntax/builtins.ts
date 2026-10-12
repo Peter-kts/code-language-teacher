@@ -1,3 +1,6 @@
+import type { Language } from '../types'
+import { codeMask, nameRegex } from './scan'
+
 // Short explanations of Python's built-in functions and common methods, shown when hovering one in the editor.
 // Each one links to the glossary entry that teaches it in context, so the longer explanation lives in one place.
 
@@ -106,38 +109,6 @@ export const BUILTIN_METHODS: Builtin[] = [
 const FUNCTIONS = new Map(BUILTIN_FUNCTIONS.map((b) => [b.name, b]))
 const METHODS = new Map(BUILTIN_METHODS.map((b) => [b.name, b]))
 
-/**
- * True if position i of the line is inside a string or a # comment.
- * The {...} parts of an f-string count as code. Strings spanning lines aren't tracked.
- */
-function inStringOrComment(line: string, i: number): boolean {
-  let quote = ''
-  let fstring = false
-  // How deep inside an f-string's {...} we are: code, not text.
-  let depth = 0
-  for (let j = 0; j < i; j++) {
-    const ch = line[j]
-    if (quote && depth > 0) {
-      if (ch === '{') depth++
-      else if (ch === '}') depth--
-    } else if (quote) {
-      if (ch === '\\') j++
-      else if (fstring && (ch === '{' || ch === '}') && line[j + 1] === ch) j++
-      else if (fstring && ch === '{') depth = 1
-      else if (line.startsWith(quote, j)) {
-        j += quote.length - 1
-        quote = ''
-      }
-    } else if (ch === '#') return true
-    else if (ch === '"' || ch === "'") {
-      quote = line.startsWith(ch.repeat(3), j) ? ch.repeat(3) : ch
-      fstring = /(^|[^\w])[rRbB]?[fF][rR]?$/.test(line.slice(0, j))
-      j += quote.length - 1
-    }
-  }
-  return quote !== '' && depth === 0
-}
-
 /** A name in a line of code, with 0-based start and end (exclusive). */
 export interface NameHit {
   name: string
@@ -148,15 +119,13 @@ export interface NameHit {
 }
 
 /** The name under the given 0-based column of a line of code, unless it's inside a string or comment. */
-export function nameAt(line: string, column: number): NameHit | null {
-  const word = /[A-Za-z_]\w*/g
-  let m: RegExpExecArray | null
-  while ((m = word.exec(line))) {
+export function nameAt(line: string, column: number, language: Language = 'python'): NameHit | null {
+  for (const m of line.matchAll(nameRegex(language))) {
     const start = m.index
     const end = start + m[0].length
     if (column < start) return null
     if (column >= end) continue
-    if (inStringOrComment(line, start)) return null
+    if (!codeMask(line, language)[start]) return null
     return { name: m[0], start, end, afterDot: line.slice(0, start).trimEnd().endsWith('.') }
   }
   return null

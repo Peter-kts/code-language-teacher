@@ -14,6 +14,12 @@ export interface TestCase {
   name?: string
 }
 
+/** Text that reads the same in both languages, or a version for each where they differ (list or array, True or true). */
+export type Text = string | Record<Language, string>
+
+/** The text in the given language. */
+export const say = (text: Text, language: Language) => (typeof text === 'string' ? text : text[language])
+
 export type Difficulty = 'Warm-up' | 'Easy' | 'Medium' | 'Hard'
 
 export const DIFFICULTIES: Difficulty[] = ['Warm-up', 'Easy', 'Medium', 'Hard']
@@ -23,11 +29,11 @@ export interface Problem {
   title: string
   difficulty: Difficulty
   /** Paragraphs of the problem statement. */
-  statement: string[]
+  statement: Text[]
   /** Revealed one at a time, so the learner can ask for just a nudge. */
-  hints: string[]
-  /** Ids of the glossary entries (src/syntax/cards.ts) this problem practices. */
-  concepts: string[]
+  hints: Text[]
+  /** Ids of the glossary entries this problem practices, in each language's glossary (src/syntax/cards.ts, jsCards.ts). */
+  concepts: Record<Language, string[]>
   /** The function the tests call; empty for a predict problem. */
   functionName: string
   /** The code the learner starts from, in each language. */
@@ -52,13 +58,21 @@ export const PROBLEMS: Problem[] = [
     title: 'FizzBuzz',
     difficulty: 'Warm-up',
     statement: [
-      'Return a list of strings for the numbers 1 to n. Use "Fizz" for multiples of 3, "Buzz" for multiples of 5, "FizzBuzz" for multiples of both, and the number itself (as a string) otherwise.',
+      {
+        python:
+          'Return a list of strings for the numbers 1 to n. Use "Fizz" for multiples of 3, "Buzz" for multiples of 5, "FizzBuzz" for multiples of both, and the number itself (as a string) otherwise.',
+        javascript:
+          'Return an array of strings for the numbers 1 to n. Use "Fizz" for multiples of 3, "Buzz" for multiples of 5, "FizzBuzz" for multiples of both, and the number itself (as a string) otherwise.',
+      },
     ],
     hints: [
-      'n % 3 == 0 is True when n is a multiple of 3.',
-      'Check "multiple of both" first: a number divisible by 15 is also divisible by 3, so the order of your if/elif matters.',
+      { python: 'n % 3 == 0 is True when n is a multiple of 3.', javascript: 'i % 3 === 0 is true when i is a multiple of 3.' },
+      {
+        python: 'Check "multiple of both" first: a number divisible by 15 is also divisible by 3, so the order of your if/elif matters.',
+        javascript: 'Check "multiple of both" first: a number divisible by 15 is also divisible by 3, so the order of your if/else if matters. String(i) turns the number into text.',
+      },
     ],
-    concepts: ['range', 'math', 'if-elif-else', 'lists'],
+    concepts: { python: ['range', 'math', 'if-elif-else', 'lists'], javascript: ['for-count', 'math', 'if-else', 'lists'] },
     functionName: 'fizzBuzz',
     starters: {
       python: `def fizzBuzz(n):
@@ -91,13 +105,17 @@ export const PROBLEMS: Problem[] = [
     title: 'Find the Max',
     difficulty: 'Warm-up',
     statement: [
-      'Given a non-empty list of integers nums, return the largest one. Try it without using max(), so you can watch the best value change.',
+      {
+        python: 'Given a non-empty list of integers nums, return the largest one. Try it without using max(), so you can watch the best value change.',
+        javascript:
+          'Given a non-empty array of integers nums, return the largest one. Try it without using Math.max(), so you can watch the best value change.',
+      },
     ],
     hints: [
       'Start with best = nums[0], then look at every number.',
       'Only replace best when the number you are looking at is bigger.',
     ],
-    concepts: ['for-list', 'comparisons', 'running-best'],
+    concepts: { python: ['for-list', 'comparisons', 'running-best'], javascript: ['for-list', 'comparisons', 'running-best'] },
     functionName: 'findMax',
     starters: {
       python: `def findMax(nums):
@@ -128,11 +146,19 @@ export const PROBLEMS: Problem[] = [
     title: 'Running Sum',
     difficulty: 'Easy',
     statement: [
-      'Given a list nums, return a new list where each item is the sum of nums up to and including that position.',
+      {
+        python: 'Given a list nums, return a new list where each item is the sum of nums up to and including that position.',
+        javascript: 'Given an array nums, return a new array where each item is the sum of nums up to and including that position.',
+      },
       'For [1, 2, 3, 4] the answer is [1, 3, 6, 10].',
     ],
-    hints: ['Keep a total that grows by each number, and append the total after each step.'],
-    concepts: ['augmented', 'lists', 'prefix-sum'],
+    hints: [
+      {
+        python: 'Keep a total that grows by each number, and append the total after each step.',
+        javascript: 'Keep a total that grows by each number, and push the total after each step.',
+      },
+    ],
+    concepts: { python: ['augmented', 'lists', 'prefix-sum'], javascript: ['augmented', 'lists', 'prefix-sum'] },
     functionName: 'runningSum',
     starters: {
       python: `def runningSum(nums):
@@ -164,13 +190,19 @@ export const PROBLEMS: Problem[] = [
     title: 'Reverse a List in Place',
     difficulty: 'Easy',
     statement: [
-      'Reverse the list nums without making a new list, then return it. Try it without nums.reverse() or slicing.',
+      {
+        python: 'Reverse the list nums without making a new list, then return it. Try it without nums.reverse() or slicing.',
+        javascript: 'Reverse the array nums without making a new array, then return it. Try it without nums.reverse().',
+      },
     ],
     hints: [
-      'Put one pointer at the start and one at the end, and swap what they point at.',
+      {
+        python: 'Put one pointer at the start and one at the end, and swap what they point at: a, b = b, a.',
+        javascript: 'Put one pointer at the start and one at the end, and swap what they point at: [a, b] = [b, a].',
+      },
       'Move them toward each other and stop when they meet.',
     ],
-    concepts: ['two-pointers', 'tuples', 'while'],
+    concepts: { python: ['two-pointers', 'tuples', 'while'], javascript: ['two-pointers', 'destructuring', 'while'] },
     functionName: 'reverseList',
     starters: {
       python: `def reverseList(nums):
@@ -203,14 +235,20 @@ export const PROBLEMS: Problem[] = [
     title: 'Two Sum',
     difficulty: 'Easy',
     statement: [
-      'Given a list of integers nums and an integer target, return the indexes of the two numbers that add up to target.',
+      {
+        python: 'Given a list of integers nums and an integer target, return the indexes of the two numbers that add up to target.',
+        javascript: 'Given an array of integers nums and an integer target, return the indexes of the two numbers that add up to target, as an array.',
+      },
       'Each input has exactly one solution, and you may not use the same element twice. Return the two indexes in any order.',
     ],
     hints: [
       'For each number, the partner you need is target - num.',
-      'A dict that remembers numbers you have already seen (number → index) can find the partner in one pass.',
+      {
+        python: 'A dict that remembers numbers you have already seen (number → index) can find the partner in one pass.',
+        javascript: 'A Map that remembers numbers you have already seen (number → index) can find the partner in one pass: seen.has(need), then seen.get(need).',
+      },
     ],
-    concepts: ['dicts', 'for-index', 'hash-map-lookup'],
+    concepts: { python: ['dicts', 'for-index', 'hash-map-lookup'], javascript: ['dicts', 'for-index', 'hash-map-lookup'] },
     functionName: 'twoSum',
     starters: {
       python: `def twoSum(nums, target):
@@ -239,13 +277,19 @@ export const PROBLEMS: Problem[] = [
     title: 'Valid Anagram',
     difficulty: 'Easy',
     statement: [
-      'Return True if the string t uses exactly the same letters as s, the same number of times each, and False otherwise.',
+      {
+        python: 'Return True if the string t uses exactly the same letters as s, the same number of times each, and False otherwise.',
+        javascript: 'Return true if the string t uses exactly the same letters as s, the same number of times each, and false otherwise.',
+      },
     ],
     hints: [
-      'Count the letters of s in a dict.',
-      'Then go through t and count each letter back down. Any letter that goes below zero, or is missing, means False.',
+      { python: 'Count the letters of s in a dict.', javascript: 'Count the letters of s in a Map: counts.set(ch, (counts.get(ch) ?? 0) + 1).' },
+      {
+        python: 'Then go through t and count each letter back down. Any letter that goes below zero, or is missing, means False.',
+        javascript: 'Then go through t and count each letter back down. Any letter that goes below zero, or is missing, means false.',
+      },
     ],
-    concepts: ['dicts', 'strings', 'counting'],
+    concepts: { python: ['dicts', 'strings', 'counting'], javascript: ['dicts', 'strings', 'counting'] },
     functionName: 'isAnagram',
     starters: {
       python: `def isAnagram(s, t):
@@ -281,13 +325,19 @@ export const PROBLEMS: Problem[] = [
     title: 'Valid Parentheses',
     difficulty: 'Easy',
     statement: [
-      'Given a string s of the characters ( ) [ ] { }, return True if every bracket is closed by the same kind of bracket in the right order.',
+      {
+        python: 'Given a string s of the characters ( ) [ ] { }, return True if every bracket is closed by the same kind of bracket in the right order.',
+        javascript: 'Given a string s of the characters ( ) [ ] { }, return true if every bracket is closed by the same kind of bracket in the right order.',
+      },
     ],
     hints: [
-      'Push each opening bracket onto a stack (a list you append to).',
+      {
+        python: 'Push each opening bracket onto a stack (a list you append to).',
+        javascript: 'Push each opening bracket onto a stack (an array you push to and pop from).',
+      },
       'When you see a closing bracket, the top of the stack must be its partner. At the end the stack must be empty.',
     ],
-    concepts: ['stack', 'dicts', 'truthiness'],
+    concepts: { python: ['stack', 'dicts', 'truthiness'], javascript: ['stack', 'objects', 'truthiness'] },
     functionName: 'isValid',
     starters: {
       python: `def isValid(s):
@@ -328,7 +378,7 @@ export const PROBLEMS: Problem[] = [
       'As you walk through the days, remember the lowest price so far.',
       'Each day, selling today would earn price - lowest. Keep the best of those.',
     ],
-    concepts: ['running-best', 'min-max-sum'],
+    concepts: { python: ['running-best', 'min-max-sum'], javascript: ['running-best', 'min-max-sum'] },
     functionName: 'maxProfit',
     starters: {
       python: `def maxProfit(prices):
@@ -366,7 +416,7 @@ export const PROBLEMS: Problem[] = [
       'Use a slow pointer for "where the next non-zero goes" and a fast pointer that reads every item.',
       'When fast finds a non-zero, swap it with slow and move slow forward.',
     ],
-    concepts: ['slow-fast', 'tuples', 'for-index'],
+    concepts: { python: ['slow-fast', 'tuples', 'for-index'], javascript: ['slow-fast', 'destructuring', 'for-count'] },
     functionName: 'moveZeroes',
     starters: {
       python: `def moveZeroes(nums):
@@ -399,10 +449,13 @@ export const PROBLEMS: Problem[] = [
       'nums is sorted from smallest to largest. Return the index of target, or -1 if it is not there. Look at as few items as you can.',
     ],
     hints: [
-      'Keep lo and hi as the range that could still hold target, and look at mid = (lo + hi) // 2.',
+      {
+        python: 'Keep lo and hi as the range that could still hold target, and look at mid = (lo + hi) // 2.',
+        javascript: 'Keep lo and hi as the range that could still hold target, and look at mid = Math.floor((lo + hi) / 2).',
+      },
       'If nums[mid] is too small, the answer is to the right: lo = mid + 1. Too big: hi = mid - 1.',
     ],
-    concepts: ['binary-search', 'while', 'math'],
+    concepts: { python: ['binary-search', 'while', 'math'], javascript: ['binary-search', 'while', 'math'] },
     functionName: 'search',
     starters: {
       python: `def search(nums, target):
@@ -437,13 +490,19 @@ export const PROBLEMS: Problem[] = [
     title: 'Merge Two Sorted Lists',
     difficulty: 'Easy',
     statement: [
-      'a and b are each sorted from smallest to largest. Return one sorted list with every number from both, without calling sorted().',
+      {
+        python: 'a and b are each sorted from smallest to largest. Return one sorted list with every number from both, without calling sorted().',
+        javascript: 'a and b are each sorted from smallest to largest. Return one sorted array with every number from both, without calling sort().',
+      },
     ],
     hints: [
       'Keep an index i into a and j into b. Take whichever of a[i] and b[j] is smaller.',
-      'When one list runs out, add the rest of the other.',
+      {
+        python: 'When one list runs out, add the rest of the other.',
+        javascript: 'When one array runs out, add the rest of the other: out.push(...a.slice(i)).',
+      },
     ],
-    concepts: ['two-pointers', 'lists', 'slicing'],
+    concepts: { python: ['two-pointers', 'lists', 'slicing'], javascript: ['two-pointers', 'lists', 'slicing', 'spread'] },
     functionName: 'merge',
     starters: {
       python: `def merge(a, b):
@@ -481,9 +540,12 @@ export const PROBLEMS: Problem[] = [
     ],
     hints: [
       'To land on step i you came from step i - 1 or step i - 2, so ways(i) = ways(i - 1) + ways(i - 2).',
-      'A recursive version shows the calls piling up; filling a list from the bottom is much faster.',
+      {
+        python: 'A recursive version shows the calls piling up; filling a list from the bottom is much faster.',
+        javascript: 'A recursive version shows the calls piling up; filling an array from the bottom is much faster.',
+      },
     ],
-    concepts: ['recursion', 'memoization', 'lists'],
+    concepts: { python: ['recursion', 'memoization', 'lists'], javascript: ['recursion', 'memoization', 'lists'] },
     functionName: 'climbStairs',
     starters: {
       python: `def climbStairs(n):
@@ -518,9 +580,12 @@ export const PROBLEMS: Problem[] = [
     ],
     hints: [
       'Keep current, the best sum of a run that ends right here.',
-      'At each number, either extend the run or start fresh: current = max(n, current + n). Track the best current you ever see.',
+      {
+        python: 'At each number, either extend the run or start fresh: current = max(n, current + n). Track the best current you ever see.',
+        javascript: 'At each number, either extend the run or start fresh: current = Math.max(n, current + n). Track the best current you ever see.',
+      },
     ],
-    concepts: ['running-best', 'min-max-sum'],
+    concepts: { python: ['running-best', 'min-max-sum'], javascript: ['running-best', 'min-max-sum'] },
     functionName: 'maxSubArray',
     starters: {
       python: `def maxSubArray(nums):
@@ -559,7 +624,7 @@ export const PROBLEMS: Problem[] = [
       'Use a window from left to right. Grow it by moving right one character at a time.',
       'Remember where you last saw each character. If it is inside the window, move left just past it.',
     ],
-    concepts: ['sliding-window', 'dicts', 'running-best'],
+    concepts: { python: ['sliding-window', 'dicts', 'running-best'], javascript: ['sliding-window', 'dicts', 'running-best'] },
     functionName: 'lengthOfLongestSubstring',
     starters: {
       python: `def lengthOfLongestSubstring(s):
@@ -599,10 +664,16 @@ export const PROBLEMS: Problem[] = [
       'Group the words in strs that are anagrams of each other. Keep the words in each group in the order they appear in strs; the groups themselves can come in any order.',
     ],
     hints: [
-      'Two words are anagrams when their sorted letters match: "".join(sorted(word)).',
-      'Use that as a dict key and append each word to its list.',
+      {
+        python: 'Two words are anagrams when their sorted letters match: "".join(sorted(word)).',
+        javascript: 'Two words are anagrams when their sorted letters match: [...word].sort().join("").',
+      },
+      {
+        python: 'Use that as a dict key and append each word to its list.',
+        javascript: 'Use that as a Map key and push each word onto its array, making the array the first time a key shows up.',
+      },
     ],
-    concepts: ['dicts', 'sorting', 'string-methods', 'defaultdict'],
+    concepts: { python: ['dicts', 'sorting', 'string-methods', 'defaultdict'], javascript: ['dicts', 'sorting', 'string-methods', 'group-by'] },
     functionName: 'groupAnagrams',
     starters: {
       python: `def groupAnagrams(strs):

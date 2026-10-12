@@ -389,6 +389,7 @@ export default function App() {
               <ProblemPanel
                 key={problem.id}
                 problem={problem}
+                language={language}
                 tests={resultsFresh ? tests : null}
                 caseIndex={caseIndex}
                 onSelectCase={setCaseIndex}
@@ -430,7 +431,7 @@ export default function App() {
               step={covered ? undefined : step}
               stepNumber={shownStep + 1}
               variables={variables}
-              builtins={language === 'python'}
+              language={language}
               onOpenConcept={openConcept}
             />
             </div>

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import type { Language } from '../types'
 import { PROBLEMS } from '../problems/problems'
-import { groupCards, PYTHON_CARDS, searchCards, type GroupBy, type SyntaxCard } from './cards'
+import { JS_CONCEPTS } from '../problems/concepts'
+import { CARDS, groupCards, searchCards, type GroupBy, type SyntaxCard } from './cards'
 
 const GROUP_BYS: { id: GroupBy; label: string }[] = [
   { id: 'topic', label: 'Topic' },
@@ -23,14 +24,18 @@ function savedGroupBy(): GroupBy {
 
 function CardView({
   card,
+  language,
   onInsert,
   onOpenProblem,
 }: {
   card: SyntaxCard
+  language: Language
   onInsert: (code: string) => void
   onOpenProblem: (id: string) => void
 }) {
-  const practice = PROBLEMS.filter((p) => p.concepts.includes(card.id))
+  // The JavaScript concept problems only exist in JavaScript.
+  const problems = language === 'javascript' ? [...PROBLEMS, ...JS_CONCEPTS] : PROBLEMS
+  const practice = problems.filter((p) => p.concepts[language].includes(card.id))
   return (
     <div className="card">
       <div className="card-head">
@@ -70,7 +75,8 @@ export function SyntaxHelper({
   const [query, setQuery] = useState('')
   const [groupBy, setGroupBy] = useState<GroupBy>(savedGroupBy)
   const searching = query.trim() !== ''
-  const groups = groupCards(searchCards(query), groupBy)
+  const cards = CARDS[language]
+  const groups = groupCards(searchCards(query, cards), groupBy)
 
   const pick = (by: GroupBy) => {
     setGroupBy(by)
@@ -81,7 +87,7 @@ export function SyntaxHelper({
     }
   }
 
-  const focused = PYTHON_CARDS.find((c) => c.id === focus)
+  const focused = cards.find((c) => c.id === focus)
   if (focused) {
     return (
       <div className="syntax">
@@ -89,7 +95,7 @@ export function SyntaxHelper({
           ← All glossary entries
         </button>
         <div className="cards">
-          <CardView card={focused} onInsert={onInsert} onOpenProblem={onOpenProblem} />
+          <CardView card={focused} language={language} onInsert={onInsert} onOpenProblem={onOpenProblem} />
         </div>
       </div>
     )
@@ -111,9 +117,6 @@ export function SyntaxHelper({
           </button>
         ))}
       </div>
-      {language !== 'python' && (
-        <p className="muted glossary-note">The glossary teaches Python for now. JavaScript entries are coming next.</p>
-      )}
       <div className="cards">
         {groups.length === 0 && <p className="muted">No entry for that yet.</p>}
         {groups.map((group, i) => (
@@ -123,7 +126,7 @@ export function SyntaxHelper({
               {group.label} <span className="muted">{group.cards.length}</span>
             </summary>
             {group.cards.map((card) => (
-              <CardView key={card.id} card={card} onInsert={onInsert} onOpenProblem={onOpenProblem} />
+              <CardView key={card.id} card={card} language={language} onInsert={onInsert} onOpenProblem={onOpenProblem} />
             ))}
           </details>
         ))}
