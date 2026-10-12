@@ -62,14 +62,22 @@ class _LoopIndexer(ast.NodeTransformer):
 
     def __init__(self):
         self.pointers = []
+        # Loops with the same name over the same list share one counter (and
+        # pointer), so a second `for c in s:` moves the arrow rather than
+        # leaving it where the first loop ended.
+        self.shared = {}
 
     def visit_For(self, node):
         self.generic_visit(node)
         if isinstance(node.target, ast.Name) and isinstance(node.iter, ast.Name):
-            hidden = f"{HIDDEN_PREFIX}{node.lineno}_{node.col_offset}"
-            self.pointers.append(
-                {"label": node.target.id, "var": hidden, "target": node.iter.id}
-            )
+            pair = (node.target.id, node.iter.id)
+            hidden = self.shared.get(pair)
+            if hidden is None:
+                hidden = f"{HIDDEN_PREFIX}{node.lineno}_{node.col_offset}"
+                self.shared[pair] = hidden
+                self.pointers.append(
+                    {"label": node.target.id, "var": hidden, "target": node.iter.id}
+                )
             node.target = ast.copy_location(
                 ast.Tuple(
                     elts=[ast.Name(id=hidden, ctx=ast.Store()), node.target],
