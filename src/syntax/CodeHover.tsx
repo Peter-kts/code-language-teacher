@@ -34,6 +34,7 @@ export function CodeHover({
   step,
   stepNumber,
   variables,
+  builtins = true,
   onOpenConcept,
 }: {
   editor: monaco.editor.IStandaloneCodeEditor | null
@@ -44,6 +45,8 @@ export function CodeHover({
   stepNumber: number
   /** Every variable name the run ever had, so a name without a value yet can say so. */
   variables: Set<string>
+  /** Explain the built-in functions under the mouse (Python only, for now). */
+  builtins?: boolean
   onOpenConcept: (id: string) => void
 }) {
   const [shown, setShown] = useState<Shown | null>(null)
@@ -55,6 +58,8 @@ export function CodeHover({
   // The mouse listener is set up once; this keeps the variables it checks current.
   const variablesRef = useRef(variables)
   variablesRef.current = variables
+  const builtinsRef = useRef(builtins)
+  builtinsRef.current = builtins
 
   const cancelHide = () => window.clearTimeout(hideTimer.current)
   const hideSoon = () => {
@@ -77,7 +82,7 @@ export function CodeHover({
       setShown(null)
     }
     const targetAt = (line: string, column: number): { target: Target; start: number } | null => {
-      const builtin = builtinAt(line, column)
+      const builtin = builtinsRef.current ? builtinAt(line, column) : null
       if (builtin) return { target: { kind: 'builtin', builtin: builtin.builtin }, start: builtin.start }
       const name = nameAt(line, column)
       if (name && !name.afterDot && variablesRef.current.has(name.name)) {

@@ -274,7 +274,7 @@ function DictView({
   return (
     <div className="dict">
       <div className="list-name">
-        {name} <span className="muted">(dict)</span>
+        {name} <span className="muted">({value.t ?? 'dict'})</span>
         {summary}
       </div>
       {value.entries.length === 0 ? (

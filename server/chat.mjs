@@ -11,9 +11,15 @@ if (existsSync(envFile)) process.loadEnvFile(envFile)
 
 const MODEL = 'claude-opus-5-5'
 
-const SYSTEM = `You are the syntax helper inside a code-learning IDE. The learner is practicing Python and LeetCode-style problems.
+// The language the learner has picked in the editor, as its name and its code fence tag.
+const LANGUAGES = {
+  python: { name: 'Python', fence: 'python', simple: 'plain lists, dicts and loops' },
+  javascript: { name: 'modern JavaScript', fence: 'javascript', simple: 'plain arrays, objects, Maps and loops (no frameworks or libraries)' },
+}
 
-Answer the way a patient tutor would at a whiteboard: one or two sentences, then a short runnable Python example in a \`\`\`python fenced block. The learner can insert your code into their editor with one click, so keep examples small and self-contained, using plain lists, dicts and loops that a step-by-step visualizer can draw.
+const system = (lang) => `You are the syntax helper inside a code-learning IDE. The learner is practicing ${lang.name} and LeetCode-style problems.
+
+Answer the way a patient tutor would at a whiteboard: one or two sentences, then a short runnable ${lang.name} example in a \`\`\`${lang.fence} fenced block. The learner can insert your code into their editor with one click, so keep examples small and self-contained, using ${lang.simple} that a step-by-step visualizer can draw.
 
 When they ask about the problem they are working on, give hints and explain ideas rather than the full solution, unless they explicitly ask for the answer. Their current code is attached to their latest message for context; refer to it when it helps.`
 
@@ -62,9 +68,10 @@ export async function handleChat(req, res) {
     res.writeHead(400, { 'content-type': 'text/plain' }).end('Expected a user message')
     return
   }
+  const lang = Object.hasOwn(LANGUAGES, body.language) ? LANGUAGES[body.language] : LANGUAGES.python
   const context = [
     body.problem ? `Problem: ${body.problem}` : 'Mode: free playground',
-    `Current code:\n\`\`\`python\n${String(body.code ?? '').slice(0, 8000)}\n\`\`\``,
+    `Current code:\n\`\`\`${lang.fence}\n${String(body.code ?? '').slice(0, 8000)}\n\`\`\``,
   ].join('\n')
   const messages = history.map((m, i) => ({
     role: m.role === 'assistant' ? 'assistant' : 'user',
@@ -80,7 +87,7 @@ export async function handleChat(req, res) {
       output_config: { effort: 'low' },
       betas: ['server-side-fallback-2026-07-01'],
       fallbacks: 'default',
-      system: SYSTEM,
+      system: system(lang),
       messages,
     })
     res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-cache' })

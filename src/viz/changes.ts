@@ -1,4 +1,4 @@
-import type { AssignPlan, Brief, ExprPlan, LoopPlan, PointerSpec, Step, TargetPlan, Value } from '../types'
+import type { AssignPlan, Brief, ExprPlan, Language, LoopPlan, PointerSpec, Step, TargetPlan, Value } from '../types'
 import { formatValue } from './format'
 
 /** One value in a sum, e.g. the `12` from `ages["test"]` in `+16 = 4 + 12`. */
@@ -489,11 +489,14 @@ export interface NameRange {
 }
 
 /** Where each of `names` appears on a line of code, skipping strings and comments. */
-export function findNames(line: string, names: string[]): NameRange[] {
+export function findNames(line: string, names: string[], language: Language = 'python'): NameRange[] {
   const wanted = new Set(names)
   const out: NameRange[] = []
   // Strings and comments are matched first so names inside them are skipped.
-  const token = /#.*$|(['"])(?:\\.|(?!\1).)*\1?|[A-Za-z_]\w*/g
+  const token =
+    language === 'python'
+      ? /#.*$|(['"])(?:\\.|(?!\1).)*\1?|[A-Za-z_]\w*/g
+      : /\/\/.*$|(['"`])(?:\\.|(?!\1).)*\1?|[A-Za-z_$][\w$]*/g
   for (const m of line.matchAll(token)) {
     if (wanted.has(m[0])) out.push({ name: m[0], start: m.index + 1, end: m.index + 1 + m[0].length })
   }

@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Open the printed URL. Python runs entirely in your browser.
+Open the printed URL. Your code runs entirely in your browser, in Python or JavaScript (pick one with the switch at the top right).
 
 The **Ask Claude** chat needs an Anthropic API key, which stays on the server side and never reaches the browser. Copy `.env.example` to `.env` and paste your key after `ANTHROPIC_API_KEY=`, then restart `npm run dev`. `.env` is git-ignored, so the key is never committed.
 
@@ -23,6 +23,7 @@ For a production build on your own server: `npm run build && ANTHROPIC_API_KEY=.
 
 - **Editor:** Monaco (the editor inside VS Code), bundled locally. `src/monaco.ts` imports the editor features behind VS Code's shortcuts one by one, since the bare editor API has none of them.
 - **Running Python:** [Pyodide](https://pyodide.org) runs real CPython in a Web Worker (`src/runner/pyodide.worker.ts`), so a runaway loop never freezes the page. The runtime is copied from `node_modules` into `public/pyodide` on install.
+- **Running JavaScript:** the JavaScript switch runs your code in its own Web Worker (`src/runner/js.worker.ts`). Browsers have no line-by-line hook like `sys.settrace`, so `src/js/instrument.ts` parses the code with [acorn](https://github.com/acornjs/acorn) and rewrites it to report on itself: a call before every statement hands over a way to read each variable in scope, and each part of an assignment records its value. `src/js/runtime.ts` turns those reports into the same trace the Python tracer makes, so the visualizer, history and console work the same for both. Code runs in strict mode, and `for (const n of nums)`, `nums[i]` and `for (const [i, n] of nums.entries())` get the same pointer arrows as their Python versions. Each problem has a starter in both languages.
 - **Live updates:** 300ms after you stop typing, the code is parsed. A syntax error gets a red squiggle and the last good visual stays up; otherwise the code runs and the visual redraws. Runs are capped at 2000 steps, and a run stuck on one slow line is stopped after 5 seconds.
 - **Tracing:** `src/python/tracer.py` runs the code under `sys.settrace` and records the variables at every line. It also reads the code to find pointers:
   - `for n in nums` puts an arrow labeled `n` under the current box (duplicates are handled, because the loop is rewritten to count its position).

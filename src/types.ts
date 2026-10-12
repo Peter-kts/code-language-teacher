@@ -1,10 +1,17 @@
-// Mirrors the JSON produced by src/python/tracer.py.
+// Mirrors the JSON produced by src/python/tracer.py, and by src/js/runtime.ts for JavaScript.
 
-export type Value =
+export type Language = 'python' | 'javascript'
+
+/**
+ * A traced value. JavaScript values also carry `t`, their type as JavaScript names it
+ * (`number`, `Array`, `Map`, a class name, ...); Python values leave it out.
+ */
+export type Value = { t?: string } & (
   | { type: 'prim'; repr: string; value?: string | number | boolean | null }
   | { type: 'list' | 'tuple'; items: Value[]; truncated: boolean }
   | { type: 'dict'; entries: [Value, Value][]; truncated: boolean }
   | { type: 'other'; repr: string }
+)
 
 export interface Step {
   line: number
@@ -18,7 +25,7 @@ export interface Step {
   ran?: Record<string, Brief>
 }
 
-/** A value recorded while a line ran: its Python repr, and the number when it is one. */
+/** A value recorded while a line ran: its text (Python's repr), and the number when it is one. */
 export type Brief = [repr: string, num: number | null]
 
 /**

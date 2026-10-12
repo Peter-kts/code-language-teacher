@@ -5,7 +5,7 @@ import type * as monaco from 'monaco-editor/editor/editor.api'
 import { EDITOR_THEME } from './monaco'
 import { GalaxyBackground } from './galaxy/GalaxyBackground'
 import { KeyboardIcon, PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon, StepBackIcon, StepForwardIcon } from './icons'
-import { usePythonRunner } from './runner/usePythonRunner'
+import { useRunner } from './runner/useRunner'
 import { Visualizer } from './viz/Visualizer'
 import { findNames, previousInFrame, stepRoles } from './viz/changes'
 import { buildHistory } from './viz/history'
@@ -19,14 +19,46 @@ import { ProblemPanel } from './problems/ProblemPanel'
 import { commandFor, focusKind, withShortcut, type Command } from './shortcuts'
 import { ShortcutsDialog } from './ShortcutsDialog'
 import { usePaneLayout } from './layout/usePaneLayout'
-import type { RunRequest } from './types'
+import type { Language, RunRequest } from './types'
 
-const STARTER = `nums = [4, 8, 15, 16, 23, 42]
+const STARTERS: Record<Language, string> = {
+  python: `nums = [4, 8, 15, 16, 23, 42]
 total = 0
 for n in nums:
     total += n
 print(total)
-`
+`,
+  javascript: `const nums = [4, 8, 15, 16, 23, 42]
+let total = 0
+for (const n of nums) {
+  total += n
+}
+console.log(total)
+`,
+}
+
+const LANGUAGES: { id: Language; label: string }[] = [
+  { id: 'python', label: 'Python' },
+  { id: 'javascript', label: 'JavaScript' },
+]
+
+const LANGUAGE_KEY = 'clt.language.v1'
+
+function savedLanguage(): Language {
+  try {
+    const saved = localStorage.getItem(LANGUAGE_KEY)
+    if (LANGUAGES.some((l) => l.id === saved)) return saved as Language
+  } catch {
+    // storage blocked: start in Python
+  }
+  return 'python'
+}
+
+/** Everyone's starting code: the playground and each problem, in each language. */
+const startingCode = (): Record<Language, Record<string, string>> => ({
+  python: { [PLAYGROUND]: STARTERS.python, ...Object.fromEntries(PROBLEMS.map((p) => [p.id, p.starters.python])) },
+  javascript: { [PLAYGROUND]: STARTERS.javascript, ...Object.fromEntries(PROBLEMS.map((p) => [p.id, p.starters.javascript])) },
+})
 
 const PLAY_MS = 700
 
@@ -34,10 +66,17 @@ const PLAYGROUND = 'playground'
 
 export default function App() {
   const [mode, setMode] = useState<string>(PLAYGROUND)
-  const [codeByMode, setCodeByMode] = useState<Record<string, string>>(() => ({
-    [PLAYGROUND]: STARTER,
-    ...Object.fromEntries(PROBLEMS.map((p) => [p.id, p.starter])),
-  }))
+  const [language, setLanguageState] = useState<Language>(savedLanguage)
+  const setLanguage = (next: Language) => {
+    setLanguageState(next)
+    try {
+      localStorage.setItem(LANGUAGE_KEY, next)
+    } catch {
+      // not remembered, which is fine
+    }
+  }
+  // Each language keeps its own code, so switching back finds the code where it was left.
+  const [codeByMode, setCodeByMode] = useState(startingCode)
   const [caseIndex, setCaseIndex] = useState(0)
   const layout = usePaneLayout()
   const [sidePanel, setSidePanel] = useState<'chat' | 'history' | 'cards'>('chat')
@@ -52,8 +91,8 @@ export default function App() {
     setMode(id)
     setCaseIndex(0)
   }
-  const code = codeByMode[mode]
-  const setCode = (next: string) => setCodeByMode((c) => ({ ...c, [mode]: next }))
+  const code = codeByMode[language][mode]
+  const setCode = (next: string) => setCodeByMode((c) => ({ ...c, [language]: { ...c[language], [mode]: next } }))
   const request: RunRequest = problem
     ? {
         code,
@@ -61,7 +100,7 @@ export default function App() {
         tests: problem.tests,
       }
     : { code }
-  const { status, trace, error, tests, ranFor } = usePythonRunner(request)
+  const { status, trace, error, tests, ranFor } = useRunner(request, language)
   // Right after switching problems, the last results are still the old problem's until the new run lands.
   const resultsFresh = problem !== undefined && ranFor === problem.functionName
   const [stepIndex, setStepIndex] = useState(0)
@@ -171,7 +210,7 @@ export default function App() {
     )
     m.editor.setModelMarkers(
       model,
-      'python',
+      'code',
       error?.line
         ? [
             {
@@ -202,7 +241,7 @@ export default function App() {
     const spots = reads.filter((r) => r.start && r.end && (r.item !== undefined || !targets.includes(r.name)))
     const spotted = new Set(spots.map((r) => r.name))
     return [
-      ...findNames(line, [...targets, ...sources.filter((s) => !spotted.has(s))]).map((r) =>
+      ...findNames(line, [...targets, ...sources.filter((s) => !spotted.has(s))], language).map((r) =>
         at(r.start, r.end, targets.includes(r.name) ? 'code-target' : 'code-source'),
       ),
       ...spots.map((r) => at(r.start!, r.end!, 'code-source')),
@@ -242,7 +281,7 @@ export default function App() {
   }
 
   const statusText =
-    status === 'loading' ? 'Loading Python…' : status === 'running' ? 'Running…' : error ? 'Error' : 'Up to date'
+    status === 'loading' ? (language === 'python' ? 'Loading Python…' : 'Starting…') : status === 'running' ? 'Running…' : error ? 'Error' : 'Up to date'
 
   return (
     <div className="app">
@@ -286,6 +325,18 @@ export default function App() {
           </nav>
           <h1 className="wordmark">Code Language Teacher</h1>
           <div className="top-right">
+            <div className="lang-switch" role="group" aria-label="Language">
+              {LANGUAGES.map((l) => (
+                <button
+                  key={l.id}
+                  className={language === l.id ? 'tab active' : 'tab'}
+                  aria-pressed={language === l.id}
+                  onClick={() => setLanguage(l.id)}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
             <button
               className="icon-btn keys-btn"
               onClick={commands.showShortcuts}
@@ -315,8 +366,8 @@ export default function App() {
             <div className="editor-wrap">
             <Editor
               height="100%"
-              path={mode}
-              defaultLanguage="python"
+              path={`${language}/${mode}`}
+              language={language}
               value={code}
               onChange={(v) => setCode(v ?? '')}
               onMount={onMount}
@@ -328,7 +379,7 @@ export default function App() {
                 padding: { top: 14 },
                 minimap: { enabled: false },
                 scrollBeyondLastLine: false,
-                tabSize: 4,
+                tabSize: language === 'python' ? 4 : 2,
                 // Word suggestions only on Ctrl+Space, so they don't pop up (and grab Enter) while typing.
                 quickSuggestions: false,
                 // Re-measure when a divider drag resizes the pane.
@@ -341,6 +392,7 @@ export default function App() {
               step={step}
               stepNumber={shownStep + 1}
               variables={variables}
+              builtins={language === 'python'}
               onOpenConcept={openConcept}
             />
             </div>
@@ -428,7 +480,7 @@ export default function App() {
                 tick={stepIndex}
               />
             ) : (
-              <p className="muted">{status === 'loading' ? 'Starting Python in your browser…' : 'Write some code.'}</p>
+              <p className="muted">{status === 'loading' && language === 'python' ? 'Starting Python in your browser…' : 'Write some code.'}</p>
             )}
             </div>
             {trace && <div {...layout.consoleDivider} />}
@@ -438,6 +490,7 @@ export default function App() {
                 entries={trace.console}
                 error={error}
                 code={trace.code}
+                language={language}
                 current={shownStep}
                 isLast={shownStep === steps.length - 1}
                 onJump={(i) => {
@@ -463,7 +516,7 @@ export default function App() {
             </div>
             {/* Keep the chat mounted so switching tabs doesn't lose the conversation. */}
             <div hidden={sidePanel !== 'chat'} className="side-body">
-              <Chat code={code} problem={problem?.title ?? null} onInsert={insert} inputRef={chatInputRef} />
+              <Chat code={code} language={language} problem={problem?.title ?? null} onInsert={insert} inputRef={chatInputRef} />
             </div>
             {sidePanel === 'history' && (
               <div className="side-body">
@@ -480,6 +533,7 @@ export default function App() {
             )}
             {sidePanel === 'cards' && (
               <SyntaxHelper
+                language={language}
                 onInsert={insert}
                 focus={glossaryFocus}
                 onFocus={setGlossaryFocus}

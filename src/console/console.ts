@@ -1,4 +1,4 @@
-import type { CodeError, ConsoleEntry } from '../types'
+import type { CodeError, ConsoleEntry, Language } from '../types'
 
 /** One row of the console. */
 export interface ConsoleLine {
@@ -49,11 +49,24 @@ export function rowsLater(entries: ConsoleEntry[], upTo: number): number {
   return consoleLines(entries, Infinity, true).length - consoleLines(entries, upTo, false).length
 }
 
-/** A Python-style traceback of the user's frames, with the code of each line. Only the frame rows carry a line number. */
-export function tracebackLines(error: CodeError, code: string): { line: number | null; text: string }[] {
+/**
+ * The error with the user's calls it went through, each with its code: a Python-style
+ * traceback (innermost call last), or a JavaScript-style stack (innermost first).
+ * Only the frame rows carry a line number.
+ */
+export function tracebackLines(error: CodeError, code: string, language: Language = 'python'): { line: number | null; text: string }[] {
   if (error.kind !== 'runtime') return []
   const source = code.split('\n')
   const frames = error.traceback ?? []
+  if (language === 'javascript') {
+    return [
+      { line: null, text: error.message },
+      ...[...frames].reverse().flatMap(({ line, func }) => [
+        { line, text: `    at ${func} (line ${line})` },
+        ...(source[line - 1]?.trim() ? [{ line: null, text: `      ${source[line - 1].trim()}` }] : []),
+      ]),
+    ]
+  }
   return [
     ...(frames.length ? [{ line: null, text: 'Traceback (most recent call last):' }] : []),
     ...frames.flatMap(({ line, func }) => [
