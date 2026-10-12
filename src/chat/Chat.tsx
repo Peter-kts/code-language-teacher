@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState, type Ref } from 'react'
+import { loadHistory, saveHistory, type ChatMessage } from './history'
 import type { Language } from '../types'
-
-interface ChatMessage {
-  role: 'user' | 'assistant'
-  content: string
-}
 
 const PASSCODE_KEY = 'chat-passcode'
 
@@ -35,7 +31,7 @@ export function Chat({
   /** The question box, so a shortcut can jump to it. */
   inputRef?: Ref<HTMLInputElement>
 }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [messages, setMessages] = useState<ChatMessage[]>(loadHistory)
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [passcode, setPasscode] = useState(loadPasscode)
@@ -48,6 +44,11 @@ export function Chat({
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' })
   }, [messages])
+
+  // Save once a reply has finished streaming, not on every chunk.
+  useEffect(() => {
+    if (!busy) saveHistory(messages)
+  }, [messages, busy])
 
   const send = async (text: string) => {
     const question = text.trim()
@@ -112,6 +113,11 @@ export function Chat({
         ))}
         <div ref={endRef} />
       </div>
+      {messages.length > 0 && !busy && (
+        <button className="chat-new" onClick={() => setMessages([])} title="Clear this conversation and start fresh">
+          New chat
+        </button>
+      )}
       {needsPasscode && (
         <form
           className="chat-form"
