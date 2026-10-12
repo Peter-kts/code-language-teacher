@@ -1,3 +1,5 @@
+import type { Language } from '../types'
+
 export interface TestCase {
   args: unknown[]
   expected: unknown
@@ -20,7 +22,8 @@ export interface Problem {
   /** Ids of the glossary entries (src/syntax/cards.ts) this problem practices. */
   concepts: string[]
   functionName: string
-  starter: string
+  /** The code the learner starts from, in each language. */
+  starters: Record<Language, string>
   tests: TestCase[]
 }
 
@@ -39,13 +42,23 @@ export const PROBLEMS: Problem[] = [
     ],
     concepts: ['range', 'math', 'if-elif-else', 'lists'],
     functionName: 'fizzBuzz',
-    starter: `def fizzBuzz(n):
+    starters: {
+      python: `def fizzBuzz(n):
     out = []
     for i in range(1, n + 1):
         # decide what to append for i
         pass
     return out
 `,
+      javascript: `function fizzBuzz(n) {
+  const out = []
+  for (let i = 1; i <= n; i++) {
+    // decide what to push for i
+  }
+  return out
+}
+`,
+    },
     tests: [
       { args: [3], expected: ['1', '2', 'Fizz'] },
       { args: [5], expected: ['1', '2', 'Fizz', '4', 'Buzz'] },
@@ -68,13 +81,23 @@ export const PROBLEMS: Problem[] = [
     ],
     concepts: ['for-list', 'comparisons', 'running-best'],
     functionName: 'findMax',
-    starter: `def findMax(nums):
+    starters: {
+      python: `def findMax(nums):
     best = nums[0]
     for n in nums:
         # is n better than best?
         pass
     return best
 `,
+      javascript: `function findMax(nums) {
+  let best = nums[0]
+  for (const n of nums) {
+    // is n better than best?
+  }
+  return best
+}
+`,
+    },
     tests: [
       { args: [[3, 9, 2, 7]], expected: 9 },
       { args: [[-5, -2, -8]], expected: -2 },
@@ -93,7 +116,8 @@ export const PROBLEMS: Problem[] = [
     hints: ['Keep a total that grows by each number, and append the total after each step.'],
     concepts: ['augmented', 'lists', 'prefix-sum'],
     functionName: 'runningSum',
-    starter: `def runningSum(nums):
+    starters: {
+      python: `def runningSum(nums):
     total = 0
     out = []
     for n in nums:
@@ -101,6 +125,16 @@ export const PROBLEMS: Problem[] = [
         pass
     return out
 `,
+      javascript: `function runningSum(nums) {
+  let total = 0
+  const out = []
+  for (const n of nums) {
+    // grow total, then remember it
+  }
+  return out
+}
+`,
+    },
     tests: [
       { args: [[1, 2, 3, 4]], expected: [1, 3, 6, 10] },
       { args: [[1, 1, 1, 1, 1]], expected: [1, 2, 3, 4, 5] },
@@ -120,13 +154,25 @@ export const PROBLEMS: Problem[] = [
     ],
     concepts: ['two-pointers', 'tuples', 'while'],
     functionName: 'reverseList',
-    starter: `def reverseList(nums):
+    starters: {
+      python: `def reverseList(nums):
     l, r = 0, len(nums) - 1
     while l < r:
         # swap, then move both pointers
         break
     return nums
 `,
+      javascript: `function reverseList(nums) {
+  let l = 0
+  let r = nums.length - 1
+  while (l < r) {
+    // swap, then move both pointers
+    break
+  }
+  return nums
+}
+`,
+    },
     tests: [
       { args: [[1, 2, 3, 4, 5]], expected: [5, 4, 3, 2, 1] },
       { args: [[1, 2]], expected: [2, 1] },
@@ -148,12 +194,21 @@ export const PROBLEMS: Problem[] = [
     ],
     concepts: ['dicts', 'for-index', 'hash-map-lookup'],
     functionName: 'twoSum',
-    starter: `def twoSum(nums, target):
+    starters: {
+      python: `def twoSum(nums, target):
     seen = {}
     for i, num in enumerate(nums):
         # what number would pair with num?
         pass
 `,
+      javascript: `function twoSum(nums, target) {
+  const seen = new Map()
+  for (const [i, num] of nums.entries()) {
+    // what number would pair with num?
+  }
+}
+`,
+    },
     tests: [
       { args: [[2, 7, 11, 15], 9], expected: [0, 1], unordered: true },
       { args: [[3, 2, 4], 6], expected: [1, 2], unordered: true },
@@ -174,7 +229,8 @@ export const PROBLEMS: Problem[] = [
     ],
     concepts: ['dicts', 'strings', 'counting'],
     functionName: 'isAnagram',
-    starter: `def isAnagram(s, t):
+    starters: {
+      python: `def isAnagram(s, t):
     if len(s) != len(t):
         return False
     counts = {}
@@ -183,6 +239,18 @@ export const PROBLEMS: Problem[] = [
         pass
     return True
 `,
+      javascript: `function isAnagram(s, t) {
+  if (s.length !== t.length) {
+    return false
+  }
+  const counts = new Map()
+  for (const ch of s) {
+    // count ch
+  }
+  return true
+}
+`,
+    },
     tests: [
       { args: ['anagram', 'nagaram'], expected: true },
       { args: ['rat', 'car'], expected: false },
@@ -203,7 +271,8 @@ export const PROBLEMS: Problem[] = [
     ],
     concepts: ['stack', 'dicts', 'truthiness'],
     functionName: 'isValid',
-    starter: `def isValid(s):
+    starters: {
+      python: `def isValid(s):
     pairs = {")": "(", "]": "[", "}": "{"}
     stack = []
     for ch in s:
@@ -211,6 +280,16 @@ export const PROBLEMS: Problem[] = [
         pass
     return not stack
 `,
+      javascript: `function isValid(s) {
+  const pairs = { ")": "(", "]": "[", "}": "{" }
+  const stack = []
+  for (const ch of s) {
+    // opening: push it. closing: check the top
+  }
+  return stack.length === 0
+}
+`,
+    },
     tests: [
       { args: ['()'], expected: true },
       { args: ['()[]{}'], expected: true },
@@ -233,7 +312,8 @@ export const PROBLEMS: Problem[] = [
     ],
     concepts: ['running-best', 'min-max-sum'],
     functionName: 'maxProfit',
-    starter: `def maxProfit(prices):
+    starters: {
+      python: `def maxProfit(prices):
     lowest = prices[0]
     profit = 0
     for p in prices:
@@ -241,6 +321,16 @@ export const PROBLEMS: Problem[] = [
         pass
     return profit
 `,
+      javascript: `function maxProfit(prices) {
+  let lowest = prices[0]
+  let profit = 0
+  for (const p of prices) {
+    // update lowest and profit
+  }
+  return profit
+}
+`,
+    },
     tests: [
       { args: [[7, 1, 5, 3, 6, 4]], expected: 5 },
       { args: [[7, 6, 4, 3, 1]], expected: 0 },
@@ -260,13 +350,23 @@ export const PROBLEMS: Problem[] = [
     ],
     concepts: ['slow-fast', 'tuples', 'for-index'],
     functionName: 'moveZeroes',
-    starter: `def moveZeroes(nums):
+    starters: {
+      python: `def moveZeroes(nums):
     slow = 0
     for fast in range(len(nums)):
         # found a non-zero? put it at slow
         pass
     return nums
 `,
+      javascript: `function moveZeroes(nums) {
+  let slow = 0
+  for (let fast = 0; fast < nums.length; fast++) {
+    // found a non-zero? put it at slow
+  }
+  return nums
+}
+`,
+    },
     tests: [
       { args: [[0, 1, 0, 3, 12]], expected: [1, 3, 12, 0, 0] },
       { args: [[0]], expected: [0] },
@@ -286,7 +386,8 @@ export const PROBLEMS: Problem[] = [
     ],
     concepts: ['binary-search', 'while', 'math'],
     functionName: 'search',
-    starter: `def search(nums, target):
+    starters: {
+      python: `def search(nums, target):
     lo, hi = 0, len(nums) - 1
     while lo <= hi:
         mid = (lo + hi) // 2
@@ -294,6 +395,18 @@ export const PROBLEMS: Problem[] = [
         break
     return -1
 `,
+      javascript: `function search(nums, target) {
+  let lo = 0
+  let hi = nums.length - 1
+  while (lo <= hi) {
+    const mid = Math.floor((lo + hi) / 2)
+    // found it? otherwise throw away half
+    break
+  }
+  return -1
+}
+`,
+    },
     tests: [
       { args: [[-1, 0, 3, 5, 9, 12], 9], expected: 4 },
       { args: [[-1, 0, 3, 5, 9, 12], 2], expected: -1 },
@@ -314,7 +427,8 @@ export const PROBLEMS: Problem[] = [
     ],
     concepts: ['two-pointers', 'lists', 'slicing'],
     functionName: 'merge',
-    starter: `def merge(a, b):
+    starters: {
+      python: `def merge(a, b):
     i, j = 0, 0
     out = []
     while i < len(a) and j < len(b):
@@ -322,6 +436,18 @@ export const PROBLEMS: Problem[] = [
         break
     return out
 `,
+      javascript: `function merge(a, b) {
+  let i = 0
+  let j = 0
+  const out = []
+  while (i < a.length && j < b.length) {
+    // take the smaller one
+    break
+  }
+  return out
+}
+`,
+    },
     tests: [
       { args: [[1, 4, 7], [2, 3, 8]], expected: [1, 2, 3, 4, 7, 8] },
       { args: [[], [1, 2]], expected: [1, 2] },
@@ -341,12 +467,22 @@ export const PROBLEMS: Problem[] = [
     ],
     concepts: ['recursion', 'memoization', 'lists'],
     functionName: 'climbStairs',
-    starter: `def climbStairs(n):
+    starters: {
+      python: `def climbStairs(n):
     ways = [1, 1]  # ways to stand on step 0 and step 1
     for i in range(2, n + 1):
         ways.append(0)  # replace 0: how many ways to reach step i?
     return ways[n]
 `,
+      javascript: `function climbStairs(n) {
+  const ways = [1, 1] // ways to stand on step 0 and step 1
+  for (let i = 2; i <= n; i++) {
+    ways.push(0) // replace 0: how many ways to reach step i?
+  }
+  return ways[n]
+}
+`,
+    },
     tests: [
       { args: [1], expected: 1 },
       { args: [2], expected: 2 },
@@ -368,7 +504,8 @@ export const PROBLEMS: Problem[] = [
     ],
     concepts: ['running-best', 'min-max-sum'],
     functionName: 'maxSubArray',
-    starter: `def maxSubArray(nums):
+    starters: {
+      python: `def maxSubArray(nums):
     current = nums[0]
     best = nums[0]
     for n in nums[1:]:
@@ -376,6 +513,16 @@ export const PROBLEMS: Problem[] = [
         pass
     return best
 `,
+      javascript: `function maxSubArray(nums) {
+  let current = nums[0]
+  let best = nums[0]
+  for (const n of nums.slice(1)) {
+    // extend the run or start over?
+  }
+  return best
+}
+`,
+    },
     tests: [
       { args: [[-2, 1, -3, 4, -1, 2, 1, -5, 4]], expected: 6 },
       { args: [[1]], expected: 1 },
@@ -396,7 +543,8 @@ export const PROBLEMS: Problem[] = [
     ],
     concepts: ['sliding-window', 'dicts', 'running-best'],
     functionName: 'lengthOfLongestSubstring',
-    starter: `def lengthOfLongestSubstring(s):
+    starters: {
+      python: `def lengthOfLongestSubstring(s):
     last = {}
     left = 0
     best = 0
@@ -405,6 +553,18 @@ export const PROBLEMS: Problem[] = [
         pass
     return best
 `,
+      javascript: `function lengthOfLongestSubstring(s) {
+  const last = new Map()
+  let left = 0
+  let best = 0
+  for (let right = 0; right < s.length; right++) {
+    const ch = s[right]
+    // move left if ch is already in the window
+  }
+  return best
+}
+`,
+    },
     tests: [
       { args: ['abcabcbb'], expected: 3 },
       { args: ['bbbbb'], expected: 1 },
@@ -426,7 +586,8 @@ export const PROBLEMS: Problem[] = [
     ],
     concepts: ['dicts', 'sorting', 'string-methods', 'defaultdict'],
     functionName: 'groupAnagrams',
-    starter: `def groupAnagrams(strs):
+    starters: {
+      python: `def groupAnagrams(strs):
     groups = {}
     for word in strs:
         key = "".join(sorted(word))
@@ -434,6 +595,16 @@ export const PROBLEMS: Problem[] = [
         pass
     return list(groups.values())
 `,
+      javascript: `function groupAnagrams(strs) {
+  const groups = new Map()
+  for (const word of strs) {
+    const key = [...word].sort().join("")
+    // add word to its group
+  }
+  return [...groups.values()]
+}
+`,
+    },
     tests: [
       {
         args: [['eat', 'tea', 'tan', 'ate', 'nat', 'bat']],

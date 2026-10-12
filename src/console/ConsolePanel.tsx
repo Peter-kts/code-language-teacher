@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { CodeError, ConsoleEntry } from '../types'
+import type { CodeError, ConsoleEntry, Language } from '../types'
 import { consoleLines, rowsLater, tracebackLines } from './console'
 
 interface Props {
@@ -7,16 +7,17 @@ interface Props {
   error: CodeError | null
   /** The code the trace ran, for the traceback. */
   code: string
+  language: Language
   current: number
   isLast: boolean
   onJump: (step: number) => void
 }
 
 /** What the program printed or logged up to the current step, with the line that wrote each row. */
-export function ConsolePanel({ entries, error, code, current, isLast, onJump }: Props) {
+export function ConsolePanel({ entries, error, code, language, current, isLast, onJump }: Props) {
   const rows = consoleLines(entries, current, isLast)
   const later = isLast ? 0 : rowsLater(entries, current)
-  const traceback = isLast && error ? tracebackLines(error, code) : []
+  const traceback = isLast && error ? tracebackLines(error, code, language) : []
   const bodyRef = useRef<HTMLDivElement>(null)
 
   // Keep the newest output in view, like a terminal.
@@ -47,7 +48,7 @@ export function ConsolePanel({ entries, error, code, current, isLast, onJump }: 
       <div className="console-body" ref={bodyRef} role="log" aria-label="Console output">
         {rows.length === 0 && traceback.length === 0 && (
           <p className="console-empty">
-            {entries.length ? 'Nothing printed yet at this step.' : 'Use print() to log here.'}
+            {entries.length ? 'Nothing printed yet at this step.' : `Use ${language === 'python' ? 'print()' : 'console.log()'} to log here.`}
           </p>
         )}
         {rows.map((row, i) => (

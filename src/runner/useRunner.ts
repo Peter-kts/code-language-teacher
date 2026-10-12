@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { CodeError, RunRequest, TestResult, TraceResult } from '../types'
+import type { CodeError, Language, RunRequest, TestResult, TraceResult } from '../types'
 import type { WorkerRequest, WorkerResponse } from './pyodide.worker'
 
 export type RunnerStatus = 'loading' | 'running' | 'idle'
@@ -14,12 +14,18 @@ const DEBOUNCE_MS = 300
 // The tracer caps steps, but a single slow line (e.g. 10**10**8) can still hang.
 const RUN_TIMEOUT_MS = 5000
 
-function spawnWorker() {
-  return new Worker(new URL('./pyodide.worker.ts', import.meta.url), { type: 'module' })
+// Each language runs in its own worker; both answer with the same messages.
+function spawnWorker(language: Language) {
+  return language === 'javascript'
+    ? new Worker(new URL('./js.worker.ts', import.meta.url), { type: 'module' })
+    : new Worker(new URL('./pyodide.worker.ts', import.meta.url), { type: 'module' })
 }
 
-/** Re-run shortly after each edit; keep the last trace that compiled. */
-export function usePythonRunner(request: RunRequest) {
+/**
+ * Re-run shortly after each edit; keep the last trace that compiled.
+ * Switching `language` starts that language's worker with a clean slate.
+ */
+export function useRunner(request: RunRequest, language: Language) {
   // Effects key off the serialized request so a new-but-equal object doesn't re-run.
   const requestKey = JSON.stringify(request)
   const [status, setStatusState] = useState<RunnerStatus>('loading')
@@ -62,12 +68,17 @@ export function usePythonRunner(request: RunRequest) {
   }
 
   useEffect(() => {
-    attach(spawnWorker())
+    setStatus('loading')
+    setTrace(null)
+    setError(null)
+    setTests(null)
+    setRanFor(null)
+    attach(spawnWorker(language))
     return () => {
       window.clearTimeout(timeoutRef.current)
       workerRef.current?.terminate()
     }
-  }, [])
+  }, [language])
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -83,13 +94,13 @@ export function usePythonRunner(request: RunRequest) {
         // Only a stuck run gets here; Pyodide's first load is covered by 'loading'.
         if (statusRef.current !== 'running') return
         workerRef.current?.terminate()
-        attach(spawnWorker())
+        attach(spawnWorker(language))
         setStatus('loading')
         setError({ kind: 'runtime', message: 'Stopped: the code took too long to run.', line: null })
       }, RUN_TIMEOUT_MS)
     }, DEBOUNCE_MS)
     return () => window.clearTimeout(handle)
-  }, [requestKey])
+  }, [requestKey, language])
 
   return { status, trace, error, tests, ranFor }
 }

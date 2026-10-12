@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { Language } from '../types'
 import { PROBLEMS } from '../problems/problems'
 import { groupCards, PYTHON_CARDS, searchCards, type GroupBy, type SyntaxCard } from './cards'
 
@@ -53,11 +54,13 @@ function CardView({
 }
 
 export function SyntaxHelper({
+  language,
   onInsert,
   focus,
   onFocus,
   onOpenProblem,
 }: {
+  language: Language
   onInsert: (code: string) => void
   /** Id of an entry to show on its own (opened from a problem's concept chip), or null for the full list. */
   focus: string | null
@@ -108,6 +111,9 @@ export function SyntaxHelper({
           </button>
         ))}
       </div>
+      {language !== 'python' && (
+        <p className="muted glossary-note">The glossary teaches Python for now. JavaScript entries are coming next.</p>
+      )}
       <div className="cards">
         {groups.length === 0 && <p className="muted">No entry for that yet.</p>}
         {groups.map((group, i) => (

@@ -1,0 +1,384 @@
+// Runs JavaScript that instrument.ts rewrote and records a snapshot of the variables
+// before each statement: the same TraceResult JSON that src/python/tracer.py makes,
+// so the visualizer, history and console don't need to know which language ran.
+
+import type { Brief, CodeError, ConsoleEntry, Step, TestResult, TraceResult, Value } from '../types'
+import { formatValue } from '../viz/format'
+import { instrument } from './instrument'
+
+const MAX_STEPS = 2000
+const MAX_LIST_ITEMS = 64
+const MAX_DEPTH = 3
+const MAX_BRIEF = 60
+const MAX_OTHER = 80
+const TEST_SECONDS = 2
+
+/** Thrown when a run takes too many steps; never reported as the program's own error. */
+class StepLimit {}
+
+interface Frame {
+  id: number
+  func: string
+  /** The line it last stepped on. */
+  line: number
+  getters: Record<string, () => unknown> | null
+  hidden: Record<string, number>
+  /** Values recorded since its last step, by part id. */
+  pending: Record<string, Brief> | null
+  /** Its last step, so a loop line can keep showing the item from the pass that just ended. */
+  last: Step | null
+}
+
+type Getters = Record<string, () => unknown>
+
+/** What the rewritten code calls: steps, recorded values, and function starts and ends. */
+interface Hooks {
+  s(line: number, getters: Getters): void
+  r<T>(id: number, value: T): T
+  e(func: string): void
+  o(): void
+  x(err: unknown): void
+  i(line: number, iterable: Iterable<unknown>, getters: Getters, carry: string[], hidden: string | null): Iterable<unknown>
+  k(obj: object): string[]
+}
+
+/** The keys a `for...in` loop visits. */
+function forInKeys(obj: object): string[] {
+  const out: string[] = []
+  for (const k in obj) out.push(k)
+  return out
+}
+
+class Tracer implements Hooks {
+  steps: Step[] = []
+  console: ConsoleEntry[] = []
+  stdout = ''
+  truncated = false
+  /** The calls of the user's code an error went up through, outermost first. */
+  traces = new WeakMap<object, { line: number; func: string }[]>()
+  lastTrace: { line: number; func: string }[] | null = null
+  private stack: Frame[] = []
+  private nextFrame = 1
+
+  constructor(private maxSteps = MAX_STEPS) {}
+
+  s(line: number, getters: Getters) {
+    const frame = this.top()
+    frame.line = line
+    frame.getters = getters
+    this.snapshot(frame, line, getters)
+  }
+
+  r<T>(id: number, value: T): T {
+    const frame = this.stack[this.stack.length - 1]
+    if (frame) (frame.pending ??= {})[id] = brief(value)
+    return value
+  }
+
+  e(func: string) {
+    this.stack.push({ id: this.nextFrame++, func, line: this.top()?.line ?? 1, getters: null, hidden: {}, pending: null, last: null })
+  }
+
+  o() {
+    const frame = this.stack.pop()
+    // The final state of the program, or of the problem's function when it was called.
+    if (frame && !this.stack.length && frame.getters && !this.truncated) this.snapshot(frame, frame.line, frame.getters)
+  }
+
+  x(err: unknown) {
+    if (err instanceof StepLimit) return
+    const trace = this.stack.map((f) => ({ line: f.line, func: f.func }))
+    if (err !== null && typeof err === 'object') {
+      if (!this.traces.has(err)) this.traces.set(err, trace)
+    } else if (!this.lastTrace) this.lastTrace = trace
+  }
+
+  *i(line: number, iterable: Iterable<unknown>, getters: Getters, carry: string[], hidden: string | null) {
+    const frame = this.top()
+    let index = 0
+    for (const item of iterable) {
+      // The step before the first pass is the one in front of the loop.
+      if (index > 0) this.loopStep(frame, line, getters, carry)
+      if (hidden) frame.hidden[hidden] = index
+      index++
+      yield item
+    }
+    if (index > 0) this.loopStep(frame, line, getters, carry)
+  }
+
+  k(obj: object) {
+    return forInKeys(obj)
+  }
+
+  /** Writes from console.log and friends, merged per line and step. */
+  write(stream: 'stdout' | 'stderr', text: string) {
+    if (stream === 'stdout') this.stdout += text
+    const line = this.stack.length ? this.top().line : null
+    const last = this.console[this.console.length - 1]
+    if (last && last.stream === stream && last.line === line && last.step === this.steps.length) last.text += text
+    else this.console.push({ stream, text, line, step: this.steps.length })
+  }
+
+  private top() {
+    return this.stack[this.stack.length - 1]
+  }
+
+  /** The loop line again between passes; its own variables keep the values of the pass that ended. */
+  private loopStep(frame: Frame, line: number, getters: Getters, carry: string[]) {
+    frame.line = line
+    const kept: Record<string, Value> = {}
+    for (const name of carry) if (frame.last && name in frame.last.vars) kept[name] = frame.last.vars[name]
+    this.snapshot(frame, line, getters, kept)
+  }
+
+  private snapshot(frame: Frame, line: number, getters: Getters, extra: Record<string, Value> = {}) {
+    if (this.steps.length >= this.maxSteps) {
+      this.truncated = true
+      throw new StepLimit()
+    }
+    const vars: Record<string, Value> = {}
+    for (const [name, get] of Object.entries(getters)) {
+      let value: unknown
+      try {
+        value = get()
+      } catch {
+        continue // declared with let or const further down: not there yet
+      }
+      if (typeof value === 'function') continue
+      vars[name] = serialize(value)
+    }
+    for (const [name, value] of Object.entries(extra)) if (!(name in vars)) vars[name] = value
+    const step: Step = { line, func: frame.func, frame: frame.id, vars, hidden: { ...frame.hidden }, stdout: this.stdout }
+    if (frame.pending) {
+      step.ran = frame.pending
+      frame.pending = null
+    }
+    frame.last = step
+    this.steps.push(step)
+  }
+}
+
+/** Steps nothing, only stops code that runs too long (for the untraced test runs). */
+class Guard implements Hooks {
+  private count = 0
+  private deadline = 0
+
+  start() {
+    this.deadline = Date.now() + TEST_SECONDS * 1000
+  }
+
+  s() {
+    if (++this.count % 1024 === 0 && Date.now() > this.deadline) throw new Error('took too long')
+  }
+  r<T>(_id: number, value: T) {
+    return value
+  }
+  e() {}
+  o() {}
+  x() {}
+  *i(_line: number, iterable: Iterable<unknown>) {
+    for (const item of iterable) {
+      this.s()
+      yield item
+    }
+  }
+  k(obj: object) {
+    return forInKeys(obj)
+  }
+}
+
+/** A console that sends what the program writes to `write`. */
+function makeConsole(write: (stream: 'stdout' | 'stderr', text: string) => void) {
+  const out = (stream: 'stdout' | 'stderr') => (...args: unknown[]) => write(stream, args.map(show).join(' ') + '\n')
+  return { log: out('stdout'), info: out('stdout'), debug: out('stdout'), table: out('stdout'), error: out('stderr'), warn: out('stderr') }
+}
+
+/** Text for console.log: strings as they are, other values as code. */
+function show(v: unknown): string {
+  return typeof v === 'string' ? v : formatValue(serialize(v))
+}
+
+/** Compile the rewritten code into a function of (__ct, console). */
+function compile(code: string): (hooks: Hooks, console: unknown) => unknown {
+  return new Function('__ct', 'console', `"use strict";\n${code}`) as (hooks: Hooks, console: unknown) => unknown
+}
+
+function errorText(err: unknown): string {
+  if (err instanceof Error) return `${err.name}: ${err.message}`
+  return `Uncaught ${show(err)}`
+}
+
+const copy = (args: unknown[]): unknown[] => JSON.parse(JSON.stringify(args))
+
+/** `twoSum([2, 7, 11, 15], 9)` */
+const callText = (call: { name: string; args: unknown[] }) => `${call.name}(${call.args.map(show).join(', ')})`
+
+/**
+ * Trace `source`. With `call`, also call that function once the code has run
+ * (LeetCode style) and trace its body.
+ */
+export function runTraced(source: string, call: { name: string; args: unknown[] } | null = null, maxSteps = MAX_STEPS): TraceResult {
+  const made = instrument(source, call?.name ?? null)
+  if ('error' in made) return { ok: false, error: made.error }
+  const tracer = new Tracer(maxSteps)
+  const console = makeConsole((stream, text) => tracer.write(stream, text))
+  let error: CodeError | null = null
+  let result: Value | null = null
+  try {
+    const fn = compile(made.code)(tracer, console)
+    if (call) {
+      if (typeof fn !== 'function') throw new ReferenceError(`define a function named ${call.name}`)
+      result = serialize(fn(...copy(call.args)))
+    }
+  } catch (err) {
+    if (!(err instanceof StepLimit)) {
+      const frames = (err !== null && typeof err === 'object' ? tracer.traces.get(err) : tracer.lastTrace) ?? []
+      error = { kind: 'runtime', message: errorText(err), line: frames.length ? frames[frames.length - 1].line : null, traceback: frames }
+    }
+  }
+  return {
+    ok: true,
+    steps: tracer.steps,
+    pointers: made.pointers,
+    truncated: tracer.truncated,
+    error,
+    stdout: tracer.stdout,
+    console: tracer.console,
+    result,
+    call: call ? callText(call) : null,
+    plans: made.plans,
+    loops: made.loops,
+  }
+}
+
+/** Run `name(...case.args)` for each case without tracing. Answers are compared in any order when `case.unordered` is set. */
+export function runTests(source: string, name: string, cases: { args: unknown[]; expected: unknown; unordered?: boolean }[]): TestResult[] {
+  const made = instrument(source, name)
+  if ('error' in made) return cases.map(() => ({ passed: false, got: null, error: `SyntaxError: ${made.error.message}` }))
+  const guard = new Guard()
+  const quiet = makeConsole(() => {})
+  let fn: unknown
+  try {
+    guard.start()
+    fn = compile(made.code)(guard, quiet)
+  } catch (err) {
+    return cases.map(() => ({ passed: false, got: null, error: errorText(err) }))
+  }
+  return cases.map((c) => {
+    if (typeof fn !== 'function') return { passed: false, got: null, error: `define a function named ${name}` }
+    try {
+      guard.start()
+      const got = fn(...copy(c.args))
+      const passed = c.unordered && Array.isArray(got) && Array.isArray(c.expected) ? sameItems(got, c.expected) : equal(got, c.expected)
+      return { passed, got: show(got), error: null }
+    } catch (err) {
+      return { passed: false, got: null, error: errorText(err) }
+    }
+  })
+}
+
+function equal(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b) || a === b) return true
+  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((v, i) => equal(v, b[i]))
+  if (a && b && typeof a === 'object' && typeof b === 'object' && !Array.isArray(a) && !Array.isArray(b)) {
+    const ka = Object.keys(a)
+    const kb = Object.keys(b)
+    return ka.length === kb.length && ka.every((k) => equal((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]))
+  }
+  return false
+}
+
+/** The same items in any order (each list's items compared as written). */
+function sameItems(a: unknown[], b: unknown[]) {
+  const key = (v: unknown) => JSON.stringify(v) ?? String(v)
+  const sa = a.map(key).sort()
+  const sb = b.map(key).sort()
+  return sa.length === sb.length && sa.every((v, i) => v === sb[i])
+}
+
+// ---- values ----
+
+const constructorName = (v: object): string => {
+  const proto = Object.getPrototypeOf(v)
+  if (proto === null) return 'Object'
+  const name = proto.constructor?.name
+  return typeof name === 'string' && name ? name : 'Object'
+}
+
+/** A traced value as the visualizer draws it (see Value in src/types.ts). */
+export function serialize(value: unknown, depth = 0): Value {
+  switch (typeof value) {
+    case 'undefined':
+      return { type: 'prim', repr: 'undefined', t: 'undefined' }
+    case 'boolean':
+      return { type: 'prim', repr: String(value), value, t: 'boolean' }
+    case 'number':
+      // JSON has no NaN or Infinity, so those keep only their text.
+      if (!Number.isFinite(value)) return { type: 'prim', repr: String(value), t: 'number' }
+      return { type: 'prim', repr: Object.is(value, -0) ? '-0' : String(value), value, t: 'number' }
+    case 'string':
+      return { type: 'prim', repr: JSON.stringify(value), value, t: 'string' }
+    case 'bigint':
+      return { type: 'prim', repr: `${value}n`, t: 'bigint' }
+    case 'symbol':
+      return { type: 'other', repr: String(value), t: 'symbol' }
+    case 'function':
+      return { type: 'other', repr: `[Function: ${value.name || 'anonymous'}]`, t: 'function' }
+  }
+  if (value === null) return { type: 'prim', repr: 'null', value: null, t: 'null' }
+  const obj = value as object
+  if (depth >= MAX_DEPTH) return { type: 'other', repr: shortText(obj), t: constructorName(obj) }
+  if (Array.isArray(obj)) {
+    const items: Value[] = []
+    for (let i = 0; i < Math.min(obj.length, MAX_LIST_ITEMS); i++) items.push(serialize(obj[i], depth + 1))
+    return { type: 'list', items, truncated: obj.length > MAX_LIST_ITEMS, t: 'Array' }
+  }
+  if (obj instanceof Set) {
+    const all = [...obj]
+    return { type: 'list', items: all.slice(0, MAX_LIST_ITEMS).map((v) => serialize(v, depth + 1)), truncated: all.length > MAX_LIST_ITEMS, t: 'Set' }
+  }
+  if (obj instanceof Map) {
+    const all = [...obj]
+    return {
+      type: 'dict',
+      entries: all.slice(0, MAX_LIST_ITEMS).map(([k, v]) => [serialize(k, depth + 1), serialize(v, depth + 1)]),
+      truncated: all.length > MAX_LIST_ITEMS,
+      t: 'Map',
+    }
+  }
+  if (obj instanceof Date || obj instanceof RegExp || obj instanceof Error || ArrayBuffer.isView(obj)) {
+    return { type: 'other', repr: clip(String(obj)), t: constructorName(obj) }
+  }
+  // Plain objects, and instances of the learner's classes: their own data properties.
+  const keys = Object.keys(obj)
+  const entries: [Value, Value][] = []
+  for (const key of keys.slice(0, MAX_LIST_ITEMS)) {
+    const desc = Object.getOwnPropertyDescriptor(obj, key)
+    // A getter is the learner's code: don't run it while taking a snapshot.
+    const v = desc && 'value' in desc ? serialize(desc.value, depth + 1) : ({ type: 'other', repr: '[Getter]' } as Value)
+    entries.push([{ type: 'prim', repr: JSON.stringify(key), value: key, t: 'string' }, v])
+  }
+  return { type: 'dict', entries, truncated: keys.length > MAX_LIST_ITEMS, t: constructorName(obj) }
+}
+
+const clip = (text: string, max = MAX_OTHER) => (text.length > max ? `${text.slice(0, max - 1)}…` : text)
+
+/** A value too deep to draw, in a few characters: `[…3 items]`, `{…}`. */
+function shortText(obj: object): string {
+  if (Array.isArray(obj)) return `[…${obj.length} item${obj.length === 1 ? '' : 's'}]`
+  if (obj instanceof Map || obj instanceof Set) return `${constructorName(obj)}(${obj.size})`
+  return '{…}'
+}
+
+/** A recorded value: its text (short), and the number when it is one. */
+export function brief(value: unknown): Brief {
+  if (typeof value === 'number') return [Object.is(value, -0) ? '-0' : String(value), Number.isFinite(value) ? value : null]
+  let text: string
+  try {
+    text = typeof value === 'string' ? JSON.stringify(value.slice(0, MAX_BRIEF + 1)) : formatValue(serialize(value, MAX_DEPTH - 1))
+  } catch {
+    text = '?'
+  }
+  return [clip(text, MAX_BRIEF), null]
+}
+
