@@ -26,6 +26,14 @@ class TracerTest(unittest.TestCase):
         self.assertEqual(result["stdout"], "3\n1\n3\n")
         self.assertNotIn(pointer["var"], body_steps[0]["vars"])
 
+    def test_two_loops_over_one_list_share_a_pointer(self):
+        result = run("s = [4, 8]\nfor c in s:\n    a = c\nfor c in s:\n    b = c\n")
+        self.assertIsNone(result["error"])
+        [pointer] = result["pointers"]
+        second = [st for st in result["steps"] if st["line"] == 5]
+        # The second loop starts its arrow at box 0, not where the first loop ended.
+        self.assertEqual([st["hidden"][pointer["var"]] for st in second], [0, 1])
+
     def test_index_pointers_for_range_len_and_subscript(self):
         src = "a = [1, 2, 3]\nl, r = 0, len(a) - 1\nwhile l < r:\n    a[l], a[r] = a[r], a[l]\n    l += 1\n    r -= 1\nfor i in range(len(a)):\n    pass\n"
         result = run(src)
