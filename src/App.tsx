@@ -129,8 +129,10 @@ export default function App() {
   const { status, trace, error, tests, ranFor } = useRunner(request, language)
   // Right after switching problems, the last results are still the old problem's until the new run lands.
   const resultsFresh = problem !== undefined && (ranFor ?? '') === problem.functionName
-  // trace.code is the exact source those tests ran, even if the editor has changed since.
-  const solvedCode = resultsFresh && tests?.length && tests.every((t) => t.passed) ? (trace?.code ?? null) : null
+  // trace.code is the exact source those tests ran, even if the editor has changed since. Both languages
+  // share function names, so also check the run was in this language (a switch shows the old one briefly).
+  const solvedCode =
+    resultsFresh && trace?.language === language && tests?.length && tests.every((t) => t.passed) ? trace.code : null
   useEffect(() => {
     if (!problem || solvedCode === null || solutions[language][problem.id]?.code === solvedCode) return
     setSolutions((s) => saveSolution(s, language, problem.id, solvedCode))
