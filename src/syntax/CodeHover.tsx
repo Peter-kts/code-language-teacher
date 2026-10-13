@@ -105,7 +105,10 @@ export function CodeHover({
       const pos = target.position
       const model = editor.getModel()
       if (target.type !== monacoApi.editor.MouseTargetType.CONTENT_TEXT || !pos || !model) return null
-      const hit = targetAt(model.getLineContent(pos.lineNumber), pos.column - 1)
+      const line = model.getLineContent(pos.lineNumber)
+      // Monaco rounds to the nearest gap between characters, so over the right half of a name's
+      // last letter the position is just past it: look one character back too.
+      const hit = targetAt(line, pos.column - 1) ?? (pos.column > 1 ? targetAt(line, pos.column - 2) : null)
       return hit && { ...hit, line: pos.lineNumber, key: `${pos.lineNumber}:${hit.start}` }
     }
     const open = (hit: NonNullable<ReturnType<typeof hitAt>>, touch: boolean) => {
@@ -121,15 +124,18 @@ export function CodeHover({
       setShown({ target: hit.target, key: hit.key, left, touch, ...place })
     }
 
-    // Taps: watched on the editor's own element, since Monaco turns touches into cursor moves and scrolling.
+    // Taps: watched on the whole window before anything else sees them (some browsers' touch handling
+    // in Monaco keeps them from listeners on the editor itself), then checked to be inside the editor.
     const node = editor.getDomNode()
+    const inEditor = (e: PointerEvent) => e.target instanceof Node && !!node?.contains(e.target)
     let down: { x: number; y: number } | null = null
     const onPointerDown = (e: PointerEvent) => {
+      if (!inEditor(e)) return
       touching.current = e.pointerType !== 'mouse'
       down = touching.current ? { x: e.clientX, y: e.clientY } : null
     }
     const onPointerUp = (e: PointerEvent) => {
-      if (!down || e.pointerType === 'mouse') return
+      if (!down || e.pointerType === 'mouse' || !inEditor(e)) return
       const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y) > TAP_SLOP_PX
       down = null
       if (moved) return
@@ -147,8 +153,8 @@ export function CodeHover({
       if (node?.contains(t) || popupRef.current?.contains(t)) return
       hideNow()
     }
-    node?.addEventListener('pointerdown', onPointerDown, true)
-    node?.addEventListener('pointerup', onPointerUp, true)
+    window.addEventListener('pointerdown', onPointerDown, true)
+    window.addEventListener('pointerup', onPointerUp, true)
     document.addEventListener('pointerdown', onOutside, true)
 
     const subs = [
@@ -176,8 +182,8 @@ export function CodeHover({
     ]
     return () => {
       subs.forEach((s) => s.dispose())
-      node?.removeEventListener('pointerdown', onPointerDown, true)
-      node?.removeEventListener('pointerup', onPointerUp, true)
+      window.removeEventListener('pointerdown', onPointerDown, true)
+      window.removeEventListener('pointerup', onPointerUp, true)
       document.removeEventListener('pointerdown', onOutside, true)
       hideNow()
     }
