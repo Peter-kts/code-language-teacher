@@ -16,6 +16,7 @@ import { CodeHover } from './syntax/CodeHover'
 import { Chat } from './chat/Chat'
 import { DIFFICULTIES, PROBLEMS, type Problem } from './problems/problems'
 import { ProblemPanel } from './problems/ProblemPanel'
+import { loadSolutions, saveSolution, type Solutions } from './problems/solutions'
 import { JS_CONCEPTS } from './problems/concepts'
 import { commandFor, focusKind, withShortcut, type Command } from './shortcuts'
 import { ShortcutsDialog } from './ShortcutsDialog'
@@ -56,13 +57,22 @@ function savedLanguage(): Language {
 }
 
 /** Everyone's starting code: the playground and each problem, in each language. */
-const startingCode = (): Record<Language, Record<string, string>> => ({
+const starterCode = (): Record<Language, Record<string, string>> => ({
   python: { [PLAYGROUND]: STARTERS.python, ...Object.fromEntries(PROBLEMS.map((p) => [p.id, p.starters.python])) },
   javascript: {
     [PLAYGROUND]: STARTERS.javascript,
     ...Object.fromEntries([...PROBLEMS, ...JS_CONCEPTS].map((p) => [p.id, p.starters.javascript])),
   },
 })
+
+/** The starters, with each solved problem opening on its saved solution instead. */
+const startingCode = (solutions: Solutions) => {
+  const code = starterCode()
+  for (const language of Object.keys(code) as Language[]) {
+    for (const [id, s] of Object.entries(solutions[language])) if (id in code[language]) code[language][id] = s.code
+  }
+  return code
+}
 
 const PLAY_MS = 700
 
@@ -82,7 +92,9 @@ export default function App() {
     }
   }
   // Each language keeps its own code, so switching back finds the code where it was left.
-  const [codeByMode, setCodeByMode] = useState(startingCode)
+  // Code that passes every test is saved per problem and language, and reopens on the next visit.
+  const [solutions, setSolutions] = useState(loadSolutions)
+  const [codeByMode, setCodeByMode] = useState(() => startingCode(solutions))
   const [caseIndex, setCaseIndex] = useState(0)
   const layout = usePaneLayout()
   const [sidePanel, setSidePanel] = useState<'chat' | 'history' | 'cards'>('chat')
@@ -117,6 +129,12 @@ export default function App() {
   const { status, trace, error, tests, ranFor } = useRunner(request, language)
   // Right after switching problems, the last results are still the old problem's until the new run lands.
   const resultsFresh = problem !== undefined && (ranFor ?? '') === problem.functionName
+  // trace.code is the exact source those tests ran, even if the editor has changed since.
+  const solvedCode = resultsFresh && tests?.length && tests.every((t) => t.passed) ? (trace?.code ?? null) : null
+  useEffect(() => {
+    if (!problem || solvedCode === null || solutions[language][problem.id]?.code === solvedCode) return
+    setSolutions((s) => saveSolution(s, language, problem.id, solvedCode))
+  }, [solvedCode, problem, language, solutions])
   const [stepIndex, setStepIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
@@ -329,7 +347,7 @@ export default function App() {
                     <optgroup key={d} label={d}>
                       {group.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.title}
+                          {solutions[language][p.id] ? `✓ ${p.title}` : p.title}
                         </option>
                       ))}
                     </optgroup>
@@ -352,7 +370,7 @@ export default function App() {
                 )}
                 {JS_CONCEPTS.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.kind === 'predict' ? `${p.title} (predict)` : p.title}
+                    {p.kind === 'predict' ? `${p.title} (predict)` : solutions.javascript[p.id] ? `✓ ${p.title}` : p.title}
                   </option>
                 ))}
               </select>
@@ -400,6 +418,8 @@ export default function App() {
                 output={trace && !error ? trace.stdout : null}
                 revealed={!covered}
                 onReveal={() => setRevealed((r) => new Set(r).add(problem.id))}
+                savedAt={solutions[language][problem.id]?.savedAt ?? null}
+                onStartOver={() => setCode(problem.starters[language])}
               />
             )}
             <div className="editor-wrap">
