@@ -144,9 +144,13 @@ strong { font-weight: 500; }
   scrollbar-width: thin; scrollbar-color: rgba(200, 180, 255, 0.2) transparent;
 }
 /* A pane dragged shut keeps its state (chat, scroll) but takes no room. */
-@media (min-width: 901px) {
-  .pane-collapsed { padding: 0 !important; overflow: hidden !important; visibility: hidden; }
-}
+.pane-collapsed { padding: 0 !important; overflow: hidden !important; visibility: hidden; }
+/* Stacked rows are short, so the console never takes more than half the visualizer's row. */
+.panes.stacked .console-dock { max-height: 50%; }
+/* Stacked (portrait): code, visualizer and side panel as rows, with dividers between them.
+   A short code row scrolls instead of squeezing the editor below a usable height. */
+.panes.stacked .editor-pane { overflow: auto; }
+.panes.stacked .editor-wrap { min-height: 160px; }
 
 /* ---------- Dividers between panes ---------- */
 .divider {
@@ -169,6 +173,7 @@ strong { font-weight: 500; }
 .divider:hover::after, .divider:focus-visible::after { background: var(--accent); }
 /* Next to a hidden pane the handle becomes a chevron pointing where the pane will open. */
 .divider-closed::after { background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent); }
+.divider-row.divider-closed::after { height: 7px; top: 0; width: 52px; }
 .divider-col.divider-closed::after { width: 7px; left: 0; height: 52px; }
 body.resizing { user-select: none; -webkit-user-select: none; }
 body.resizing .pane { pointer-events: none; }
@@ -498,6 +503,11 @@ button.console-at:hover { color: var(--accent); background: none; box-shadow: no
 
 /* ---------- Keyboard shortcuts: header button and the ? cheat sheet ---------- */
 .keys-btn { align-self: center; margin-right: 0.75rem; width: 1.8rem; height: 1.8rem; }
+
+/* ---------- Layout switch (header): auto / side by side / stacked ---------- */
+.layout-switch { display: flex; align-items: center; gap: 0.2rem; margin-right: 0.75rem; }
+.layout-switch .icon-btn { width: 1.8rem; height: 1.8rem; }
+.layout-switch .icon-btn.active { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 .shortcuts {
   width: min(56rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); overflow: auto;
   padding: 0; border: 1px solid var(--line-strong); border-radius: 14px;
@@ -540,20 +550,20 @@ kbd {
 
 /* ---------- Small screens ---------- */
 @media (max-width: 900px) {
-  .app { height: auto; min-height: 100vh; padding: 10px; }
-  .frame { height: auto; overflow: visible; }
+  .app { padding: 10px; }
   .top { grid-template-columns: minmax(0, 1fr) auto; }
   .wordmark { grid-column: 1 / -1; grid-row: 1; padding: 0.75rem 1rem 0; justify-self: start; letter-spacing: 0.3em; }
   .top .tabs { grid-row: 2; padding: 0.5rem 1rem 0.7rem; }
-  .top-right { grid-row: 2; }
+  .top-right { grid-row: 2; flex-wrap: wrap; align-items: center; }
   .status { border-left: 0; padding: 0 1rem; }
-  .panes { grid-template-columns: minmax(0, 1fr) !important; grid-auto-rows: minmax(320px, auto); }
-  /* Stacked panes: no side-by-side dividers. */
-  .divider-col { display: none; }
-  .pane { border-right: 0; border-bottom: 1px solid var(--line); }
-  .editor-pane { min-height: 420px; }
-  .hist-list { flex: none; max-height: 60vh; }
   .tick { display: none; }
+  /* Phones: the picker tabs and the switches each get their own row instead of overlapping. */
+  @media (max-width: 600px) {
+    .top { grid-template-columns: minmax(0, 1fr); }
+    .top-right { grid-row: 3; justify-content: flex-start; padding: 0 0.6rem 0.5rem; row-gap: 0.4rem; }
+    .lang-switch { margin-left: 0.4rem; }
+    .status { padding: 0 0.6rem; }
+  }
   .shortcuts-grid { grid-template-columns: minmax(0, 1fr); }
   .shortcuts-grid > section:nth-child(3) { grid-column: auto; grid-row: auto; }
 }
@@ -602,3 +612,35 @@ kbd {
 .explain { color: var(--text); }
 .predict-cover { padding: 1.2rem 0; max-width: 32rem; }
 .concept-select { margin-left: 0.4rem; }
+
+/* ---------- Touch screens ---------- */
+/* "Coarse" means the main pointer is a finger, not a mouse. Fingers need bigger
+   targets (about 44px), so buttons and divider handles grow on touch screens only. */
+@media (pointer: coarse) {
+  .icon-btn, .layout-switch .icon-btn, .keys-btn { width: 2.6rem; height: 2.6rem; }
+  .play-btn { width: 2.9rem; height: 2.9rem; }
+  .tab, .problem-select { padding-top: 0.6rem; padding-bottom: 0.6rem; }
+  /* A phone or tablet without a keyboard has no use for the shortcuts list. */
+  @media (hover: none) { .keys-btn { display: none; } }
+  .divider-col { padding: 0 6px; }
+  .divider-row { height: 15px; padding: 7px 0; }
+  .divider-col::after { width: 9px; left: 2px; height: 48px; }
+  .divider-row::after { height: 9px; top: 3px; width: 48px; }
+  /* Things with an explanation can be tapped to read it (src/TapTip.tsx). */
+  .remembered, .shared-chip { text-decoration: underline dotted; text-underline-offset: 3px; }
+}
+
+/* The explanation shown when a finger taps something that has one (src/TapTip.tsx). */
+.tap-tip {
+  position: fixed; z-index: 40; max-width: min(320px, calc(100vw - 16px));
+  padding: 0.5rem 0.7rem; border-radius: 10px;
+  background: var(--panel-solid); border: 1px solid #3a3350;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.6);
+  font-size: 0.82rem; line-height: 1.4; color: var(--text);
+  pointer-events: none;
+}
+.code-hover-close {
+  float: right; margin: -0.2rem -0.3rem 0 0.5rem;
+  width: 1.9rem; height: 1.9rem; padding: 0; line-height: 1;
+  border-color: var(--line); color: var(--muted);
+}

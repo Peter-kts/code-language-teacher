@@ -9,6 +9,7 @@ import { jsBuiltinAt } from './jsBuiltins'
 // A small pop-up for what's under the mouse in the editor: what a built-in like enumerate does,
 // or a variable's value at the step being shown.
 // Monaco's own hover feature would cost 76 KB gzip, so this listens to the editor's mouse events instead.
+// Touch screens have no hover, so there a tap on a name opens the same pop-up, and a tap anywhere else closes it.
 
 const SHOW_MS = 350
 const HIDE_MS = 250
@@ -16,6 +17,8 @@ const HIDE_MS = 250
 const SWITCH_MS = 150
 const WIDTH = 340
 const MAX_VALUE = 400
+// A finger moving further than this between touching and lifting was scrolling, not tapping.
+const TAP_SLOP_PX = 10
 
 type Target = { kind: 'builtin'; builtin: Builtin } | { kind: 'var'; name: string }
 
@@ -27,6 +30,8 @@ interface Shown {
   /** Distance from the top of the editor (below the line) or from its bottom (above the line). */
   top?: number
   bottom?: number
+  /** Opened by a tap, so it gets a close button and stays until the next tap. */
+  touch: boolean
 }
 
 export function CodeHover({
@@ -61,6 +66,9 @@ export function CodeHover({
   variablesRef.current = variables
   const languageRef = useRef(language)
   languageRef.current = language
+  // Whether the last pointer to touch the editor was a finger or pen rather than a mouse.
+  const touching = useRef(false)
+  const popupRef = useRef<HTMLDivElement>(null)
 
   const cancelHide = () => window.clearTimeout(hideTimer.current)
   const hideSoon = () => {
@@ -92,31 +100,73 @@ export function CodeHover({
       }
       return null
     }
+    /** The name under an editor mouse target, with a key for which name it is. */
+    const hitAt = (target: monaco.editor.IMouseTarget) => {
+      const pos = target.position
+      const model = editor.getModel()
+      if (target.type !== monacoApi.editor.MouseTargetType.CONTENT_TEXT || !pos || !model) return null
+      const hit = targetAt(model.getLineContent(pos.lineNumber), pos.column - 1)
+      return hit && { ...hit, line: pos.lineNumber, key: `${pos.lineNumber}:${hit.start}` }
+    }
+    const open = (hit: NonNullable<ReturnType<typeof hitAt>>, touch: boolean) => {
+      const at = editor.getScrolledVisiblePosition({ lineNumber: hit.line, column: hit.start + 1 })
+      if (!at) return
+      const { width, height } = editor.getLayoutInfo()
+      const left = Math.max(8, Math.min(at.left, width - Math.min(WIDTH, width - 16) - 8))
+      // Touching the line, so the mouse reaches it without crossing the next line.
+      // Near the bottom of the editor it opens above the line so it isn't cut off.
+      const place = at.top > height * 0.55 ? { bottom: height - at.top } : { top: at.top + at.height }
+      cancelHide()
+      shownKey.current = hit.key
+      setShown({ target: hit.target, key: hit.key, left, touch, ...place })
+    }
+
+    // Taps: watched on the editor's own element, since Monaco turns touches into cursor moves and scrolling.
+    const node = editor.getDomNode()
+    let down: { x: number; y: number } | null = null
+    const onPointerDown = (e: PointerEvent) => {
+      touching.current = e.pointerType !== 'mouse'
+      down = touching.current ? { x: e.clientX, y: e.clientY } : null
+    }
+    const onPointerUp = (e: PointerEvent) => {
+      if (!down || e.pointerType === 'mouse') return
+      const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y) > TAP_SLOP_PX
+      down = null
+      if (moved) return
+      const target = editor.getTargetAtClientPoint(e.clientX, e.clientY)
+      const hit = target && hitAt(target)
+      // Tapping the name that's already open closes it, like tapping anywhere else.
+      if (!hit || hit.key === shownKey.current) return hideNow()
+      window.clearTimeout(showTimer.current)
+      open(hit, true)
+    }
+    // A tap outside both the editor and the pop-up closes a pop-up a tap opened.
+    const onOutside = (e: PointerEvent) => {
+      if (e.pointerType === 'mouse' || !shownKey.current) return
+      const t = e.target as Node
+      if (node?.contains(t) || popupRef.current?.contains(t)) return
+      hideNow()
+    }
+    node?.addEventListener('pointerdown', onPointerDown, true)
+    node?.addEventListener('pointerup', onPointerUp, true)
+    document.addEventListener('pointerdown', onOutside, true)
+
     const subs = [
       editor.onMouseMove((e) => {
-        const pos = e.target.position
-        const model = editor.getModel()
-        if (e.target.type !== monacoApi.editor.MouseTargetType.CONTENT_TEXT || !pos || !model) return hideSoon()
-        const hit = targetAt(model.getLineContent(pos.lineNumber), pos.column - 1)
+        // Browsers also report a finger as mouse moves; taps are handled above.
+        if (touching.current) return
+        const hit = hitAt(e.target)
         if (!hit) return hideSoon()
-        const key = `${pos.lineNumber}:${hit.start}`
-        if (key === shownKey.current) return cancelHide()
+        if (hit.key === shownKey.current) return cancelHide()
         window.clearTimeout(showTimer.current)
-        showTimer.current = window.setTimeout(() => {
-          const at = editor.getScrolledVisiblePosition({ lineNumber: pos.lineNumber, column: hit.start + 1 })
-          if (!at) return
-          const { width, height } = editor.getLayoutInfo()
-          const left = Math.max(8, Math.min(at.left, width - WIDTH - 8))
-          // Touching the line, so the mouse reaches it without crossing the next line.
-          // Near the bottom of the editor it opens above the line so it isn't cut off.
-          const place = at.top > height * 0.55 ? { bottom: height - at.top } : { top: at.top + at.height }
-          cancelHide()
-          shownKey.current = key
-          setShown({ target: hit.target, key, left, ...place })
-        }, shownKey.current ? SWITCH_MS : SHOW_MS)
+        showTimer.current = window.setTimeout(() => open(hit, false), shownKey.current ? SWITCH_MS : SHOW_MS)
       }),
-      editor.onMouseLeave(hideSoon),
-      editor.onMouseDown(hideNow),
+      editor.onMouseLeave(() => {
+        if (!touching.current) hideSoon()
+      }),
+      editor.onMouseDown(() => {
+        if (!touching.current) hideNow()
+      }),
       editor.onDidScrollChange(hideNow),
       editor.onDidChangeModelContent(hideNow),
       editor.onDidChangeModel(hideNow),
@@ -126,17 +176,26 @@ export function CodeHover({
     ]
     return () => {
       subs.forEach((s) => s.dispose())
+      node?.removeEventListener('pointerdown', onPointerDown, true)
+      node?.removeEventListener('pointerup', onPointerUp, true)
+      document.removeEventListener('pointerdown', onOutside, true)
       hideNow()
     }
   }, [editor, monacoApi])
 
   if (!shown) return null
   const { target } = shown
+  const close = () => {
+    overPopup.current = false
+    shownKey.current = null
+    setShown(null)
+  }
   return (
     <div
+      ref={popupRef}
       className="code-hover"
       role="tooltip"
-      style={{ left: shown.left, top: shown.top, bottom: shown.bottom, maxWidth: WIDTH }}
+      style={{ left: shown.left, top: shown.top, bottom: shown.bottom, maxWidth: `min(${WIDTH}px, calc(100% - 16px))` }}
       onMouseEnter={() => {
         overPopup.current = true
         // A name passed over on the way in shouldn't replace this pop-up.
@@ -148,14 +207,17 @@ export function CodeHover({
         hideSoon()
       }}
     >
+      {shown.touch && (
+        <button className="code-hover-close" onClick={close} aria-label="Close">
+          ×
+        </button>
+      )}
       {target.kind === 'builtin' ? (
         <BuiltinView
           builtin={target.builtin}
           language={language}
           onOpenConcept={(id) => {
-            overPopup.current = false
-            shownKey.current = null
-            setShown(null)
+            close()
             onOpenConcept(id)
           }}
         />

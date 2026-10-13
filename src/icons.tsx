@@ -63,3 +63,25 @@ export const KeyboardIcon = () => (
     <path d="M6.5 10h.01M9.5 10h.01M12.5 10h.01M15.5 10h.01M18 10h.01M6.5 14h.01M18 14h.01M9.5 14h5.5" />
   </Icon>
 )
+
+// Layout switch: panes side by side, stacked, or chosen by the screen's shape.
+export const ColumnsIcon = () => (
+  <Icon>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="M9 5v14M15 5v14" />
+  </Icon>
+)
+
+export const RowsIcon = () => (
+  <Icon>
+    <rect x="5" y="3" width="14" height="18" rx="2" />
+    <path d="M5 9h14M5 15h14" />
+  </Icon>
+)
+
+export const AutoLayoutIcon = () => (
+  <Icon>
+    <rect x="3" y="7" width="12" height="10" rx="1.5" />
+    <rect x="16" y="4" width="5" height="16" rx="1.5" />
+  </Icon>
+)
