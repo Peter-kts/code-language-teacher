@@ -92,28 +92,46 @@ export function CodeHover({
       }
       return null
     }
+    /** Shows the pop-up for what's under the mouse, after `delay` ms; returns false when there's nothing to show. */
+    const showFor = (target: monaco.editor.IMouseTarget, delay: number): boolean => {
+      const pos = target.position
+      const model = editor.getModel()
+      if (target.type !== monacoApi.editor.MouseTargetType.CONTENT_TEXT || !pos || !model) return false
+      const line = model.getLineContent(pos.lineNumber)
+      // Monaco rounds to the nearest gap between characters, so over the right half of a name's
+      // last letter the position is just past it: look one character back too.
+      const hit = targetAt(line, pos.column - 1) ?? (pos.column > 1 ? targetAt(line, pos.column - 2) : null)
+      if (!hit) return false
+      const key = `${pos.lineNumber}:${hit.start}`
+      if (key === shownKey.current) {
+        cancelHide()
+        return true
+      }
+      window.clearTimeout(showTimer.current)
+      showTimer.current = window.setTimeout(() => {
+        const at = editor.getScrolledVisiblePosition({ lineNumber: pos.lineNumber, column: hit.start + 1 })
+        if (!at) return
+        const { width, height } = editor.getLayoutInfo()
+        const left = Math.max(8, Math.min(at.left, width - WIDTH - 8))
+        // Touching the line, so the mouse reaches it without crossing the next line.
+        // Near the bottom of the editor it opens above the line so it isn't cut off.
+        const place = at.top > height * 0.55 ? { bottom: height - at.top } : { top: at.top + at.height }
+        cancelHide()
+        shownKey.current = key
+        setShown({ target: hit.target, key, left, ...place })
+      }, delay)
+      return true
+    }
+    // Phones and tablets have no hover, so there a tap on a name opens its pop-up.
+    const onTap = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch' || !(e.target instanceof Node) || !editor.getDomNode()?.contains(e.target)) return
+      const target = editor.getTargetAtClientPoint(e.clientX, e.clientY)
+      if (!target || !showFor(target, 0)) hideNow()
+    }
+    window.addEventListener('pointerup', onTap, true)
     const subs = [
       editor.onMouseMove((e) => {
-        const pos = e.target.position
-        const model = editor.getModel()
-        if (e.target.type !== monacoApi.editor.MouseTargetType.CONTENT_TEXT || !pos || !model) return hideSoon()
-        const hit = targetAt(model.getLineContent(pos.lineNumber), pos.column - 1)
-        if (!hit) return hideSoon()
-        const key = `${pos.lineNumber}:${hit.start}`
-        if (key === shownKey.current) return cancelHide()
-        window.clearTimeout(showTimer.current)
-        showTimer.current = window.setTimeout(() => {
-          const at = editor.getScrolledVisiblePosition({ lineNumber: pos.lineNumber, column: hit.start + 1 })
-          if (!at) return
-          const { width, height } = editor.getLayoutInfo()
-          const left = Math.max(8, Math.min(at.left, width - WIDTH - 8))
-          // Touching the line, so the mouse reaches it without crossing the next line.
-          // Near the bottom of the editor it opens above the line so it isn't cut off.
-          const place = at.top > height * 0.55 ? { bottom: height - at.top } : { top: at.top + at.height }
-          cancelHide()
-          shownKey.current = key
-          setShown({ target: hit.target, key, left, ...place })
-        }, shownKey.current ? SWITCH_MS : SHOW_MS)
+        if (!showFor(e.target, shownKey.current ? SWITCH_MS : SHOW_MS)) hideSoon()
       }),
       editor.onMouseLeave(hideSoon),
       editor.onMouseDown(hideNow),
@@ -126,6 +144,7 @@ export function CodeHover({
     ]
     return () => {
       subs.forEach((s) => s.dispose())
+      window.removeEventListener('pointerup', onTap, true)
       hideNow()
     }
   }, [editor, monacoApi])
