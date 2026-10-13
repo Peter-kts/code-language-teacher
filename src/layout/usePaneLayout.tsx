@@ -52,8 +52,9 @@ function load(): Saved {
   }
 }
 
-// What Auto treats as a portrait screen: taller than wide, or too narrow for three columns.
-const PORTRAIT_QUERY = '(orientation: portrait), (max-width: 900px)'
+// What Auto treats as a portrait screen: taller than wide. A phone turned sideways stays side by side,
+// since its rows would be too short to stack three panes.
+const PORTRAIT_QUERY = '(orientation: portrait)'
 
 /** Whether the window currently counts as portrait, updated when it's resized or rotated. */
 function usePortrait() {
@@ -133,7 +134,10 @@ export function usePaneLayout() {
     const el = panesRef.current
     const length = (stacked ? (el?.clientHeight ?? 800) : (el?.clientWidth ?? 1200)) - 2 * DIVIDER_PX
     const frPerPx = sizes.reduce((a, b) => a + b, 0) / Math.max(length, 1)
-    return { frPerPx, min: (stacked ? MIN_ROW_PX : MIN_COLUMN_PX) * frPerPx }
+    // On a small screen the minimum shrinks so three panes always fit, and a pair can still be resized
+    // without one of them snapping shut.
+    const minPx = Math.min(stacked ? MIN_ROW_PX : MIN_COLUMN_PX, length / 4)
+    return { frPerPx, min: minPx * frPerPx }
   }
 
   const columnDivider = (i: number) => {

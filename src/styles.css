@@ -145,8 +145,9 @@ strong { font-weight: 500; }
 }
 /* A pane dragged shut keeps its state (chat, scroll) but takes no room. */
 .pane-collapsed { padding: 0 !important; overflow: hidden !important; visibility: hidden; }
-/* Stacked rows are short, so the console never takes more than half the visualizer's row. */
+/* Stacked rows and sideways phones are short, so the console never takes more than half the visualizer. */
 .panes.stacked .console-dock { max-height: 50%; }
+@media (max-height: 600px) { .console-dock { max-height: 50%; } }
 /* Stacked (portrait): code, visualizer and side panel as rows, with dividers between them.
    A short code row scrolls instead of squeezing the editor below a usable height. */
 .panes.stacked .editor-pane { overflow: auto; }

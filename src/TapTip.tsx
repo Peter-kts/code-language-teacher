@@ -7,6 +7,8 @@ import { useEffect, useState } from 'react'
 // Buttons, links and form fields are left alone: tapping those already does something.
 
 const HIDE_MS = 4000
+// A finger moving further than this between touching and lifting was scrolling, not tapping.
+const TAP_SLOP_PX = 10
 const INTERACTIVE = 'button, a, input, select, textarea, label, [role="separator"]'
 
 interface Tip {
@@ -34,8 +36,15 @@ export function TapTip() {
       window.clearTimeout(timer)
       setTip(null)
     }
+    let down: { x: number; y: number } | null = null
+    const onDown = (e: PointerEvent) => {
+      down = e.pointerType === 'mouse' ? null : { x: e.clientX, y: e.clientY }
+    }
     const onTap = (e: PointerEvent) => {
-      if (e.pointerType === 'mouse') return
+      if (e.pointerType === 'mouse' || !down) return
+      const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y) > TAP_SLOP_PX
+      down = null
+      if (moved) return
       const el = tipTarget(e.target as Element)
       if (!el) return hide()
       const box = el.getBoundingClientRect()
@@ -49,9 +58,11 @@ export function TapTip() {
       window.clearTimeout(timer)
       timer = window.setTimeout(hide, HIDE_MS)
     }
+    document.addEventListener('pointerdown', onDown)
     document.addEventListener('pointerup', onTap)
     window.addEventListener('scroll', hide, true)
     return () => {
+      document.removeEventListener('pointerdown', onDown)
       document.removeEventListener('pointerup', onTap)
       window.removeEventListener('scroll', hide, true)
       window.clearTimeout(timer)

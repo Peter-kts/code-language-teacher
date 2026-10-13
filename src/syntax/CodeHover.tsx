@@ -153,8 +153,13 @@ export function CodeHover({
       if (node?.contains(t) || popupRef.current?.contains(t)) return
       hideNow()
     }
+    // A laptop can have both: the next mouse movement anywhere switches back to hover.
+    const onPointerMove = (e: PointerEvent) => {
+      if (e.pointerType === 'mouse') touching.current = false
+    }
     window.addEventListener('pointerdown', onPointerDown, true)
     window.addEventListener('pointerup', onPointerUp, true)
+    window.addEventListener('pointermove', onPointerMove, true)
     document.addEventListener('pointerdown', onOutside, true)
 
     const subs = [
@@ -184,6 +189,7 @@ export function CodeHover({
       subs.forEach((s) => s.dispose())
       window.removeEventListener('pointerdown', onPointerDown, true)
       window.removeEventListener('pointerup', onPointerUp, true)
+      window.removeEventListener('pointermove', onPointerMove, true)
       document.removeEventListener('pointerdown', onOutside, true)
       hideNow()
     }
