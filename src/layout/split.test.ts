@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dragConsole, dragDivider, toggleDivider } from './split'
+import { DEFAULT_ROWS, dragConsole, dragDivider, toggleDivider } from './split'
 
 describe('dragDivider', () => {
   it('moves size between the two neighbours only', () => {
@@ -21,6 +21,14 @@ describe('toggleDivider', () => {
     const [a, b] = toggleDivider([2, 0.3, 1], 0, [2, 0.3, 1], 0.2)
     expect(a + b).toBeCloseTo(2.3)
     expect(a / b).toBeCloseTo(1.1 / 1.2)
+  })
+  it('resets stacked rows to the row defaults', () => {
+    const [, b, c] = toggleDivider([1, 1, 1], 1, [1, 1, 1], 0.2, DEFAULT_ROWS)
+    expect(b + c).toBeCloseTo(2)
+    expect(b / c).toBeCloseTo(DEFAULT_ROWS[1] / DEFAULT_ROWS[2])
+  })
+  it('reopens a collapsed row at the row default when none is remembered', () => {
+    expect(toggleDivider([1, 2, 0], 1, [1, 2, 0], 0.2, DEFAULT_ROWS)).toEqual([1, 1.3, 0.7])
   })
 })
 

@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type * as monaco from 'monaco-editor/editor/editor.api'
 import { EDITOR_THEME } from './monaco'
 import { GalaxyBackground } from './galaxy/GalaxyBackground'
-import { KeyboardIcon, PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon, StepBackIcon, StepForwardIcon } from './icons'
+import { AutoLayoutIcon, ColumnsIcon, KeyboardIcon, PauseIcon, PlayIcon, RowsIcon, SkipBackIcon, SkipForwardIcon, StepBackIcon, StepForwardIcon } from './icons'
 import { useRunner } from './runner/useRunner'
 import { Visualizer } from './viz/Visualizer'
 import { findNames, previousInFrame, stepRoles } from './viz/changes'
@@ -20,7 +20,8 @@ import { loadSolutions, saveSolution, type Solutions } from './problems/solution
 import { JS_CONCEPTS } from './problems/concepts'
 import { commandFor, focusKind, withShortcut, type Command } from './shortcuts'
 import { ShortcutsDialog } from './ShortcutsDialog'
-import { usePaneLayout } from './layout/usePaneLayout'
+import { TapTip } from './TapTip'
+import { usePaneLayout, type LayoutMode } from './layout/usePaneLayout'
 import type { Language, RunRequest } from './types'
 
 const STARTERS: Record<Language, string> = {
@@ -77,6 +78,12 @@ const startingCode = (solutions: Solutions) => {
 const PLAY_MS = 700
 
 const PLAYGROUND = 'playground'
+
+const LAYOUT_OPTIONS: { mode: LayoutMode; label: string; Icon: () => ReactNode }[] = [
+  { mode: 'auto', label: 'Layout: auto (stacked when the screen is taller than wide)', Icon: AutoLayoutIcon },
+  { mode: 'columns', label: 'Layout: side by side', Icon: ColumnsIcon },
+  { mode: 'stacked', label: 'Layout: stacked (portrait)', Icon: RowsIcon },
+]
 
 export default function App() {
   const [mode, setMode] = useState<string>(PLAYGROUND)
@@ -392,6 +399,20 @@ export default function App() {
                 </button>
               ))}
             </div>
+            <div className="layout-switch" role="group" aria-label="Layout">
+              {LAYOUT_OPTIONS.map(({ mode: m, label, Icon }) => (
+                <button
+                  key={m}
+                  className={layout.mode === m ? 'icon-btn active' : 'icon-btn'}
+                  aria-pressed={layout.mode === m}
+                  aria-label={label}
+                  title={label}
+                  onClick={() => layout.setMode(m)}
+                >
+                  <Icon />
+                </button>
+              ))}
+            </div>
             <button
               className="icon-btn keys-btn"
               onClick={commands.showShortcuts}
@@ -403,7 +424,7 @@ export default function App() {
             <span className={`status status-${error ? 'error' : status}`}>{statusText}</span>
           </div>
         </header>
-        <main className="panes" ref={layout.panesRef} style={layout.panesStyle}>
+        <main className={layout.panesClass} ref={layout.panesRef} style={layout.panesStyle}>
           <section className={`pane editor-pane${layout.paneClass(0)}`}>
             {problem && (
               <ProblemPanel
@@ -610,6 +631,7 @@ export default function App() {
         </main>
       </div>
       <ShortcutsDialog dialogRef={shortcutsRef} />
+      <TapTip />
     </div>
   )
 }
