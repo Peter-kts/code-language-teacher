@@ -97,7 +97,10 @@ export function CodeHover({
         const pos = e.target.position
         const model = editor.getModel()
         if (e.target.type !== monacoApi.editor.MouseTargetType.CONTENT_TEXT || !pos || !model) return hideSoon()
-        const hit = targetAt(model.getLineContent(pos.lineNumber), pos.column - 1)
+        const line = model.getLineContent(pos.lineNumber)
+        // Monaco rounds to the nearest gap between characters, so over the right half of a name's
+        // last letter the position is just past it: look one character back too.
+        const hit = targetAt(line, pos.column - 1) ?? (pos.column > 1 ? targetAt(line, pos.column - 2) : null)
         if (!hit) return hideSoon()
         const key = `${pos.lineNumber}:${hit.start}`
         if (key === shownKey.current) return cancelHide()
