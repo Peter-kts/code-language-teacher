@@ -8,6 +8,8 @@ export type RunnerStatus = 'loading' | 'running' | 'idle'
 export type GoodTrace = Extract<TraceResult, { ok: true }> & {
   /** The source that produced this trace (may lag the editor while code is broken). */
   code: string
+  /** The language it ran in: right after a switch, the other language's trace is still showing. */
+  language: Language
 }
 
 const DEBOUNCE_MS = 300
@@ -45,7 +47,7 @@ export function useRunner(request: RunRequest, language: Language) {
   const latestCall = useRef<string | null>(null)
   const timeoutRef = useRef<number | undefined>(undefined)
 
-  const attach = (worker: Worker) => {
+  const attach = (worker: Worker, ranIn: Language) => {
     worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
       const msg = event.data
       if (msg.type === 'ready') {
@@ -56,7 +58,7 @@ export function useRunner(request: RunRequest, language: Language) {
       window.clearTimeout(timeoutRef.current)
       setStatus('idle')
       if (msg.result.ok) {
-        setTrace({ ...msg.result, code: latestCode.current })
+        setTrace({ ...msg.result, code: latestCode.current, language: ranIn })
         setError(msg.result.error)
         setTests(msg.tests)
         setRanFor(latestCall.current)
@@ -73,7 +75,7 @@ export function useRunner(request: RunRequest, language: Language) {
     setError(null)
     setTests(null)
     setRanFor(null)
-    attach(spawnWorker(language))
+    attach(spawnWorker(language), language)
     return () => {
       window.clearTimeout(timeoutRef.current)
       workerRef.current?.terminate()
@@ -94,7 +96,7 @@ export function useRunner(request: RunRequest, language: Language) {
         // Only a stuck run gets here; Pyodide's first load is covered by 'loading'.
         if (statusRef.current !== 'running') return
         workerRef.current?.terminate()
-        attach(spawnWorker(language))
+        attach(spawnWorker(language), language)
         setStatus('loading')
         setError({ kind: 'runtime', message: 'Stopped: the code took too long to run.', line: null })
       }, RUN_TIMEOUT_MS)

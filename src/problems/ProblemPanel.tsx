@@ -18,6 +18,8 @@ export function ProblemPanel({
   output,
   revealed,
   onReveal,
+  savedAt,
+  onStartOver,
 }: {
   problem: Problem
   language: Language
@@ -35,6 +37,10 @@ export function ProblemPanel({
   /** For a predict problem: whether the output and steps are showing yet. */
   revealed: boolean
   onReveal: () => void
+  /** When a passing solution to this problem was last saved, if ever. */
+  savedAt: string | null
+  /** Put the starter code back in the editor (the saved solution stays saved). */
+  onStartOver: () => void
 }) {
   // How many hints are showing. The panel is keyed on the problem, so this resets when it changes.
   const [hintsShown, setHintsShown] = useState(0)
@@ -51,6 +57,16 @@ export function ProblemPanel({
           <span className={passed === tests.length ? 'badge pass' : 'badge'}>
             {passed}/{tests.length} tests passing
           </span>
+        )}
+        {savedAt && (
+          <>
+            <span className="badge pass" title={`Your passing code is saved in this browser (${new Date(savedAt).toLocaleString()})`}>
+              ✓ Solved, saved
+            </span>
+            <button className="chip" onClick={onStartOver} title="Put the starter code back; your saved solution stays saved">
+              Start over
+            </button>
+          </>
         )}
       </div>
       {problem.statement.map((para, i) => (
