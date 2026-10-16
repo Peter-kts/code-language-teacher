@@ -384,6 +384,21 @@ describe('linked lists, trees and speed cases', () => {
     expect(r).toMatchObject({ passed: true })
   })
 
+  it("lets the learner's code declare its own ListNode", () => {
+    const own = `class ListNode {\n  constructor(val = 0, next = null) {\n    this.val = val\n    this.next = next\n  }\n}\nfunction f(head) {\n  return new ListNode(head ? head.val : 0)\n}`
+    const [r] = runTests(own, 'f', [{ args: [[5, 6]], expected: [5] }], { args: ['list'], result: 'list' })
+    expect(r).toMatchObject({ passed: true })
+    const run = runTraced(own, { name: 'f', args: [[7]] }, undefined, { args: ['list'], result: 'list' })
+    if (!run.ok) throw new Error('did not run')
+    expect(run.error).toBe(null)
+  })
+
+  it('does not pass an empty list when the function returns nothing', () => {
+    const [r] = runTests('function f(head) {\n  head = null\n}', 'f', [{ args: [[]], expected: [] }], { args: ['list'], result: 'list' })
+    expect(r.passed).toBe(false)
+    expect(r.got).toBe('undefined')
+  })
+
   it('counts steps on a speed case and stops when it goes over', () => {
     const sum = 'function f(n) {\n  let t = 0\n  for (let i = 0; i < n; i++) t += i\n  return t\n}'
     const [fast, slow] = runTests(sum, 'f', [

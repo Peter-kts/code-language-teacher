@@ -347,10 +347,13 @@ function show(v: unknown): string {
   return typeof v === 'string' ? v : formatValue(serialize(v))
 }
 
-/** Compile the rewritten code into a function of (__ct, console). */
+/**
+ * Compile the rewritten code into a function of (__ct, console). The node classes sit in an
+ * outer scope, so the learner's own `class ListNode` shadows them instead of clashing.
+ */
 function compile(code: string): (hooks: Hooks, console: unknown) => unknown {
-  const run = new Function('__ct', 'console', 'ListNode', 'TreeNode', `"use strict";\n${code}`)
-  return (hooks, console) => run(hooks, console, ListNode, TreeNode)
+  const run = new Function('__ct', 'console', '__nodes', `"use strict"; const { ListNode, TreeNode } = __nodes; return (function () {\n${code}\n})()`)
+  return (hooks, console) => run(hooks, console, { ListNode, TreeNode })
 }
 
 function errorText(err: unknown): string {
@@ -434,7 +437,8 @@ export function runTests(source: string, name: string, cases: RunCase[], io?: No
       const raw = c.run ? new Function(name, `"use strict";\n${c.run}`)(fn) : fn(...args)
       const stepsTaken = counted()
       guard.start()
-      const got = c.run ? raw : answer(raw, io)
+      // A function that returns nothing gets undefined back, so it can't pass as an empty list or tree.
+      const got = c.run || raw === undefined ? raw : answer(raw, io)
       const passed = c.unordered && Array.isArray(got) && Array.isArray(c.expected) ? sameItems(got, c.expected) : equal(got, c.expected)
       return { passed, got: show(got), error: null, ...stepsTaken }
     } catch (err) {
