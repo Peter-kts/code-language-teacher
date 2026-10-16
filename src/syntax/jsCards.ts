@@ -513,41 +513,6 @@ export const JS_CARDS: SyntaxCard[] = [
     code: 'const withBraces = [1, 2].map((n) => { n * 2 })    // [undefined, undefined]\nconst withReturn = [1, 2].map((n) => { return n * 2 })\nconst short = [1, 2].map((n) => n * 2)\n',
   },
   {
-    id: 'constraints',
-    title: 'Reading the constraints',
-    topic: 'speed',
-    level: 3,
-    questions: ['solve'],
-    keywords: ['constraints', 'limits', 'input', 'size', 'how', 'fast', 'leetcode', '10', 'n'],
-    explanation:
-      'The constraints say how big the input can get, and that tells you how fast your answer must be. A computer does roughly 10⁸ simple steps a second. Up to about 20 items, even O(2ⁿ) is fine; up to 10⁴, O(n²) is about the limit; at 10⁵ or more you need O(n log n) or O(n).',
-    code: '// n up to 10 ** 5: a loop inside a loop is 10 ** 10 steps, far too slow
-const n = 10 ** 5
-const slow = n * n
-const fast = n
-console.log(slow / fast, "times more work")
-',
-  },
-  {
-    id: 'brute-force',
-    title: 'Brute force first, then speed it up',
-    topic: 'patterns',
-    level: 3,
-    questions: ['solve'],
-    keywords: ['brute', 'force', 'simple', 'slow', 'first', 'optimize', 'faster', 'plan', 'approach'],
-    explanation:
-      'Start with the simplest answer that is right, even if slow (often trying every pair). Then ask where it repeats work, and what to remember so it does not: a Map of what you have seen, a running total, a sorted order.',
-    code: 'const nums = [2, 7, 11, 15]
-const target = 9
-// brute force: every pair, O(n²)
-for (let i = 0; i < nums.length; i++) {
-  for (let j = i + 1; j < nums.length; j++) {
-    if (nums[i] + nums[j] === target) console.log(i, j)
-  }
-}
-',
-  },
-  {
     id: 'big-o',
     title: 'Big-O: how the work grows',
     topic: 'speed',
@@ -571,6 +536,28 @@ for (let i = 0; i < nums.length; i++) {
   },
 
   // ---------- Level 3: problem-solving patterns ----------
+  {
+    id: 'constraints',
+    title: 'Reading the constraints',
+    topic: 'speed',
+    level: 3,
+    questions: ['solve'],
+    keywords: ['constraints', 'limits', 'input', 'size', 'how', 'fast', 'leetcode', '10', 'n'],
+    explanation:
+      'The constraints say how big the input can get, and that tells you how fast your answer must be. A computer does roughly 10⁸ simple steps a second. Up to about 20 items, even O(2ⁿ) is fine; up to 10⁴, O(n²) is about the limit; at 10⁵ or more you need O(n log n) or O(n).',
+    code: '// n up to 10 ** 5: a loop inside a loop is 10 ** 10 steps, far too slow\nconst n = 10 ** 5\nconst slow = n * n\nconst fast = n\nconsole.log(slow / fast, "times more work")\n',
+  },
+  {
+    id: 'brute-force',
+    title: 'Brute force first, then speed it up',
+    topic: 'patterns',
+    level: 3,
+    questions: ['solve'],
+    keywords: ['brute', 'force', 'simple', 'slow', 'first', 'optimize', 'faster', 'plan', 'approach'],
+    explanation:
+      'Start with the simplest answer that is right, even if slow (often trying every pair). Then ask where it repeats work, and what to remember so it does not: a Map of what you have seen, a running total, a sorted order.',
+    code: 'const nums = [2, 7, 11, 15]\nconst target = 9\n// brute force: every pair, O(n²)\nfor (let i = 0; i < nums.length; i++) {\n  for (let j = i + 1; j < nums.length; j++) {\n    if (nums[i] + nums[j] === target) console.log(i, j)\n  }\n}\n',
+  },
   {
     id: 'hash-map-lookup',
     title: 'Remember what you have seen (Map)',

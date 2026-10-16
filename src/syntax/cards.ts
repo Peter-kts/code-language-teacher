@@ -461,12 +461,7 @@ export const PYTHON_CARDS: SyntaxCard[] = [
     keywords: ['constraints', 'limits', 'input', 'size', 'how', 'fast', 'leetcode', '10', 'n'],
     explanation:
       'The constraints say how big the input can get, and that tells you how fast your answer must be. A computer does roughly 10⁸ simple steps a second. Up to about 20 items, even O(2ⁿ) is fine; up to 10⁴, O(n²) is about the limit; at 10⁵ or more you need O(n log n) or O(n).',
-    code: '# n up to 10**5: a loop inside a loop is 10**10 steps, far too slow
-n = 10**5
-slow = n * n
-fast = n
-print(slow // fast, "times more work")
-',
+    code: '# n up to 10**5: a loop inside a loop is 10**10 steps, far too slow\nn = 10**5\nslow = n * n\nfast = n\nprint(slow // fast, "times more work")\n',
   },
   {
     id: 'brute-force',
@@ -477,13 +472,7 @@ print(slow // fast, "times more work")
     keywords: ['brute', 'force', 'simple', 'slow', 'first', 'optimize', 'faster', 'plan', 'approach'],
     explanation:
       'Start with the simplest answer that is right, even if slow (often trying every pair). Then ask where it repeats work, and what to remember so it does not: a dict of what you have seen, a running total, a sorted order.',
-    code: 'nums, target = [2, 7, 11, 15], 9
-# brute force: every pair, O(n²)
-for i in range(len(nums)):
-    for j in range(i + 1, len(nums)):
-        if nums[i] + nums[j] == target:
-            print(i, j)
-',
+    code: 'nums, target = [2, 7, 11, 15], 9\n# brute force: every pair, O(n²)\nfor i in range(len(nums)):\n    for j in range(i + 1, len(nums)):\n        if nums[i] + nums[j] == target:\n            print(i, j)\n',
   },
   {
     id: 'big-o',
