@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { cardFor } from '../syntax/cards'
 import type { Language, TestResult, Value } from '../types'
 import { formatValue } from '../viz/format'
-import { say, type Problem } from './problems'
+import { BIG_OS, say, type Complexity, type Problem } from './problems'
 import { checkGuess, type GuessCheck } from './guess'
 
 export function ProblemPanel({
@@ -45,7 +45,11 @@ export function ProblemPanel({
   // How many hints are showing. The panel is keyed on the problem, so this resets when it changes.
   const [hintsShown, setHintsShown] = useState(0)
   const concepts = problem.concepts[language].flatMap((id) => cardFor(language, id) ?? [])
-  const passed = tests?.filter((t) => t.passed).length ?? 0
+  // The speed test, when there is one, runs last; the rest are the cases you can step through.
+  const speed = problem.speed && tests ? tests[problem.tests.length] : undefined
+  const caseResults = tests?.slice(0, problem.tests.length) ?? null
+  const passed = caseResults?.filter((t) => t.passed).length ?? 0
+  const allPassed = !!tests?.length && tests.every((t) => t.passed)
   const current = tests?.[caseIndex]
   const concept = problem.track === 'js-concepts'
   return (
@@ -53,9 +57,9 @@ export function ProblemPanel({
       <div className="problem-head">
         <strong>{problem.title}</strong>
         <span className="muted">{problem.difficulty}</span>
-        {tests && (
-          <span className={passed === tests.length ? 'badge pass' : 'badge'}>
-            {passed}/{tests.length} tests passing
+        {caseResults && (
+          <span className={passed === caseResults.length ? 'badge pass' : 'badge'}>
+            {passed}/{caseResults.length} tests passing
           </span>
         )}
         {savedAt && (
@@ -72,6 +76,22 @@ export function ProblemPanel({
       {problem.statement.map((para, i) => (
         <p key={i}>{say(para, language)}</p>
       ))}
+      {problem.constraints && (
+        <div className="constraints">
+          <button
+            className="constraints-title"
+            onClick={() => onOpenConcept('constraints')}
+            title="What constraints tell you: open the glossary entry"
+          >
+            Constraints
+          </button>
+          <ul>
+            {problem.constraints.map((c, i) => (
+              <li key={i}>{say(c, language)}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       {problem.hints.slice(0, hintsShown).map((hint, i) => (
         <p key={i} className="hint">
           <span className="muted">Hint {i + 1}:</span> {say(hint, language)}
@@ -126,9 +146,32 @@ export function ProblemPanel({
         ))}
       </div>
       )}
+      {!concept && problem.speed && (
+        <div className={`speed ${speed ? (speed.passed ? 'pass' : 'fail') : ''}`}>
+          <span
+            className="muted"
+            title="A big input, run without the visualizer. Steps count the lines your code runs; a built-in like sorted() counts as one, even though it does more work inside."
+          >
+            Speed test
+          </span>{' '}
+          {say(problem.speed.size, language)}, within {problem.speed.maxSteps.toLocaleString('en-US')} steps
+          {speed && (
+            <span>
+              {': '}
+              {speed.passed
+                ? `✓ took ${speed.steps?.toLocaleString('en-US')}`
+                : speed.error
+                  ? `✗ ${speed.error}`
+                  : `✗ wrong answer (${speed.got && speed.got.length > 60 ? `${speed.got.slice(0, 57)}...` : speed.got})`}
+            </span>
+          )}
+        </div>
+      )}
+      {!concept && problem.complexity && allPassed && <ComplexityCheck complexity={problem.complexity} language={language} />}
       {call && (
         <div className="call">
           <code>{call}</code> returned <code>{result ? formatValue(result) : language === 'python' ? 'None' : 'undefined'}</code>
+          {problem.io?.result && <span className="muted"> ({problem.io.result === 'tree' ? 'the tree, level by level' : 'the list, node by node'})</span>}
           {stale && <span className="muted"> (from the last version that compiled)</span>}
           {!stale && current && !current.passed && (
             <span className="fail-text">
@@ -138,6 +181,63 @@ export function ProblemPanel({
             </span>
           )}
         </div>
+      )}
+    </div>
+  )
+}
+
+/** Once the tests pass: how fast is it, and how much memory does it use? Pick, then check. */
+function ComplexityCheck({ complexity, language }: { complexity: Complexity; language: Language }) {
+  const choices = [...BIG_OS, ...(complexity.extra ?? [])]
+  const [time, setTime] = useState<string | null>(null)
+  const [space, setSpace] = useState<string | null>(null)
+  const [checked, setChecked] = useState(false)
+  const row = (label: string, title: string, picked: string | null, pick: (o: string) => void, answer: string) => (
+    <div className="big-o-row">
+      <span className="muted" title={title}>
+        {label}
+      </span>
+      {choices.map((o) => (
+        <button
+          key={o}
+          className={['chip', picked === o && 'active', checked && o === answer && 'pass', checked && picked === o && o !== answer && 'fail']
+            .filter(Boolean)
+            .join(' ')}
+          aria-pressed={picked === o}
+          onClick={() => {
+            pick(o)
+            setChecked(false)
+          }}
+        >
+          {o}
+        </button>
+      ))}
+    </div>
+  )
+  return (
+    <div className="big-o">
+      <p className="big-o-ask">All tests pass. How does the answer grow as the input grows?</p>
+      {row('Time', 'How the number of steps grows with the input', time, setTime, complexity.time)}
+      {row('Space', 'Extra memory it uses, not counting the answer it returns', space, setSpace, complexity.space)}
+      <div className="guess-actions">
+        <button className="chip" disabled={!time || !space} onClick={() => setChecked(true)}>
+          Check
+        </button>
+        <button className="chip" onClick={() => setChecked(true)} hidden={checked}>
+          Just show me
+        </button>
+        {checked && time && space && (
+          <span className={`guess-result ${time === complexity.time && space === complexity.space ? 'pass' : 'fail'}`}>
+            {time === complexity.time && space === complexity.space ? 'Both right.' : `Time is ${complexity.time}, space is ${complexity.space}.`}
+          </span>
+        )}
+      </div>
+      {checked && (
+        <p className="explain">
+          <span className="muted">Why: </span>
+          {(!time || !space) && `Time ${complexity.time}, space ${complexity.space}. `}
+          {say(complexity.why, language)}
+        </p>
       )}
     </div>
   )

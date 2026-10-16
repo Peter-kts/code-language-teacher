@@ -1,4 +1,4 @@
-import type { Value } from '../types'
+import type { NodeData, Value } from '../types'
 
 /**
  * Text for a traced value as its language writes it: Python style (`[1, 2]`,
@@ -6,6 +6,7 @@ import type { Value } from '../types'
  * carry `t` (`[1, 2]`, `{ a: 1 }`, `Map { "a" => 1 }`).
  */
 export function formatValue(v: Value): string {
+  if (v.type === 'ref') return nodeText(v)
   if (v.t !== undefined) return formatJs(v)
   switch (v.type) {
     case 'prim':
@@ -20,8 +21,16 @@ export function formatValue(v: Value): string {
   }
 }
 
+/** A class instance, by its class and (when known) its value: `ListNode(3)`, or `TreeNode`. */
+export function nodeText(v: Extract<Value, { type: 'ref' }>, nodes?: Record<string, NodeData>): string {
+  const val = nodes?.[v.id]?.fields.find(([k]) => k === 'val')?.[1]
+  return val && val.type !== 'ref' ? `${v.cls}(${formatValue(val)})` : v.cls
+}
+
 function formatJs(v: Value): string {
   switch (v.type) {
+    case 'ref':
+      return nodeText(v)
     case 'prim':
       return v.repr
     case 'other':
@@ -60,6 +69,7 @@ const keyText = (k: Value) =>
  * (`int`, `list · 3 items`) or JavaScript's (`number`, `Array · 3 items`).
  */
 export function typeLabel(v: Value): string {
+  if (v.type === 'ref') return v.cls
   const size = (n: number, more: boolean) => `${more ? 'over ' : ''}${n} item${n === 1 && !more ? '' : 's'}`
   if (v.t !== undefined) {
     if (v.type === 'list' || v.type === 'tuple') return `${v.t} · ${size(v.items.length, v.truncated)}`

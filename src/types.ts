@@ -12,7 +12,18 @@ export type Value = { t?: string } & (
   | { type: 'dict'; entries: [Value, Value][]; truncated: boolean; id?: number }
   /** A JavaScript closure carries `captured`: the outer variables it remembers, and their values now. */
   | { type: 'other'; repr: string; captured?: Record<string, Value> }
+  /**
+   * An object of a class (a linked list or tree node, say): it lives in the step's `nodes`
+   * under this id, so two variables (or two nodes) pointing at it share one drawing.
+   */
+  | { type: 'ref'; id: number; cls: string }
 )
+
+/** A class instance a `ref` points at: its class and its fields, in order. */
+export interface NodeData {
+  cls: string
+  fields: [string, Value][]
+}
 // `id` (JavaScript only) names the object a list or dict is, so two variables holding
 // the same object can be told apart from two that hold equal copies.
 
@@ -28,6 +39,10 @@ export interface Step {
   ran?: Record<string, Brief>
   /** Variables in `vars` that belong to an outer function: the ones this closure remembers. */
   captured?: string[]
+  /** Every class instance the variables reach, by the id their `ref`s carry. */
+  nodes?: Record<string, NodeData>
+  /** Nodes that calls further out point at (ids in `nodes`), drawn too so a recursive call keeps the whole tree in view. */
+  outer?: string[]
 }
 
 /** A value recorded while a line ran: its text (Python's repr), and the number when it is one. */
@@ -135,6 +150,29 @@ export interface TestResult {
   passed: boolean
   got: string | null
   error: string | null
+  /** Lines of the learner's code the case ran (only counted for a case with `maxSteps`). */
+  steps?: number
+}
+
+/**
+ * How a problem's arguments and answer travel as JSON: `list` is a linked list written as
+ * its values ([1, 2, 3]), `tree` a binary tree in level order with null gaps ([2, 1, 3, null, 4]),
+ * `cycle` a linked list whose tail links back to a node ({values: [3, 2, 0], pos: 1}), and
+ * `lists` an array of linked lists ([[1, 4], [2, 3]]).
+ */
+export type NodeKind = 'list' | 'tree' | 'cycle' | 'lists'
+export interface NodeIo {
+  args: (NodeKind | null)[]
+  result?: NodeKind
+}
+
+export interface RunCase {
+  args: unknown[]
+  expected: unknown
+  unordered?: boolean
+  run?: string
+  /** Stop the case as too slow once the learner's code has run this many lines. */
+  maxSteps?: number
 }
 
 export interface RunRequest {
@@ -142,7 +180,9 @@ export interface RunRequest {
   /** Problem function to call and trace after the module runs. */
   call?: { name: string; args: unknown[] }
   /** Test cases to run (untraced) against `call.name`. */
-  tests?: { args: unknown[]; expected: unknown; unordered?: boolean; run?: string }[]
+  tests?: RunCase[]
   /** The function the tests use when no `call` is traced (the JavaScript concept problems). */
   testFor?: string
+  /** Arguments and answers that are linked lists or trees. */
+  io?: NodeIo
 }

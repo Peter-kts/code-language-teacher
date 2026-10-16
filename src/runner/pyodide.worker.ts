@@ -18,18 +18,18 @@ const pyodideReady: Promise<PyodideInterface> = loadPyodide({ indexURL }).then((
 })
 
 self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
-  const { id, code, call, tests } = event.data
+  const { id, code, call, tests, io } = event.data
   let result: TraceResult
   let testResults: TestResult[] | null = null
   try {
     const py = await pyodideReady
     // Pass data in as JSON so Python sees plain lists and dicts.
-    py.globals.set('_ct_request', JSON.stringify({ code, call: call ?? null, tests: tests ?? null }))
+    py.globals.set('_ct_request', JSON.stringify({ code, call: call ?? null, tests: tests ?? null, io: io ?? null }))
     result = JSON.parse(
-      py.runPython('_r = json.loads(_ct_request)\nrun_traced(_r["code"], call=_r["call"])'),
+      py.runPython('_r = json.loads(_ct_request)\nrun_traced(_r["code"], call=_r["call"], node_io=_r["io"])'),
     )
     if (result.ok && call && tests) {
-      testResults = JSON.parse(py.runPython('run_tests(_r["code"], _r["call"]["name"], _r["tests"])'))
+      testResults = JSON.parse(py.runPython('run_tests(_r["code"], _r["call"]["name"], _r["tests"], node_io=_r["io"])'))
     }
   } catch (err) {
     result = { ok: false, error: { kind: 'internal', message: String(err), line: null } }

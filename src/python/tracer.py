@@ -5,6 +5,7 @@ Entry point: run_traced(source) -> JSON string (see TraceResult in src/types.ts)
 """
 
 import ast
+import collections
 import io
 import itertools
 import json
@@ -24,8 +25,168 @@ MAX_SEQ_PARTS = 8
 _RESUMABLE = 0x20 | 0x80 | 0x200
 
 
+MAX_NODES = 60
+MAX_NODE_FIELDS = 12
+# How far a returned linked list is followed before it counts as looping forever.
+MAX_LIST_NODES = 100_000
+
+
 class StepLimitExceeded(Exception):
     pass
+
+
+class _TooSlow(Exception):
+    pass
+
+
+# The node classes LeetCode defines for its linked list and tree problems. They are handed
+# to the learner's code (it can also define its own), and inputs are built from them.
+class ListNode:
+    def __init__(self, val=0, next=None):
+        self.val = val
+        self.next = next
+
+    def __repr__(self):
+        return f"ListNode({self.val!r})"
+
+
+class TreeNode:
+    def __init__(self, val=0, left=None, right=None):
+        self.val = val
+        self.left = left
+        self.right = right
+
+    def __repr__(self):
+        return f"TreeNode({self.val!r})"
+
+
+_NODE_CLASSES = {"ListNode": ListNode, "TreeNode": TreeNode}
+
+
+def _is_node(value):
+    """An object of a class: the learner's own, or ListNode and TreeNode."""
+    cls = type(value)
+    if cls in (ListNode, TreeNode):
+        return True
+    return cls.__module__ == "__main__" and not isinstance(value, type) and hasattr(value, "__dict__")
+
+
+def _to_nodes(value, kind, classes):
+    """A JSON argument as the linked list or tree it stands for (see NodeIo in src/types.ts)."""
+    list_node = classes.get("ListNode", ListNode)
+    tree_node = classes.get("TreeNode", TreeNode)
+    if kind == "lists":
+        return [_to_nodes(v, "list", classes) for v in value]
+    if kind in ("list", "cycle"):
+        values, pos = (value["values"], value.get("pos", -1)) if kind == "cycle" else (value, -1)
+        nodes = [list_node(v) for v in values]
+        for a, b in zip(nodes, nodes[1:]):
+            a.next = b
+        if nodes and 0 <= pos < len(nodes):
+            nodes[-1].next = nodes[pos]
+        return nodes[0] if nodes else None
+    if kind == "tree":
+        if not value or value[0] is None:
+            return None
+        root = tree_node(value[0])
+        queue, i = [root], 1
+        for node in queue:
+            if i >= len(value):
+                break
+            for side in ("left", "right"):
+                if i < len(value) and value[i] is not None:
+                    child = tree_node(value[i])
+                    setattr(node, side, child)
+                    queue.append(child)
+                i += 1
+        return root
+    return value
+
+
+def _from_nodes(value, kind):
+    """A returned linked list or tree as JSON, the way the tests write it."""
+    if value is None:
+        return []
+    if kind == "lists":
+        return [_from_nodes(v, "list") for v in value]
+    if kind in ("list", "cycle"):
+        if not hasattr(value, "next"):
+            raise TypeError(f"return the first node of the list (a ListNode), not {type(value).__name__}")
+        out = []
+        while value is not None:
+            out.append(value.val)
+            if len(out) > MAX_LIST_NODES:
+                raise ValueError("the list you returned never ends: some node's next leads back into it")
+            value = value.next
+        return out
+    if kind == "tree":
+        if not hasattr(value, "left"):
+            raise TypeError(f"return the root of the tree (a TreeNode), not {type(value).__name__}")
+        out, queue = [], [value]
+        for node in queue:
+            if len(queue) > MAX_LIST_NODES:
+                raise ValueError("the tree you returned loops back on itself")
+            if node is None:
+                out.append(None)
+                continue
+            out.append(node.val)
+            queue.append(node.left)
+            queue.append(node.right)
+        while out and out[-1] is None:
+            out.pop()
+        return out
+    return value
+
+
+def _call_args(args, node_io, classes):
+    args = _copy_args(args)
+    if not node_io:
+        return args
+    kinds = node_io.get("args") or []
+    return [_to_nodes(a, kinds[i], classes) if i < len(kinds) and kinds[i] else a for i, a in enumerate(args)]
+
+
+def _answer(value, node_io):
+    return _from_nodes(value, node_io["result"]) if node_io and node_io.get("result") else value
+
+
+def _refs(serialized, out):
+    """The node ids a serialized value points at, added to `out`."""
+    kind = serialized.get("type")
+    if kind == "ref":
+        out.append(str(serialized["id"]))
+    elif kind in ("list", "tuple"):
+        for item in serialized["items"]:
+            _refs(item, out)
+    elif kind == "dict":
+        for k, v in serialized["entries"]:
+            _refs(k, out)
+            _refs(v, out)
+    return out
+
+
+class _Heap:
+    """The class instances one snapshot reaches, by a number that stays the same for the whole run."""
+
+    def __init__(self, ids):
+        self.ids = ids
+        self.nodes = {}
+
+    def ref(self, obj):
+        entry = self.ids.get(id(obj))
+        if entry is None:
+            # Keep the object alive so its id() can't be reused by another one.
+            entry = self.ids[id(obj)] = (len(self.ids) + 1, obj)
+        n = entry[0]
+        key = str(n)
+        if key not in self.nodes and len(self.nodes) < MAX_NODES:
+            self.nodes[key] = None  # placeholder, so a cycle stops here
+            fields = list(getattr(obj, "__dict__", {}).items())[:MAX_NODE_FIELDS]
+            self.nodes[key] = {
+                "cls": type(obj).__name__,
+                "fields": [[k, _serialize(v, 1, self)] for k, v in fields if not k.startswith("__")],
+            }
+        return {"type": "ref", "id": n, "cls": type(obj).__name__}
 
 
 class _ConsoleStream(io.TextIOBase):
@@ -358,23 +519,27 @@ def _brief(value):
     return [text, num]
 
 
-def _serialize(value, depth=0):
+def _serialize(value, depth=0, heap=None):
+    if heap is not None and _is_node(value):
+        return heap.ref(value)
     if value is None or isinstance(value, (bool, int, float, str)):
         if isinstance(value, float) and not math.isfinite(value):
             # JSON has no inf or nan (the browser can't parse them), so keep only the text.
             return {"type": "prim", "repr": repr(value)}
         return {"type": "prim", "repr": repr(value), "value": value}
-    if isinstance(value, (list, tuple)) and depth < MAX_DEPTH:
+    if isinstance(value, (list, tuple, collections.deque)) and depth < MAX_DEPTH:
+        if isinstance(value, collections.deque):
+            value = list(value)
         return {
             "type": "list" if isinstance(value, list) else "tuple",
-            "items": [_serialize(v, depth + 1) for v in value[:MAX_LIST_ITEMS]],
+            "items": [_serialize(v, depth + 1, heap) for v in value[:MAX_LIST_ITEMS]],
             "truncated": len(value) > MAX_LIST_ITEMS,
         }
     if isinstance(value, dict) and depth < MAX_DEPTH:
         items = list(value.items())[:MAX_LIST_ITEMS]
         return {
             "type": "dict",
-            "entries": [[_serialize(k, depth + 1), _serialize(v, depth + 1)] for k, v in items],
+            "entries": [[_serialize(k, depth + 1, heap), _serialize(v, depth + 1, heap)] for k, v in items],
             "truncated": len(value) > MAX_LIST_ITEMS,
         }
     text = repr(value)
@@ -393,9 +558,10 @@ def _call_desc(call):
     return f"{call['name']}({', '.join(repr(a) for a in call['args'])})"
 
 
-def run_traced(source, max_steps=2000, call=None):
+def run_traced(source, max_steps=2000, call=None, node_io=None):
     """Trace `source`. If `call` is {"name": ..., "args": [...]}, also call that
-    function after the module runs (LeetCode style) and trace its body."""
+    function after the module runs (LeetCode style) and trace its body.
+    `node_io` says which arguments and answer are linked lists or trees (NodeIo in src/types.ts)."""
     try:
         tree = ast.parse(source, filename=USER_FILENAME)
     except SyntaxError as err:
@@ -457,7 +623,8 @@ def run_traced(source, max_steps=2000, call=None):
             describing = False
         return value
 
-    user_globals = {"__name__": "__main__", "__builtins__": __builtins__, RECORD_FN: record}
+    user_globals = {"__name__": "__main__", "__builtins__": __builtins__, RECORD_FN: record, **_NODE_CLASSES}
+    node_ids = {}
 
     def snapshot(frame, line):
         if len(steps) >= max_steps:
@@ -465,11 +632,12 @@ def run_traced(source, max_steps=2000, call=None):
         scope = frame.f_locals
         variables = {}
         hidden = {}
+        heap = _Heap(node_ids)
         for name, value in scope.items():
             if name.startswith(HIDDEN_PREFIX):
                 hidden[name] = value
             elif _visible(name, value):
-                variables[name] = _serialize(value)
+                variables[name] = _serialize(value, 0, heap)
         step = {
             "line": line,
             "func": frame.f_code.co_name,
@@ -482,6 +650,19 @@ def run_traced(source, max_steps=2000, call=None):
         ran = pending.pop(frame, None)
         if ran:
             step["ran"] = ran
+        # Nodes the calls further out hold (the whole tree while a recursive call looks at one
+        # branch), so the drawing keeps its context.
+        outer = []
+        caller = frame.f_back
+        while caller is not None and caller.f_code.co_filename == USER_FILENAME and caller.f_code.co_name != "<module>":
+            for name, value in caller.f_locals.items():
+                if _visible(name, value) and not name.startswith(HIDDEN_PREFIX):
+                    _refs(_serialize(value, 0, heap), outer)
+            caller = caller.f_back
+        if heap.nodes:
+            step["nodes"] = heap.nodes
+            if outer:
+                step["outer"] = list(dict.fromkeys(outer))
         steps.append(step)
 
     def tracer(frame, event, arg):
@@ -515,7 +696,7 @@ def run_traced(source, max_steps=2000, call=None):
             func = user_globals.get(call["name"])
             if not callable(func):
                 raise NameError(f"define a function named {call['name']}")
-            result = _serialize(func(*_copy_args(call["args"])))
+            result = _serialize(_answer(func(*_call_args(call["args"], node_io, user_globals)), node_io))
     except StepLimitExceeded:
         truncated = True
     except Exception as exc:  # noqa: BLE001 - user code may raise anything
@@ -565,16 +746,17 @@ def _copy_args(args):
     return json.loads(json.dumps(args))
 
 
-def run_tests(source, name, cases, max_seconds=2.0):
+def run_tests(source, name, cases, max_seconds=2.0, node_io=None):
     """Run `name(*case["args"])` for each case without tracing.
 
-    Returns JSON: [{"passed": bool, "got": repr | None, "error": str | None}].
-    Answers are compared as sorted lists when `case["unordered"]` is set.
+    Returns JSON: [{"passed": bool, "got": repr | None, "error": str | None, "steps"?: int}].
+    Answers are compared as sorted lists when `case["unordered"]` is set. A case with
+    `maxSteps` counts the lines the learner's code runs and stops it as too slow past that.
     """
     import time
 
     results = []
-    user_globals = {"__name__": "__main__", "__builtins__": __builtins__}
+    user_globals = {"__name__": "__main__", "__builtins__": __builtins__, **_NODE_CLASSES}
     old_stdout = sys.stdout
     sys.stdout = io.StringIO()
     try:
@@ -588,25 +770,45 @@ def run_tests(source, name, cases, max_seconds=2.0):
                 results.append({"passed": False, "got": None, "error": f"define a function named {name}"})
                 continue
             deadline = time.monotonic() + max_seconds
+            limit = case.get("maxSteps")
+            steps = 0
 
             def guard(frame, event, arg):
+                nonlocal steps
+                if event == "line":
+                    steps += 1
+                    if limit is not None and steps > limit:
+                        raise _TooSlow()
                 if time.monotonic() > deadline:
-                    raise TimeoutError("took too long")
+                    # On a speed test, running out of time is being too slow too.
+                    raise _TooSlow() if limit is not None else TimeoutError("took too long")
                 return guard if frame.f_code.co_filename == USER_FILENAME else None
 
-            sys.settrace(guard)
+            counted = {"steps": steps} if limit is not None else {}
             try:
-                got = func(*_copy_args(case["args"]))
+                call_args = _call_args(case["args"], node_io, user_globals)
+                sys.settrace(guard)
+                got = func(*call_args)
                 sys.settrace(None)
+                got = _answer(got, node_io)
                 expected = case["expected"]
                 if case.get("unordered") and isinstance(got, (list, tuple)):
                     passed = sorted(got) == sorted(expected)
                 else:
                     passed = (list(got) if isinstance(got, tuple) else got) == expected
-                results.append({"passed": passed, "got": repr(got), "error": None})
+                if limit is not None:
+                    counted["steps"] = steps
+                results.append({"passed": passed, "got": repr(got), "error": None, **counted})
+            except _TooSlow:
+                sys.settrace(None)
+                over = steps > limit
+                why = f"still running after {limit:,} steps" if over else f"ran out of time after {steps:,} steps"
+                results.append({"passed": False, "got": None, "error": f"too slow: {why}", "steps": steps})
             except Exception as exc:  # noqa: BLE001
                 sys.settrace(None)
-                results.append({"passed": False, "got": None, "error": f"{type(exc).__name__}: {exc}"})
+                if limit is not None:
+                    counted["steps"] = steps
+                results.append({"passed": False, "got": None, "error": f"{type(exc).__name__}: {exc}", **counted})
     finally:
         sys.settrace(None)
         sys.stdout = old_stdout

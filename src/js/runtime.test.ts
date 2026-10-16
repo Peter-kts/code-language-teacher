@@ -344,3 +344,70 @@ const c = [...a]
     expect(results.map((r) => r.passed)).toEqual([true, false])
   })
 })
+
+describe('linked lists, trees and speed cases', () => {
+  const reverse = `function f(head) {
+  let prev = null
+  let cur = head
+  while (cur) {
+    const nxt = cur.next
+    cur.next = prev
+    prev = cur
+    cur = nxt
+  }
+  return prev
+}`
+
+  it('draws class instances as nodes, each listed once by id', () => {
+    const run = runTraced(reverse, { name: 'f', args: [[1, 2, 3]] }, undefined, { args: ['list'], result: 'list' })
+    if (!run.ok) throw new Error('did not run')
+    expect(run.error).toBe(null)
+    expect(run.result).toMatchObject({ type: 'list', items: [{ value: 3 }, { value: 2 }, { value: 1 }] })
+    const first = run.steps.find((s) => s.func === 'f')!
+    const head = first.vars.head
+    expect(head).toMatchObject({ type: 'ref', cls: 'ListNode' })
+    const node = first.nodes![String((head as { id: number }).id)]
+    expect(node.fields.map(([k]) => k)).toEqual(['val', 'next'])
+    expect(node.fields[1][1].type).toBe('ref')
+    expect(Object.keys(first.nodes!)).toHaveLength(3)
+  })
+
+  it('lists a cycle once', () => {
+    const run = runTraced('function f(head) { return head.val }', { name: 'f', args: [{ values: [1, 2], pos: 0 }] }, undefined, { args: ['cycle'] })
+    if (!run.ok) throw new Error('did not run')
+    expect(Object.keys(run.steps.find((s) => s.func === 'f')!.nodes!)).toHaveLength(2)
+  })
+
+  it('takes and gives back trees in level order', () => {
+    const swap = 'function f(root) {\n  ;[root.left, root.right] = [root.right, root.left]\n  return root\n}'
+    const [r] = runTests(swap, 'f', [{ args: [[2, 1, 3, null, 4]], expected: [2, 3, 1, null, null, null, 4] }], { args: ['tree'], result: 'tree' })
+    expect(r).toMatchObject({ passed: true })
+  })
+
+  it("lets the learner's code declare its own ListNode", () => {
+    const own = `class ListNode {\n  constructor(val = 0, next = null) {\n    this.val = val\n    this.next = next\n  }\n}\nfunction f(head) {\n  return new ListNode(head ? head.val : 0)\n}`
+    const [r] = runTests(own, 'f', [{ args: [[5, 6]], expected: [5] }], { args: ['list'], result: 'list' })
+    expect(r).toMatchObject({ passed: true })
+    const run = runTraced(own, { name: 'f', args: [[7]] }, undefined, { args: ['list'], result: 'list' })
+    if (!run.ok) throw new Error('did not run')
+    expect(run.error).toBe(null)
+  })
+
+  it('does not pass an empty list when the function returns nothing', () => {
+    const [r] = runTests('function f(head) {\n  head = null\n}', 'f', [{ args: [[]], expected: [] }], { args: ['list'], result: 'list' })
+    expect(r.passed).toBe(false)
+    expect(r.got).toBe('undefined')
+  })
+
+  it('counts steps on a speed case and stops when it goes over', () => {
+    const sum = 'function f(n) {\n  let t = 0\n  for (let i = 0; i < n; i++) t += i\n  return t\n}'
+    const [fast, slow] = runTests(sum, 'f', [
+      { args: [10], expected: 45, maxSteps: 100 },
+      { args: [1000], expected: 499500, maxSteps: 100 },
+    ])
+    expect(fast.passed).toBe(true)
+    expect(fast.steps).toBeGreaterThan(10)
+    expect(slow.passed).toBe(false)
+    expect(slow.error).toMatch(/^too slow/)
+  })
+})
