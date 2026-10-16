@@ -14,7 +14,7 @@ import { ConsolePanel } from './console/ConsolePanel'
 import { SyntaxHelper } from './syntax/SyntaxHelper'
 import { CodeHover } from './syntax/CodeHover'
 import { Chat } from './chat/Chat'
-import { DIFFICULTIES, PROBLEMS, type Problem } from './problems/problems'
+import { DIFFICULTIES, PROBLEM_TOPICS, PROBLEMS, type Problem } from './problems/problems'
 import { ProblemPanel } from './problems/ProblemPanel'
 import { loadSolutions, saveSolution, type Solutions } from './problems/solutions'
 import { JS_CONCEPTS } from './problems/concepts'
@@ -131,7 +131,9 @@ export default function App() {
       : {
           code,
           call: { name: problem.functionName, args: problem.tests[caseIndex].args },
-          tests: problem.tests,
+          // The speed test (a big input with a step budget) runs after the ordinary cases.
+          tests: problem.speed ? [...problem.tests, problem.speed] : problem.tests,
+          ...(problem.io && { io: problem.io }),
         }
   const { status, trace, error, tests, ranFor } = useRunner(request, language)
   // Right after switching problems, the last results are still the old problem's until the new run lands.
@@ -349,14 +351,17 @@ export default function App() {
                   Problems ({PROBLEMS.length})
                 </option>
               )}
-              {DIFFICULTIES.map((d) => {
-                const group = PROBLEMS.filter((p) => p.difficulty === d)
+              {PROBLEM_TOPICS.map((t) => {
+                // Easiest first within a section.
+                const group = PROBLEMS.filter((p) => p.topic === t.id).sort(
+                  (a, b) => DIFFICULTIES.indexOf(a.difficulty) - DIFFICULTIES.indexOf(b.difficulty),
+                )
                 return (
                   group.length > 0 && (
-                    <optgroup key={d} label={d}>
+                    <optgroup key={t.id} label={t.label}>
                       {group.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {solutions[language][p.id] ? `✓ ${p.title}` : p.title}
+                          {`${solutions[language][p.id] ? '✓ ' : ''}${p.title} · ${p.difficulty}`}
                         </option>
                       ))}
                     </optgroup>

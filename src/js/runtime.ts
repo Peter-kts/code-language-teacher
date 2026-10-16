@@ -2,7 +2,7 @@
 // before each statement: the same TraceResult JSON that src/python/tracer.py makes,
 // so the visualizer, history and console don't need to know which language ran.
 
-import type { Brief, CodeError, ConsoleEntry, Step, TestResult, TraceResult, Value } from '../types'
+import type { Brief, CodeError, ConsoleEntry, NodeData, NodeIo, NodeKind, RunCase, Step, TestResult, TraceResult, Value } from '../types'
 import { formatValue } from '../viz/format'
 import { instrument } from './instrument'
 
@@ -12,9 +12,99 @@ const MAX_DEPTH = 3
 const MAX_BRIEF = 60
 const MAX_OTHER = 80
 const TEST_SECONDS = 2
+const MAX_NODES = 60
+const MAX_NODE_FIELDS = 12
+/** How far a returned linked list is followed before it counts as looping forever. */
+const MAX_LIST_NODES = 100_000
 
 /** Thrown when a run takes too many steps; never reported as the program's own error. */
 class StepLimit {}
+
+/** Thrown when a test case with a step budget goes over it. */
+class TooSlow {}
+
+// The node classes LeetCode defines for its linked list and tree problems. The learner's code
+// gets them (it can also declare its own), and linked list and tree inputs are built from them.
+export class ListNode {
+  val: unknown
+  next: ListNode | null
+  constructor(val: unknown = 0, next: ListNode | null = null) {
+    this.val = val
+    this.next = next
+  }
+}
+
+export class TreeNode {
+  val: unknown
+  left: TreeNode | null
+  right: TreeNode | null
+  constructor(val: unknown = 0, left: TreeNode | null = null, right: TreeNode | null = null) {
+    this.val = val
+    this.left = left
+    this.right = right
+  }
+}
+
+/** A JSON argument as the linked list or tree it stands for (see NodeIo in src/types.ts). */
+export function toNodes(value: unknown, kind: NodeKind): unknown {
+  if (kind === 'list' || kind === 'cycle') {
+    const { values, pos } = kind === 'cycle' ? (value as { values: unknown[]; pos?: number }) : { values: value as unknown[], pos: -1 }
+    const nodes = values.map((v) => new ListNode(v))
+    nodes.forEach((n, i) => (n.next = nodes[i + 1] ?? null))
+    if (nodes.length && pos !== undefined && pos >= 0 && pos < nodes.length) nodes[nodes.length - 1].next = nodes[pos]
+    return nodes[0] ?? null
+  }
+  const values = value as unknown[]
+  if (!values.length || values[0] === null) return null
+  const root = new TreeNode(values[0])
+  const queue = [root]
+  let i = 1
+  for (let q = 0; q < queue.length && i < values.length; q++) {
+    for (const side of ['left', 'right'] as const) {
+      if (i < values.length && values[i] !== null) {
+        const child = new TreeNode(values[i])
+        queue[q][side] = child
+        queue.push(child)
+      }
+      i++
+    }
+  }
+  return root
+}
+
+/** A returned linked list or tree as JSON, the way the tests write it. */
+export function fromNodes(value: unknown, kind: NodeKind): unknown {
+  if (value === null || value === undefined) return []
+  const node = value as Record<string, unknown>
+  if (kind === 'list' || kind === 'cycle') {
+    if (typeof value !== 'object' || !('next' in node)) throw new TypeError(`return the first node of the list (a ListNode), not ${show(value)}`)
+    const out: unknown[] = []
+    for (let n: Record<string, unknown> | null = node; n; n = n.next as Record<string, unknown> | null) {
+      out.push(n.val)
+      if (out.length > MAX_LIST_NODES) throw new Error("the list you returned never ends: some node's next leads back into it")
+    }
+    return out
+  }
+  if (typeof value !== 'object' || !('left' in node)) throw new TypeError(`return the root of the tree (a TreeNode), not ${show(value)}`)
+  const out: unknown[] = []
+  const queue: (Record<string, unknown> | null)[] = [node]
+  for (let q = 0; q < queue.length; q++) {
+    if (queue.length > MAX_LIST_NODES) throw new Error('the tree you returned loops back on itself')
+    const n = queue[q]
+    if (!n) {
+      out.push(null)
+      continue
+    }
+    out.push(n.val)
+    queue.push((n.left as Record<string, unknown>) ?? null, (n.right as Record<string, unknown>) ?? null)
+  }
+  while (out.length && out[out.length - 1] === null) out.pop()
+  return out
+}
+
+const callArgs = (args: unknown[], io?: NodeIo) =>
+  copy(args).map((a, i) => (io?.args[i] ? toNodes(a, io.args[i] as NodeKind) : a))
+const answer = (value: unknown, io?: NodeIo) => (io?.result ? fromNodes(value, io.result) : value)
 
 interface Frame {
   id: number
@@ -61,6 +151,9 @@ interface Memory {
 
 /** Set while a traced run is going, so serialize can draw closures and tell objects apart. */
 let memory: Memory | null = null
+
+/** Set while a step's snapshot is taken: the class instances its variables reach, by id. */
+let heap: Record<string, NodeData> | null = null
 
 class Tracer implements Hooks {
   steps: Step[] = []
@@ -155,19 +248,26 @@ class Tracer implements Hooks {
       throw new StepLimit()
     }
     const vars: Record<string, Value> = {}
-    for (const [name, get] of Object.entries(getters)) {
-      let value: unknown
-      try {
-        value = get()
-      } catch {
-        continue // declared with let or const further down: not there yet
+    const nodes: Record<string, NodeData> = {}
+    heap = nodes
+    try {
+      for (const [name, get] of Object.entries(getters)) {
+        let value: unknown
+        try {
+          value = get()
+        } catch {
+          continue // declared with let or const further down: not there yet
+        }
+        // Plain functions are code, not data; closures are drawn with what they remember.
+        if (typeof value === 'function' && !memory?.closures.has(value)) continue
+        vars[name] = serialize(value)
       }
-      // Plain functions are code, not data; closures are drawn with what they remember.
-      if (typeof value === 'function' && !memory?.closures.has(value)) continue
-      vars[name] = serialize(value)
+    } finally {
+      heap = null
     }
     for (const [name, value] of Object.entries(extra)) if (!(name in vars)) vars[name] = value
     const step: Step = { line, func: frame.func, frame: frame.id, vars, hidden: { ...frame.hidden }, stdout: this.stdout }
+    if (nodes && Object.keys(nodes).length) step.nodes = nodes
     const captured = frame.captured.filter((n) => n in vars)
     if (captured.length) step.captured = captured
     if (frame.pending) {
@@ -181,15 +281,20 @@ class Tracer implements Hooks {
 
 /** Steps nothing, only stops code that runs too long (for the untraced test runs). */
 class Guard implements Hooks {
-  private count = 0
+  /** Statements run since start: the steps a speed test counts. */
+  steps = 0
+  private limit = Infinity
   private deadline = 0
 
-  start() {
+  start(maxSteps?: number) {
     this.deadline = Date.now() + TEST_SECONDS * 1000
+    this.steps = 0
+    this.limit = maxSteps ?? Infinity
   }
 
   s() {
-    if (++this.count % 1024 === 0 && Date.now() > this.deadline) throw new Error('took too long')
+    if (++this.steps > this.limit) throw new TooSlow()
+    if (this.steps % 1024 === 0 && Date.now() > this.deadline) throw new Error('took too long')
   }
   r<T>(_id: number, value: T) {
     return value
@@ -224,7 +329,8 @@ function show(v: unknown): string {
 
 /** Compile the rewritten code into a function of (__ct, console). */
 function compile(code: string): (hooks: Hooks, console: unknown) => unknown {
-  return new Function('__ct', 'console', `"use strict";\n${code}`) as (hooks: Hooks, console: unknown) => unknown
+  const run = new Function('__ct', 'console', 'ListNode', 'TreeNode', `"use strict";\n${code}`)
+  return (hooks, console) => run(hooks, console, ListNode, TreeNode)
 }
 
 function errorText(err: unknown): string {
@@ -241,7 +347,12 @@ const callText = (call: { name: string; args: unknown[] }) => `${call.name}(${ca
  * Trace `source`. With `call`, also call that function once the code has run
  * (LeetCode style) and trace its body.
  */
-export function runTraced(source: string, call: { name: string; args: unknown[] } | null = null, maxSteps = MAX_STEPS): TraceResult {
+export function runTraced(
+  source: string,
+  call: { name: string; args: unknown[] } | null = null,
+  maxSteps = MAX_STEPS,
+  io?: NodeIo,
+): TraceResult {
   const made = instrument(source, call?.name ?? null)
   if ('error' in made) return { ok: false, error: made.error }
   const tracer = new Tracer(maxSteps)
@@ -253,7 +364,7 @@ export function runTraced(source: string, call: { name: string; args: unknown[] 
     const fn = compile(made.code)(tracer, console)
     if (call) {
       if (typeof fn !== 'function') throw new ReferenceError(`define a function named ${call.name}`)
-      result = serialize(fn(...copy(call.args)))
+      result = serialize(answer(fn(...callArgs(call.args, io)), io))
     }
   } catch (err) {
     if (!(err instanceof StepLimit)) {
@@ -282,11 +393,7 @@ export function runTraced(source: string, call: { name: string; args: unknown[] 
  * Run `name(...case.args)` for each case without tracing. Answers are compared in any order when `case.unordered` is set.
  * A case with `run` instead runs that code (a function body that can use `name`) and checks what it returns.
  */
-export function runTests(
-  source: string,
-  name: string,
-  cases: { args: unknown[]; expected: unknown; unordered?: boolean; run?: string }[],
-): TestResult[] {
+export function runTests(source: string, name: string, cases: RunCase[], io?: NodeIo): TestResult[] {
   const made = instrument(source, name)
   if ('error' in made) return cases.map(() => ({ passed: false, got: null, error: `SyntaxError: ${made.error.message}` }))
   const guard = new Guard()
@@ -300,13 +407,19 @@ export function runTests(
   }
   return cases.map((c) => {
     if (typeof fn !== 'function') return { passed: false, got: null, error: `define a function named ${name}` }
+    const counted = () => (c.maxSteps !== undefined ? { steps: guard.steps } : {})
     try {
+      const args = c.run ? [] : callArgs(c.args, io)
+      guard.start(c.maxSteps)
+      const raw = c.run ? new Function(name, `"use strict";\n${c.run}`)(fn) : fn(...args)
+      const stepsTaken = counted()
       guard.start()
-      const got = c.run ? new Function(name, `"use strict";\n${c.run}`)(fn) : fn(...copy(c.args))
+      const got = c.run ? raw : answer(raw, io)
       const passed = c.unordered && Array.isArray(got) && Array.isArray(c.expected) ? sameItems(got, c.expected) : equal(got, c.expected)
-      return { passed, got: show(got), error: null }
+      return { passed, got: show(got), error: null, ...stepsTaken }
     } catch (err) {
-      return { passed: false, got: null, error: errorText(err) }
+      if (err instanceof TooSlow) return { passed: false, got: null, error: `too slow: still running after ${c.maxSteps!.toLocaleString('en-US')} steps`, ...counted() }
+      return { passed: false, got: null, error: errorText(err), ...counted() }
     }
   })
 }
@@ -374,7 +487,10 @@ export function serialize(value: unknown, depth = 0): Value {
   }
   if (value === null) return { type: 'prim', repr: 'null', value: null, t: 'null' }
   const obj = value as object
-  if (depth >= MAX_DEPTH) return { type: 'other', repr: shortText(obj), t: constructorName(obj) }
+  const cls = constructorName(obj)
+  // An instance of a class (a ListNode, a TreeNode, the learner's own): drawn as a node.
+  if (heap && memory && isNode(obj, cls)) return nodeRef(obj, cls, objectId(obj)!, heap)
+  if (depth >= MAX_DEPTH) return { type: 'other', repr: shortText(obj), t: cls }
   const id = objectId(obj)
   if (Array.isArray(obj)) {
     const items: Value[] = []
@@ -398,7 +514,7 @@ export function serialize(value: unknown, depth = 0): Value {
   if (obj instanceof Date || obj instanceof RegExp || obj instanceof Error || ArrayBuffer.isView(obj)) {
     return { type: 'other', repr: clip(String(obj)), t: constructorName(obj) }
   }
-  // Plain objects, and instances of the learner's classes: their own data properties.
+  // Plain objects, and class instances outside a snapshot: their own data properties.
   const keys = Object.keys(obj)
   const entries: [Value, Value][] = []
   for (const key of keys.slice(0, MAX_LIST_ITEMS)) {
@@ -408,6 +524,24 @@ export function serialize(value: unknown, depth = 0): Value {
     entries.push([{ type: 'prim', repr: JSON.stringify(key), value: key, t: 'string' }, v])
   }
   return { type: 'dict', entries, truncated: keys.length > MAX_LIST_ITEMS, t: constructorName(obj), id }
+}
+
+/** An object made by a class, other than the built-in ones (arrays, Maps, dates and the like are handled before). */
+const isNode = (obj: object, cls: string) =>
+  cls !== 'Object' && !Array.isArray(obj) && !(obj instanceof Map) && !(obj instanceof Set) && !(obj instanceof Date) && !(obj instanceof RegExp) && !(obj instanceof Error) && !ArrayBuffer.isView(obj) && !(obj instanceof Promise)
+
+/** A class instance as a `ref`, listing it (and what it reaches) in the snapshot's nodes. */
+function nodeRef(obj: object, cls: string, id: number, nodes: Record<string, NodeData>): Value {
+  const key = String(id)
+  if (!(key in nodes) && Object.keys(nodes).length < MAX_NODES) {
+    const data: NodeData = { cls, fields: [] }
+    nodes[key] = data // listed before its fields, so a cycle stops here
+    for (const k of Object.keys(obj).slice(0, MAX_NODE_FIELDS)) {
+      const desc = Object.getOwnPropertyDescriptor(obj, k)
+      if (desc && 'value' in desc && typeof desc.value !== 'function') data.fields.push([k, serialize(desc.value, 1)])
+    }
+  }
+  return { type: 'ref', id, cls }
 }
 
 /** The same number for the same object for the whole run (none outside a traced run). */

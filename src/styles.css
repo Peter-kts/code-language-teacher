@@ -645,3 +645,23 @@ kbd {
   width: 1.9rem; height: 1.9rem; padding: 0; line-height: 1;
   border-color: var(--line); color: var(--muted);
 }
+
+/* LeetCode-style constraints, the speed test line and the time/space question. */
+.constraints { margin: 0.5rem 0; }
+.constraints-title {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint);
+  text-decoration: underline dotted; text-underline-offset: 3px;
+}
+.constraints-title:hover { color: var(--accent); }
+.constraints ul { margin: 0.2rem 0 0; padding-left: 1.1rem; font-family: var(--font-mono); font-size: 0.78rem; }
+.speed { margin-top: 0.5rem; font-size: 0.82rem; }
+.speed .muted { font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); cursor: help; }
+.speed.pass span:last-child { color: var(--pass); }
+.speed.fail span:last-child { color: var(--error); }
+.big-o { margin-top: 0.7rem; padding: 0.5rem 0.7rem; border: 1px solid var(--line); border-radius: 8px; }
+.big-o-ask { color: var(--text); margin: 0 0 0.4rem; }
+.big-o-row { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; margin: 0.25rem 0; }
+.big-o-row .muted { font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); min-width: 3.4rem; cursor: help; }
+.big-o-row .chip.pass { border-color: var(--pass); color: var(--pass); }
+.big-o-row .chip.fail { border-color: var(--source); color: var(--source); }

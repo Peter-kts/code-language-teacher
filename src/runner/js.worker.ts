@@ -9,13 +9,13 @@ import type { WorkerRequest, WorkerResponse } from './pyodide.worker'
 self.postMessage({ type: 'ready' } satisfies WorkerResponse)
 
 self.onmessage = (event: MessageEvent<WorkerRequest>) => {
-  const { id, code, call, tests, testFor } = event.data
+  const { id, code, call, tests, testFor, io } = event.data
   let result: TraceResult
   let testResults: TestResult[] | null = null
   try {
-    result = runTraced(code, call ?? null)
+    result = runTraced(code, call ?? null, undefined, io)
     const name = call?.name ?? testFor
-    if (result.ok && name && tests) testResults = runTests(code, name, tests)
+    if (result.ok && name && tests) testResults = runTests(code, name, tests, io)
   } catch (err) {
     result = { ok: false, error: { kind: 'internal', message: String(err), line: null } }
   }

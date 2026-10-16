@@ -453,6 +453,39 @@ export const PYTHON_CARDS: SyntaxCard[] = [
 
   // ---------- Level 3: problem-solving patterns ----------
   {
+    id: 'constraints',
+    title: 'Reading the constraints',
+    topic: 'speed',
+    level: 3,
+    questions: ['solve'],
+    keywords: ['constraints', 'limits', 'input', 'size', 'how', 'fast', 'leetcode', '10', 'n'],
+    explanation:
+      'The constraints say how big the input can get, and that tells you how fast your answer must be. A computer does roughly 10⁸ simple steps a second. Up to about 20 items, even O(2ⁿ) is fine; up to 10⁴, O(n²) is about the limit; at 10⁵ or more you need O(n log n) or O(n).',
+    code: '# n up to 10**5: a loop inside a loop is 10**10 steps, far too slow
+n = 10**5
+slow = n * n
+fast = n
+print(slow // fast, "times more work")
+',
+  },
+  {
+    id: 'brute-force',
+    title: 'Brute force first, then speed it up',
+    topic: 'patterns',
+    level: 3,
+    questions: ['solve'],
+    keywords: ['brute', 'force', 'simple', 'slow', 'first', 'optimize', 'faster', 'plan', 'approach'],
+    explanation:
+      'Start with the simplest answer that is right, even if slow (often trying every pair). Then ask where it repeats work, and what to remember so it does not: a dict of what you have seen, a running total, a sorted order.',
+    code: 'nums, target = [2, 7, 11, 15], 9
+# brute force: every pair, O(n²)
+for i in range(len(nums)):
+    for j in range(i + 1, len(nums)):
+        if nums[i] + nums[j] == target:
+            print(i, j)
+',
+  },
+  {
     id: 'big-o',
     title: 'Big-O in plain words',
     topic: 'speed',
