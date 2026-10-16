@@ -155,9 +155,10 @@ export interface TestResult {
 /**
  * How a problem's arguments and answer travel as JSON: `list` is a linked list written as
  * its values ([1, 2, 3]), `tree` a binary tree in level order with null gaps ([2, 1, 3, null, 4]),
- * and `cycle` a linked list whose tail links back to a node: {values: [3, 2, 0], pos: 1}.
+ * `cycle` a linked list whose tail links back to a node ({values: [3, 2, 0], pos: 1}), and
+ * `lists` an array of linked lists ([[1, 4], [2, 3]]).
  */
-export type NodeKind = 'list' | 'tree' | 'cycle'
+export type NodeKind = 'list' | 'tree' | 'cycle' | 'lists'
 export interface NodeIo {
   args: (NodeKind | null)[]
   result?: NodeKind

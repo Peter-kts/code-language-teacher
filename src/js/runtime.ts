@@ -47,6 +47,7 @@ export class TreeNode {
 
 /** A JSON argument as the linked list or tree it stands for (see NodeIo in src/types.ts). */
 export function toNodes(value: unknown, kind: NodeKind): unknown {
+  if (kind === 'lists') return (value as unknown[]).map((v) => toNodes(v, 'list'))
   if (kind === 'list' || kind === 'cycle') {
     const { values, pos } = kind === 'cycle' ? (value as { values: unknown[]; pos?: number }) : { values: value as unknown[], pos: -1 }
     const nodes = values.map((v) => new ListNode(v))
@@ -75,6 +76,7 @@ export function toNodes(value: unknown, kind: NodeKind): unknown {
 /** A returned linked list or tree as JSON, the way the tests write it. */
 export function fromNodes(value: unknown, kind: NodeKind): unknown {
   if (value === null || value === undefined) return []
+  if (kind === 'lists') return (value as unknown[]).map((v) => fromNodes(v, 'list'))
   const node = value as Record<string, unknown>
   if (kind === 'list' || kind === 'cycle') {
     if (typeof value !== 'object' || !('next' in node)) throw new TypeError(`return the first node of the list (a ListNode), not ${show(value)}`)

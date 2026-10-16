@@ -1,4 +1,8 @@
 import type { Language, NodeIo } from '../types'
+import { ADVANCED } from './sets/advanced'
+import { GRAPHS } from './sets/graphs'
+import { LINKED } from './sets/linked'
+import { PATTERNS } from './sets/patterns'
 import { SPEED } from './speedInputs'
 
 export interface TestCase {
@@ -127,8 +131,8 @@ export interface Problem {
   explain?: string[]
 }
 
-// Listed in the order they're meant to be tried; the picker groups them by difficulty.
-export const PROBLEMS: Problem[] = [
+// The first set; the picker groups every problem by topic, easiest first.
+const FIRST: Problem[] = [
   {
     id: 'fizzbuzz',
     title: 'FizzBuzz',
@@ -867,3 +871,5 @@ export const PROBLEMS: Problem[] = [
     ],
   },
 ]
+
+export const PROBLEMS: Problem[] = [...FIRST, ...PATTERNS, ...LINKED, ...GRAPHS, ...ADVANCED]

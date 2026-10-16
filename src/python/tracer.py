@@ -74,6 +74,8 @@ def _to_nodes(value, kind, classes):
     """A JSON argument as the linked list or tree it stands for (see NodeIo in src/types.ts)."""
     list_node = classes.get("ListNode", ListNode)
     tree_node = classes.get("TreeNode", TreeNode)
+    if kind == "lists":
+        return [_to_nodes(v, "list", classes) for v in value]
     if kind in ("list", "cycle"):
         values, pos = (value["values"], value.get("pos", -1)) if kind == "cycle" else (value, -1)
         nodes = [list_node(v) for v in values]
@@ -104,6 +106,8 @@ def _from_nodes(value, kind):
     """A returned linked list or tree as JSON, the way the tests write it."""
     if value is None:
         return []
+    if kind == "lists":
+        return [_from_nodes(v, "list") for v in value]
     if kind in ("list", "cycle"):
         if not hasattr(value, "next"):
             raise TypeError(f"return the first node of the list (a ListNode), not {type(value).__name__}")

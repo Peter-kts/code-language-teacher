@@ -6,7 +6,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "python"))
 
-from tracer import run_traced  # noqa: E402
+from tracer import run_tests, run_traced  # noqa: E402
 
 
 def run(source, **kwargs):
@@ -111,6 +111,39 @@ class TracerTest(unittest.TestCase):
         self.assertIn("total", funcs)
         self.assertEqual(result["stdout"], "3\n")
         self.assertNotIn("total", result["steps"][-1]["vars"])
+
+    def test_class_instances_are_drawn_as_nodes_shared_by_id(self):
+        src = "def f(head):\n    prev = None\n    cur = head\n    while cur:\n        nxt = cur.next\n        cur.next = prev\n        prev = cur\n        cur = nxt\n    return prev\n"
+        result = run(src, call={"name": "f", "args": [[1, 2, 3]]}, node_io={"args": ["list"], "result": "list"})
+        self.assertIsNone(result["error"])
+        self.assertEqual(result["result"]["items"][0]["value"], 3)
+        first = next(s for s in result["steps"] if s["func"] == "f")
+        head = first["vars"]["head"]
+        self.assertEqual(head["type"], "ref")
+        self.assertEqual(head["cls"], "ListNode")
+        node = first["nodes"][str(head["id"])]
+        self.assertEqual([k for k, _ in node["fields"]], ["val", "next"])
+        self.assertEqual(node["fields"][1][1]["type"], "ref")
+        self.assertEqual(len(first["nodes"]), 3)
+
+    def test_a_cycle_is_listed_once(self):
+        src = "def f(head):\n    return head.val\n"
+        result = run(src, call={"name": "f", "args": [{"values": [1, 2], "pos": 0}]}, node_io={"args": ["cycle"]})
+        nodes = next(s for s in result["steps"] if s["func"] == "f")["nodes"]
+        self.assertEqual(len(nodes), 2)
+
+    def test_trees_come_in_and_go_out_in_level_order(self):
+        src = "def f(root):\n    root.left, root.right = root.right, root.left\n    return root\n"
+        out = json.loads(run_tests(src, "f", [{"args": [[2, 1, 3, None, 4]], "expected": [2, 3, 1, None, None, None, 4]}], node_io={"args": ["tree"], "result": "tree"}))
+        self.assertTrue(out[0]["passed"], out)
+
+    def test_speed_cases_count_steps_and_stop_when_over(self):
+        src = "def f(n):\n    t = 0\n    for i in range(n):\n        t += i\n    return t\n"
+        fast, slow = json.loads(run_tests(src, "f", [{"args": [10], "expected": 45, "maxSteps": 100}, {"args": [1000], "expected": 499500, "maxSteps": 100}]))
+        self.assertTrue(fast["passed"])
+        self.assertEqual(fast["steps"], 23)
+        self.assertFalse(slow["passed"])
+        self.assertTrue(slow["error"].startswith("too slow"))
 
 
 if __name__ == "__main__":
