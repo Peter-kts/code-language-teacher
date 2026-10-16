@@ -5,6 +5,7 @@ Entry point: run_traced(source) -> JSON string (see TraceResult in src/types.ts)
 """
 
 import ast
+import collections
 import io
 import itertools
 import json
@@ -147,6 +148,21 @@ def _call_args(args, node_io, classes):
 
 def _answer(value, node_io):
     return _from_nodes(value, node_io["result"]) if node_io and node_io.get("result") else value
+
+
+def _refs(serialized, out):
+    """The node ids a serialized value points at, added to `out`."""
+    kind = serialized.get("type")
+    if kind == "ref":
+        out.append(str(serialized["id"]))
+    elif kind in ("list", "tuple"):
+        for item in serialized["items"]:
+            _refs(item, out)
+    elif kind == "dict":
+        for k, v in serialized["entries"]:
+            _refs(k, out)
+            _refs(v, out)
+    return out
 
 
 class _Heap:
@@ -511,7 +527,9 @@ def _serialize(value, depth=0, heap=None):
             # JSON has no inf or nan (the browser can't parse them), so keep only the text.
             return {"type": "prim", "repr": repr(value)}
         return {"type": "prim", "repr": repr(value), "value": value}
-    if isinstance(value, (list, tuple)) and depth < MAX_DEPTH:
+    if isinstance(value, (list, tuple, collections.deque)) and depth < MAX_DEPTH:
+        if isinstance(value, collections.deque):
+            value = list(value)
         return {
             "type": "list" if isinstance(value, list) else "tuple",
             "items": [_serialize(v, depth + 1, heap) for v in value[:MAX_LIST_ITEMS]],
@@ -632,8 +650,19 @@ def run_traced(source, max_steps=2000, call=None, node_io=None):
         ran = pending.pop(frame, None)
         if ran:
             step["ran"] = ran
+        # Nodes the calls further out hold (the whole tree while a recursive call looks at one
+        # branch), so the drawing keeps its context.
+        outer = []
+        caller = frame.f_back
+        while caller is not None and caller.f_code.co_filename == USER_FILENAME and caller.f_code.co_name != "<module>":
+            for name, value in caller.f_locals.items():
+                if _visible(name, value) and not name.startswith(HIDDEN_PREFIX):
+                    _refs(_serialize(value, 0, heap), outer)
+            caller = caller.f_back
         if heap.nodes:
             step["nodes"] = heap.nodes
+            if outer:
+                step["outer"] = list(dict.fromkeys(outer))
         steps.append(step)
 
     def tracer(frame, event, arg):
@@ -751,7 +780,8 @@ def run_tests(source, name, cases, max_seconds=2.0, node_io=None):
                     if limit is not None and steps > limit:
                         raise _TooSlow()
                 if time.monotonic() > deadline:
-                    raise TimeoutError("took too long")
+                    # On a speed test, running out of time is being too slow too.
+                    raise _TooSlow() if limit is not None else TimeoutError("took too long")
                 return guard if frame.f_code.co_filename == USER_FILENAME else None
 
             counted = {"steps": steps} if limit is not None else {}
@@ -771,7 +801,9 @@ def run_tests(source, name, cases, max_seconds=2.0, node_io=None):
                 results.append({"passed": passed, "got": repr(got), "error": None, **counted})
             except _TooSlow:
                 sys.settrace(None)
-                results.append({"passed": False, "got": None, "error": f"too slow: still running after {limit:,} steps", "steps": steps})
+                over = steps > limit
+                why = f"still running after {limit:,} steps" if over else f"ran out of time after {steps:,} steps"
+                results.append({"passed": False, "got": None, "error": f"too slow: {why}", "steps": steps})
             except Exception as exc:  # noqa: BLE001
                 sys.settrace(None)
                 if limit is not None:

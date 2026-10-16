@@ -4,7 +4,7 @@
 
 import type { Brief, CodeError, ConsoleEntry, NodeData, NodeIo, NodeKind, RunCase, Step, TestResult, TraceResult, Value } from '../types'
 import { formatValue } from '../viz/format'
-import { instrument } from './instrument'
+import { instrument, MODULE } from './instrument'
 
 const MAX_STEPS = 2000
 const MAX_LIST_ITEMS = 64
@@ -251,6 +251,7 @@ class Tracer implements Hooks {
     }
     const vars: Record<string, Value> = {}
     const nodes: Record<string, NodeData> = {}
+    const outer: string[] = []
     heap = nodes
     try {
       for (const [name, get] of Object.entries(getters)) {
@@ -264,12 +265,29 @@ class Tracer implements Hooks {
         if (typeof value === 'function' && !memory?.closures.has(value)) continue
         vars[name] = serialize(value)
       }
+      // Nodes the calls further out hold (the whole tree while a recursive call looks at one
+      // branch), so the drawing keeps its context.
+      for (const outerFrame of this.stack) {
+        if (outerFrame === frame || outerFrame.func === MODULE || !outerFrame.getters) continue
+        for (const get of Object.values(outerFrame.getters)) {
+          let value: unknown
+          try {
+            value = get()
+          } catch {
+            continue
+          }
+          if (value !== null && typeof value === 'object') refs(serialize(value), outer)
+        }
+      }
     } finally {
       heap = null
     }
     for (const [name, value] of Object.entries(extra)) if (!(name in vars)) vars[name] = value
     const step: Step = { line, func: frame.func, frame: frame.id, vars, hidden: { ...frame.hidden }, stdout: this.stdout }
-    if (nodes && Object.keys(nodes).length) step.nodes = nodes
+    if (Object.keys(nodes).length) {
+      step.nodes = nodes
+      if (outer.length) step.outer = [...new Set(outer)]
+    }
     const captured = frame.captured.filter((n) => n in vars)
     if (captured.length) step.captured = captured
     if (frame.pending) {
@@ -296,7 +314,7 @@ class Guard implements Hooks {
 
   s() {
     if (++this.steps > this.limit) throw new TooSlow()
-    if (this.steps % 1024 === 0 && Date.now() > this.deadline) throw new Error('took too long')
+    if (this.steps % 1024 === 0 && Date.now() > this.deadline) throw this.limit < Infinity ? new TooSlow() : new Error('took too long')
   }
   r<T>(_id: number, value: T) {
     return value
@@ -420,7 +438,11 @@ export function runTests(source: string, name: string, cases: RunCase[], io?: No
       const passed = c.unordered && Array.isArray(got) && Array.isArray(c.expected) ? sameItems(got, c.expected) : equal(got, c.expected)
       return { passed, got: show(got), error: null, ...stepsTaken }
     } catch (err) {
-      if (err instanceof TooSlow) return { passed: false, got: null, error: `too slow: still running after ${c.maxSteps!.toLocaleString('en-US')} steps`, ...counted() }
+      if (err instanceof TooSlow) {
+        const why =
+          guard.steps > c.maxSteps! ? `still running after ${c.maxSteps!.toLocaleString('en-US')} steps` : `ran out of time after ${guard.steps.toLocaleString('en-US')} steps`
+        return { passed: false, got: null, error: `too slow: ${why}`, ...counted() }
+      }
       return { passed: false, got: null, error: errorText(err), ...counted() }
     }
   })
@@ -526,6 +548,14 @@ export function serialize(value: unknown, depth = 0): Value {
     entries.push([{ type: 'prim', repr: JSON.stringify(key), value: key, t: 'string' }, v])
   }
   return { type: 'dict', entries, truncated: keys.length > MAX_LIST_ITEMS, t: constructorName(obj), id }
+}
+
+/** The node ids a serialized value points at, added to `out`. */
+function refs(v: Value, out: string[]): string[] {
+  if (v.type === 'ref') out.push(String(v.id))
+  else if (v.type === 'list' || v.type === 'tuple') v.items.forEach((i) => refs(i, out))
+  else if (v.type === 'dict') v.entries.forEach(([k, val]) => (refs(k, out), refs(val, out)))
+  return out
 }
 
 /** An object made by a class, other than the built-in ones (arrays, Maps, dates and the like are handled before). */

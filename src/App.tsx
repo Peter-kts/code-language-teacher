@@ -570,6 +570,7 @@ export default function App() {
                 pointers={trace!.pointers}
                 plans={trace!}
                 tick={stepIndex}
+                language={trace!.language}
               />
             ) : (
               <p className="muted">{status === 'loading' && language === 'python' ? 'Starting Python in your browser…' : 'Write some code.'}</p>

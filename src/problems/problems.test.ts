@@ -54,7 +54,7 @@ describe('problems', () => {
 
   it("use each language's own words", () => {
     // Python words that would mislead in JavaScript, and the other way round.
-    const python = /\b(True|False|None|dict|elif|append|lists?|tuple)\b|(?<!\.)\b(sorted|max|len)\(| \/\/ /
+    const python = /\b(True|False|None|dict|elif|append|tuple)\b|(?<!linked )\blists?\b|(?<!\.)\b(sorted|max|len)\(| \/\/ /
     const javascript = /\b(true|false|null|undefined|Map|push|Math)\b|===/
     for (const p of PROBLEMS) {
       for (const text of [...p.statement, ...p.hints, ...(p.constraints ?? []), ...(p.complexity ? [p.complexity.why] : [])]) {

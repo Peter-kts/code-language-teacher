@@ -595,6 +595,28 @@ export const PYTHON_CARDS: SyntaxCard[] = [
     code: 'nums = [4, 1, 3, 1, 2]\nnums.sort()\nhas_dup = any(nums[i] == nums[i + 1] for i in range(len(nums) - 1))\n',
   },
   {
+    id: 'intervals',
+    title: 'Merging intervals',
+    topic: 'patterns',
+    level: 3,
+    questions: ['solve', 'transform'],
+    keywords: ['interval', 'intervals', 'merge', 'overlap', 'overlapping', 'start', 'end', 'meeting', 'range', 'pattern'],
+    explanation:
+      'Sort the [start, end] pairs by start. Then each one either overlaps the last interval you kept (its start is not past that end), so you stretch the kept one, or it begins a new one.',
+    code: 'intervals = [[1, 3], [8, 10], [2, 6], [15, 18]]\nintervals.sort()\nmerged = []\nfor start, end in intervals:\n    if merged and start <= merged[-1][1]:\n        merged[-1][1] = max(merged[-1][1], end)\n    else:\n        merged.append([start, end])\n',
+  },
+  {
+    id: 'graph-adjacency',
+    title: 'Graphs as adjacency lists',
+    topic: 'collections',
+    level: 3,
+    questions: ['remember', 'organize'],
+    keywords: ['graph', 'adjacency', 'list', 'edges', 'edge', 'neighbors', 'node', 'nodes', 'connected', 'visit'],
+    explanation:
+      'A graph often arrives as a list of edges. Turn it into an adjacency list, a dict from each node to the list of its neighbors, so "who is next to this node?" is one lookup. Then walk it with a stack and a seen set, so no node is visited twice.',
+    code: 'n = 4\nedges = [[0, 1], [0, 2], [1, 3], [2, 3]]\ngraph = {i: [] for i in range(n)}\nfor a, b in edges:\n    graph[a].append(b)\n    graph[b].append(a)    # leave out for one-way edges\n\nseen = {0}\nstack = [0]\nwhile stack:\n    node = stack.pop()\n    for nxt in graph[node]:\n        if nxt not in seen:\n            seen.add(nxt)\n            stack.append(nxt)\n',
+  },
+  {
     id: 'aliasing',
     title: 'Two names, one list',
     topic: 'errors',
@@ -715,6 +737,138 @@ export const PYTHON_CARDS: SyntaxCard[] = [
     keywords: ['class', 'object', 'init', 'self', 'node', 'linked', 'tree', 'attribute'],
     explanation: 'A class is a blueprint for your own kind of value. __init__ sets it up and self is the object itself.',
     code: 'class Node:\n    def __init__(self, val, next=None):\n        self.val = val\n        self.next = next\n\nhead = Node(1, Node(2))\nsecond = head.next.val\n',
+  },
+  {
+    id: 'linked-list',
+    title: 'Linked lists',
+    topic: 'collections',
+    level: 4,
+    questions: ['remember', 'repeat'],
+    keywords: ['linked', 'list', 'node', 'listnode', 'next', 'head', 'cur', 'walk', 'chain'],
+    explanation:
+      'A linked list is a chain of nodes. Each node holds a val and a next that points to the following node, or None at the end. Walk it with cur = cur.next; LeetCode calls the node ListNode.',
+    code: 'class ListNode:\n    def __init__(self, val=0, next=None):\n        self.val = val\n        self.next = next\n\nhead = ListNode(1, ListNode(2, ListNode(3)))\nvalues = []\ncur = head\nwhile cur:\n    values.append(cur.val)\n    cur = cur.next\n',
+  },
+  {
+    id: 'dummy-node',
+    title: 'Dummy node',
+    topic: 'patterns',
+    level: 4,
+    questions: ['solve', 'broke'],
+    keywords: ['dummy', 'sentinel', 'fake', 'head', 'linked', 'list', 'remove', 'insert', 'node', 'pattern'],
+    explanation:
+      'Put a fake node in front of the list. Now the real head has a node before it like every other node, so changing the front needs no special case. At the end, the answer is dummy.next.',
+    code: 'class ListNode:\n    def __init__(self, val=0, next=None):\n        self.val = val\n        self.next = next\n\n# remove every 1 from 1 -> 1 -> 2 -> 3\nhead = ListNode(1, ListNode(1, ListNode(2, ListNode(3))))\ndummy = ListNode(0, head)\ncur = dummy\nwhile cur.next:\n    if cur.next.val == 1:\n        cur.next = cur.next.next    # skip it\n    else:\n        cur = cur.next\nhead = dummy.next\n',
+  },
+  {
+    id: 'tree-recursion',
+    title: 'Trees and recursion',
+    topic: 'patterns',
+    level: 4,
+    questions: ['solve', 'repeat'],
+    keywords: ['tree', 'binary', 'treenode', 'left', 'right', 'root', 'depth', 'height', 'recursion', 'children'],
+    explanation:
+      'A binary tree node has a val and a left and right child, each another node or None. Solve a tree problem by asking each child for its answer and combining them: the depth is 1 + the deeper child. The base case is the empty tree, None.',
+    code: 'class TreeNode:\n    def __init__(self, val=0, left=None, right=None):\n        self.val = val\n        self.left = left\n        self.right = right\n\ndef depth(node):\n    if node is None:    # empty tree\n        return 0\n    return 1 + max(depth(node.left), depth(node.right))\n\nroot = TreeNode(1, TreeNode(2, TreeNode(4)), TreeNode(3))\nanswer = depth(root)    # 3\n',
+  },
+  {
+    id: 'bst',
+    title: 'Binary search trees',
+    topic: 'patterns',
+    level: 4,
+    questions: ['find', 'solve'],
+    keywords: ['bst', 'binary', 'search', 'tree', 'smaller', 'bigger', 'left', 'right', 'sorted', 'insert'],
+    explanation:
+      'In a binary search tree, everything to the left of a node is smaller and everything to the right is bigger. So you only ever go one way, like binary search, instead of visiting every node.',
+    code: 'class TreeNode:\n    def __init__(self, val=0, left=None, right=None):\n        self.val = val\n        self.left = left\n        self.right = right\n\nroot = TreeNode(5, TreeNode(3, TreeNode(2), TreeNode(4)), TreeNode(8))\ntarget = 4\nnode = root\nfound = False\nwhile node:\n    if target == node.val:\n        found = True\n        break\n    elif target < node.val:\n        node = node.left\n    else:\n        node = node.right\n',
+  },
+  {
+    id: 'bfs',
+    title: 'Breadth-first search (BFS)',
+    topic: 'patterns',
+    level: 4,
+    questions: ['find', 'solve'],
+    keywords: ['bfs', 'breadth', 'first', 'search', 'queue', 'level', 'order', 'shortest', 'path', 'deque', 'popleft'],
+    explanation:
+      'BFS visits everything one step away, then two steps away, and so on. Keep a deque: popleft the next node and append its neighbors at the back. It finds shortest paths counted in steps, and goes through a tree level by level.',
+    code: 'from collections import deque\n\nclass TreeNode:\n    def __init__(self, val=0, left=None, right=None):\n        self.val = val\n        self.left = left\n        self.right = right\n\nroot = TreeNode(1, TreeNode(2, TreeNode(4)), TreeNode(3))\nlevels = []\nq = deque([root])\nwhile q:\n    level = []\n    for _ in range(len(q)):\n        node = q.popleft()\n        level.append(node.val)\n        if node.left:\n            q.append(node.left)\n        if node.right:\n            q.append(node.right)\n    levels.append(level)\n',
+  },
+  {
+    id: 'grid-dfs',
+    title: 'Exploring a grid (flood fill)',
+    topic: 'patterns',
+    level: 4,
+    questions: ['solve', 'repeat'],
+    keywords: ['grid', 'matrix', 'dfs', 'depth', 'flood', 'fill', 'island', 'islands', 'neighbors', 'visited', 'rows', 'cols'],
+    explanation:
+      'A grid is a list of rows, and grid[r][c] is one cell. From a cell, try its four neighbors (up, down, left, right), skip any that are off the edge or already visited, and mark each cell as you visit it. That fills one connected area, like one island.',
+    code: 'grid = [\n    ["1", "1", "0"],\n    ["0", "1", "0"],\n    ["0", "0", "1"],\n]\nrows, cols = len(grid), len(grid[0])\n\ndef fill(r, c):\n    if r < 0 or r >= rows or c < 0 or c >= cols or grid[r][c] != "1":\n        return\n    grid[r][c] = "#"    # mark visited\n    fill(r + 1, c)\n    fill(r - 1, c)\n    fill(r, c + 1)\n    fill(r, c - 1)\n\nislands = 0\nfor r in range(rows):\n    for c in range(cols):\n        if grid[r][c] == "1":\n            islands += 1\n            fill(r, c)\n',
+  },
+  {
+    id: 'topological-sort',
+    title: 'Topological sort (tasks with prerequisites)',
+    topic: 'patterns',
+    level: 4,
+    questions: ['solve', 'organize'],
+    keywords: ['topological', 'sort', 'order', 'prerequisites', 'prerequisite', 'dependencies', 'indegree', 'kahn', 'cycle', 'courses'],
+    explanation:
+      'Count how many prerequisites each task still waits on (its in-degree). Repeatedly take a task that waits on nothing and cross it off for the tasks that follow it; this is Kahn\'s algorithm. If tasks are left over, they wait on each other in a cycle.',
+    code: 'from collections import deque\n\nn = 4\nprereqs = [[1, 0], [2, 0], [3, 1], [3, 2]]    # [task, needs first]\ngraph = {i: [] for i in range(n)}\nwaiting = [0] * n\nfor task, first in prereqs:\n    graph[first].append(task)\n    waiting[task] += 1\n\nq = deque([i for i in range(n) if waiting[i] == 0])\norder = []\nwhile q:\n    task = q.popleft()\n    order.append(task)\n    for nxt in graph[task]:\n        waiting[nxt] -= 1\n        if waiting[nxt] == 0:\n            q.append(nxt)\nhas_cycle = len(order) < n\n',
+  },
+  {
+    id: 'backtracking',
+    title: 'Backtracking',
+    topic: 'patterns',
+    level: 4,
+    questions: ['solve', 'repeat'],
+    keywords: ['backtracking', 'backtrack', 'subsets', 'permutations', 'combinations', 'choose', 'undo', 'all', 'recursion'],
+    explanation:
+      'Build an answer one choice at a time: make a choice, recurse to make the rest, then undo it and try the next option. For subsets, each number is either in or out. Save a copy when an answer is complete, because the list keeps changing.',
+    code: 'nums = [1, 2, 3]\nsubsets = []\nchosen = []\n\ndef build(i):\n    if i == len(nums):\n        subsets.append(chosen.copy())\n        return\n    chosen.append(nums[i])    # choose it\n    build(i + 1)\n    chosen.pop()              # undo\n    build(i + 1)              # leave it out\n\nbuild(0)\n',
+  },
+  {
+    id: 'heap',
+    title: 'Heaps (priority queues)',
+    topic: 'collections',
+    level: 4,
+    questions: ['find', 'remember'],
+    keywords: ['heap', 'heapq', 'priority', 'queue', 'smallest', 'largest', 'max', 'min', 'kth', 'top'],
+    explanation:
+      'A heap always hands back its smallest item fast: push and pop are O(log n), and h[0] peeks without removing. Python\'s heapq works on a plain list. For a max heap, push -n and negate what comes out.',
+    code: 'import heapq\n\nh = []\nfor n in [5, 1, 8, 3]:\n    heapq.heappush(h, n)\nsmallest = heapq.heappop(h)    # 1\nnext_up = h[0]                 # 3, still in the heap\n\nbig = []\nfor n in [5, 1, 8, 3]:\n    heapq.heappush(big, -n)    # negate for a max heap\nlargest = -heapq.heappop(big)  # 8\n',
+  },
+  {
+    id: 'monotonic-stack',
+    title: 'Monotonic stack',
+    topic: 'patterns',
+    level: 4,
+    questions: ['find', 'solve'],
+    keywords: ['monotonic', 'stack', 'next', 'greater', 'smaller', 'warmer', 'temperatures', 'increasing', 'decreasing'],
+    explanation:
+      'Keep a stack of positions still waiting for an answer, with values in decreasing order. Each new item pops every smaller one, because it is their next greater item. Every position is pushed and popped once, so it is O(n).',
+    code: 'temps = [73, 74, 75, 71, 69, 72, 76]\nwait = [0] * len(temps)\nstack = []    # positions still waiting for a warmer day\nfor i, t in enumerate(temps):\n    while stack and temps[stack[-1]] < t:\n        j = stack.pop()\n        wait[j] = i - j\n    stack.append(i)\n',
+  },
+  {
+    id: 'dp-1d',
+    title: 'Dynamic programming in one row',
+    topic: 'patterns',
+    level: 4,
+    questions: ['solve', 'remember'],
+    keywords: ['dp', 'dynamic', 'programming', 'house', 'robber', 'bottom', 'up', 'table', 'previous', 'stairs'],
+    explanation:
+      'Write the answer for position i using answers for smaller positions, then fill them in from the start. In house robber, best[i] either skips this house (best[i - 1]) or robs it (best[i - 2] + houses[i]). When only the last two answers matter, two variables are enough.',
+    code: 'houses = [2, 7, 9, 3, 1]\nbest = [0] * len(houses)\nbest[0] = houses[0]\nbest[1] = max(houses[0], houses[1])\nfor i in range(2, len(houses)):\n    best[i] = max(best[i - 1], best[i - 2] + houses[i])\nanswer = best[-1]    # 12\n\n# only the last two are ever needed\nprev, cur = 0, 0\nfor h in houses:\n    prev, cur = cur, max(cur, prev + h)\n',
+  },
+  {
+    id: 'dp-table',
+    title: 'Dynamic programming in a table',
+    topic: 'patterns',
+    level: 4,
+    questions: ['solve', 'remember'],
+    keywords: ['dp', 'dynamic', 'programming', 'table', 'grid', '2d', 'lcs', 'subsequence', 'paths', 'diagonal'],
+    explanation:
+      'When the answer depends on two things, like two strings, keep a table. Each cell comes from cells already filled: the one above, to the left, or on the diagonal. Here dp[i][j] is the longest common subsequence of the first i letters of a and the first j of b.',
+    code: 'a, b = "abcde", "ace"\ndp = [[0] * (len(b) + 1) for _ in range(len(a) + 1)]\nfor i in range(1, len(a) + 1):\n    for j in range(1, len(b) + 1):\n        if a[i - 1] == b[j - 1]:\n            dp[i][j] = dp[i - 1][j - 1] + 1              # diagonal\n        else:\n            dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])   # above or left\nanswer = dp[len(a)][len(b)]    # 3\n',
   },
 ]
 

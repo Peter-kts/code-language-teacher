@@ -665,3 +665,24 @@ kbd {
 .big-o-row .muted { font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); min-width: 3.4rem; cursor: help; }
 .big-o-row .chip.pass { border-color: var(--pass); color: var(--pass); }
 .big-o-row .chip.fail { border-color: var(--source); color: var(--source); }
+
+/* Linked lists and trees (NodeView.tsx), and grids (GridView in Visualizer.tsx). */
+.nodes { margin-bottom: 1.4rem; }
+.nodes .list-name .muted { font-weight: 400; font-size: 0.75rem; color: var(--faint); }
+.nodes-scroll { overflow-x: auto; scrollbar-width: thin; }
+.nodes svg { display: block; }
+.node rect, .node circle:not(.node-dot) { fill: rgba(5, 4, 10, 0.55); stroke: var(--line); stroke-width: 1.5; transition: stroke 0.2s; }
+.node.changed rect, .node.changed circle:not(.node-dot) { stroke: var(--pass); stroke-width: 2; filter: drop-shadow(0 0 6px rgba(126, 224, 184, 0.35)); }
+.node-split { stroke: var(--line); }
+.node-dot { fill: var(--muted); }
+.node-val { fill: var(--text); font-family: var(--font-mono); font-size: 13px; }
+.node-name { font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
+.node-extra { fill: var(--faint); font-family: var(--font-mono); font-size: 10px; }
+.node-none { fill: var(--faint); font-family: var(--font-mono); font-size: 11px; }
+.node-edge, .node-edge line, .node-edge path { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+.node-edge.changed, .node-edge.changed line { stroke: var(--pass); stroke-width: 2; }
+.grid { overflow-x: auto; }
+.grid-table { border-collapse: collapse; font-family: var(--font-mono); font-size: 0.8rem; }
+.grid-table th { color: var(--faint); font-weight: 400; font-size: 0.68rem; padding: 0.1rem 0.35rem; }
+.grid-table td { border: 1px solid var(--line); min-width: 2rem; height: 1.9rem; text-align: center; padding: 0 0.3rem; color: var(--text); background: rgba(5, 4, 10, 0.35); }
+.grid-table td.changed { border-color: var(--pass); color: var(--pass); box-shadow: inset 0 0 0 1px var(--pass); }

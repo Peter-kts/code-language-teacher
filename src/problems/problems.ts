@@ -629,7 +629,7 @@ const FIRST: Problem[] = [
   },
   {
     id: 'merge-sorted',
-    title: 'Merge Two Sorted Lists',
+    title: 'Merge Two Sorted Arrays',
     difficulty: 'Easy',
     topic: 'two-pointers',
     statement: [

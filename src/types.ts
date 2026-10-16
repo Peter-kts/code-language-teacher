@@ -41,6 +41,8 @@ export interface Step {
   captured?: string[]
   /** Every class instance the variables reach, by the id their `ref`s carry. */
   nodes?: Record<string, NodeData>
+  /** Nodes that calls further out point at (ids in `nodes`), drawn too so a recursive call keeps the whole tree in view. */
+  outer?: string[]
 }
 
 /** A value recorded while a line ran: its text (Python's repr), and the number when it is one. */

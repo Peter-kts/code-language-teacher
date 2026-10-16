@@ -1,7 +1,9 @@
 import type { CSSProperties, ReactNode } from 'react'
-import type { PointerSpec, Step, Value } from '../types'
+import type { Language, NodeData, PointerSpec, Step, Value } from '../types'
 import { containerChanges, scalarChanges, stepRoles, type DeltaPart, type Plans, type Read } from './changes'
-import { formatValue } from './format'
+import { formatValue, nodeText } from './format'
+import { buildNodeGraph } from './nodes'
+import { NodeView } from './NodeView'
 import { placePointers, type PlacedPointer } from './pointers'
 import { sharedObjects, type SharedNote } from './sharing'
 
@@ -14,6 +16,7 @@ export function Visualizer({
   pointers,
   plans,
   tick,
+  language,
 }: {
   step: Step
   /** The step before in the same function, used to highlight what just changed. */
@@ -23,6 +26,8 @@ export function Visualizer({
   plans?: Plans
   /** Changes on every step, so change animations replay. */
   tick?: number
+  /** For words like None or null in drawings. */
+  language: Language
 }) {
   const placed = placePointers(step, pointers)
   const labels = [...new Set(pointers.map((p) => p.label))]
@@ -31,8 +36,13 @@ export function Visualizer({
   const shown = new Set(Object.values(placed).flatMap((ps) => ps.map((p) => p.label)))
   const entries = Object.entries(step.vars)
   const lists = entries.filter(([, v]) => v.type === 'list' || v.type === 'tuple')
+  const grids = lists.filter(([, v]) => isGrid(v))
   const dicts = entries.filter(([, v]) => v.type === 'dict')
-  const others = entries.filter(([, v]) => v.type !== 'list' && v.type !== 'tuple' && v.type !== 'dict')
+  // Variables holding a node are drawn as names on the node drawing instead of as cards.
+  const others = entries.filter(([, v]) => v.type !== 'list' && v.type !== 'tuple' && v.type !== 'dict' && v.type !== 'ref')
+  const graph = buildNodeGraph(step, prevStep)
+  const nodeNames = [...new Set(Object.values(graph?.names ?? {}).flat())]
+  const nameColor = (name: string) => (labels.includes(name) ? colorOf(name) : POINTER_COLORS[nodeNames.indexOf(name) % POINTER_COLORS.length])
   const shared = sharedObjects(step.vars)
   const remembered = new Set(step.captured ?? [])
   // A closure's variables (count, in makeCounter's returned function) and objects two names share.
@@ -66,7 +76,13 @@ export function Visualizer({
   return (
     <div className="viz">
       {step.func !== '<module>' && <div className="viz-frame">inside {step.func}()</div>}
-      {lists.map(([name, value]) => (
+      {graph && <NodeView graph={graph} language={language} colorOf={nameColor} />}
+      {grids.map(([name, value]) => (
+        <GridView key={name} name={name} notes={notes(name)} value={value} before={prevStep?.vars[name]} nodes={step.nodes} />
+      ))}
+      {lists
+        .filter(([, v]) => !isGrid(v))
+        .map(([name, value]) => (
         <ListView
           key={name}
           name={name}
@@ -80,8 +96,9 @@ export function Visualizer({
           itemBadges={(i) => badges(boxes[name]?.parts[i], [], 'on-box')}
           changed={(i) => !!boxes[name]?.parts[i]}
           read={(i) => readsOf(name, String(i)).length > 0}
+          nodes={step.nodes}
         />
-      ))}
+        ))}
       {dicts.map(([name, value]) => (
         <DictView
           key={name}
@@ -92,6 +109,7 @@ export function Visualizer({
           rowBadges={(key) => badges(boxes[name]?.parts[key], readsOf(name, key), 'inline')}
           changed={(key) => !!boxes[name]?.parts[key]}
           read={(key) => readsOf(name, key).length > 0}
+          nodes={step.nodes}
         />
       ))}
       {others.length > 0 && (
@@ -252,6 +270,7 @@ function ListView({
   itemBadges,
   changed,
   read,
+  nodes,
 }: {
   name: string
   notes: ReactNode
@@ -265,6 +284,7 @@ function ListView({
   changed: (index: number) => boolean
   /** True for a box the line that just ran read, e.g. `nums[i]`. */
   read: (index: number) => boolean
+  nodes?: Record<string, NodeData>
 }) {
   if (value.type !== 'list' && value.type !== 'tuple') return null
   // One extra slot so a pointer one past the end (e.g. `i == len(a)`) has somewhere to sit.
@@ -288,7 +308,7 @@ function ListView({
               className={cls}
               style={here.length && !source && !changed(i) ? { borderColor: colorOf(here[0].label), borderWidth: 3 } : undefined}
             >
-              <span className="box-value">{formatValue(item)}</span>
+              <span className="box-value">{text(item, nodes)}</span>
               {itemBadges(i)}
             </div>
           )
@@ -325,6 +345,7 @@ function DictView({
   rowBadges,
   changed,
   read,
+  nodes,
 }: {
   name: string
   notes: ReactNode
@@ -334,6 +355,7 @@ function DictView({
   changed: (key: string) => boolean
   /** True for a row the line that just ran read, e.g. `ages["test"]`. */
   read: (key: string) => boolean
+  nodes?: Record<string, NodeData>
 }) {
   if (value.type !== 'dict') return null
   return (
@@ -360,7 +382,7 @@ function DictView({
               return (
                 <tr key={key} className={changed(key) ? 'changed' : read(key) ? 'source' : undefined}>
                   <td>{key}</td>
-                  <td>{formatValue(v)}</td>
+                  <td>{text(v, nodes)}</td>
                   <td className="badge-cell">{rowBadges(key)}</td>
                 </tr>
               )
@@ -369,6 +391,82 @@ function DictView({
         </table>
       )}
       {value.truncated && <div className="muted">(showing the first {value.entries.length} entries)</div>}
+    </div>
+  )
+}
+
+/** A value as text; in a box or row a node shows just its value, with a ● to say it is a node. */
+const text = (v: Value, nodes?: Record<string, NodeData>) => {
+  if (v.type !== 'ref') return formatValue(v)
+  const full = nodeText(v, nodes)
+  const val = /\((.*)\)$/.exec(full)?.[1]
+  return val === undefined ? full : `●${val}`
+}
+
+const MAX_GRID = 24
+
+/** A list of lists of plain values (a grid, a DP table), small enough to draw as a table. */
+function isGrid(v: Value): boolean {
+  if (v.type !== 'list' || v.items.length < 2 || v.items.length > MAX_GRID) return false
+  return v.items.every(
+    (row) => row.type === 'list' && row.items.length > 0 && row.items.length <= MAX_GRID && row.items.every((c) => c.type === 'prim'),
+  )
+}
+
+/** A grid as rows and columns with their indexes; cells the last line changed are green. */
+function GridView({
+  name,
+  notes,
+  value,
+  before,
+  nodes,
+}: {
+  name: string
+  notes: ReactNode
+  value: Value
+  before?: Value
+  nodes?: Record<string, NodeData>
+}) {
+  if (value.type !== 'list') return null
+  const rows = value.items as Extract<Value, { items: Value[] }>[]
+  const width = Math.max(...rows.map((r) => r.items.length))
+  const old = (r: number, c: number) => {
+    if (before?.type !== 'list') return undefined
+    const row = before.items[r]
+    return row?.type === 'list' && row.items[c] ? formatValue(row.items[c]) : undefined
+  }
+  return (
+    <div className="list grid">
+      <div className="list-name">
+        {name} <span className="muted">({rows.length} × {width})</span>
+        {notes}
+      </div>
+      <table className="grid-table">
+        <thead>
+          <tr>
+            <th aria-hidden />
+            {Array.from({ length: width }, (_, c) => (
+              <th key={c}>{c}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, r) => (
+            <tr key={r}>
+              <th>{r}</th>
+              {row.items.map((cell, c) => {
+                const now = text(cell, nodes)
+                const was = old(r, c)
+                return (
+                  <td key={c} className={before && was !== undefined && was !== now ? 'changed' : before && was === undefined ? 'changed' : undefined}>
+                    {now}
+                  </td>
+                )
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }

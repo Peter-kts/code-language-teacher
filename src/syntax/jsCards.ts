@@ -698,6 +698,39 @@ export const JS_CARDS: SyntaxCard[] = [
       'Save each answer the first time you work it out, and reuse it next time. Turns slow repeated recursion into one call per input.',
     code: 'const memo = new Map()\nfunction ways(n) {\n  if (n <= 2) return n\n  if (memo.has(n)) return memo.get(n)\n  const answer = ways(n - 1) + ways(n - 2)\n  memo.set(n, answer)\n  return answer\n}\n\nconst w = ways(6)\n',
   },
+  {
+    id: 'dp-1d',
+    title: 'Dynamic programming in one row',
+    topic: 'patterns',
+    level: 3,
+    questions: ['solve', 'remember'],
+    keywords: ['dp', 'dynamic', 'programming', 'house', 'robber', 'bottom', 'up', 'table', 'previous', 'stairs'],
+    explanation:
+      'Write the answer for position i using answers for smaller positions, then fill them in from the start. In house robber, best[i] either skips this house (best[i - 1]) or robs it (best[i - 2] + houses[i]). When only the last two answers matter, two variables are enough.',
+    code: 'const houses = [2, 7, 9, 3, 1]\nconst best = [houses[0], Math.max(houses[0], houses[1])]\nfor (let i = 2; i < houses.length; i++) {\n  best.push(Math.max(best[i - 1], best[i - 2] + houses[i]))\n}\nconst answer = best.at(-1)   // 12\n\n// only the last two are ever needed\nlet prev = 0\nlet cur = 0\nfor (const h of houses) {\n  ;[prev, cur] = [cur, Math.max(cur, prev + h)]\n}\n',
+  },
+  {
+    id: 'intervals',
+    title: 'Merging intervals',
+    topic: 'patterns',
+    level: 3,
+    questions: ['solve', 'transform'],
+    keywords: ['interval', 'intervals', 'merge', 'overlap', 'overlapping', 'start', 'end', 'meeting', 'range'],
+    explanation:
+      'Sort the [start, end] pairs by start. Then each one either overlaps the last interval you kept (its start is not past that end), so you stretch the kept one, or it begins a new one.',
+    code: 'const intervals = [[1, 3], [8, 10], [2, 6], [15, 18]]\nintervals.sort((a, b) => a[0] - b[0])\nconst merged = []\nfor (const [start, end] of intervals) {\n  const last = merged.at(-1)\n  if (last && start <= last[1]) {\n    last[1] = Math.max(last[1], end)\n  } else {\n    merged.push([start, end])\n  }\n}\n',
+  },
+  {
+    id: 'graph-adjacency',
+    title: 'Graphs as adjacency lists',
+    topic: 'collections',
+    level: 3,
+    questions: ['remember', 'organize'],
+    keywords: ['graph', 'adjacency', 'list', 'edges', 'edge', 'neighbors', 'node', 'nodes', 'connected', 'visit'],
+    explanation:
+      'A graph often arrives as a list of edges. Turn it into an adjacency list, a Map from each node to an array of its neighbors, so "who is next to this node?" is one lookup. Then walk it with a stack and a seen Set, so no node is visited twice.',
+    code: 'const edges = [[0, 1], [0, 2], [1, 3], [2, 3]]\nconst graph = new Map()\nfor (const [a, b] of edges) {\n  if (!graph.has(a)) graph.set(a, [])\n  if (!graph.has(b)) graph.set(b, [])\n  graph.get(a).push(b)\n  graph.get(b).push(a)   // leave out for one-way edges\n}\n\nconst seen = new Set([0])\nconst stack = [0]\nwhile (stack.length > 0) {\n  const node = stack.pop()\n  for (const next of graph.get(node)) {\n    if (!seen.has(next)) {\n      seen.add(next)\n      stack.push(next)\n    }\n  }\n}\n',
+  },
 
   // ---------- Level 4: going further ----------
   {
@@ -787,5 +820,126 @@ export const JS_CARDS: SyntaxCard[] = [
     explanation:
       'A class is a blueprint for your own kind of object. constructor sets it up, this is the object itself, and new makes one.',
     code: 'class Node {\n  constructor(val, next = null) {\n    this.val = val\n    this.next = next\n  }\n}\n\nconst head = new Node(1, new Node(2))\nconst second = head.next.val\n',
+  },
+  {
+    id: 'linked-list',
+    title: 'Linked lists',
+    topic: 'collections',
+    level: 4,
+    questions: ['remember', 'repeat'],
+    keywords: ['linked', 'list', 'node', 'listnode', 'next', 'head', 'cur', 'walk', 'chain'],
+    explanation:
+      'A linked list is a chain of nodes. Each node holds a val and a next that points to the following node, or null at the end. Walk it with cur = cur.next; LeetCode calls the node ListNode.',
+    code: 'class ListNode {\n  constructor(val = 0, next = null) {\n    this.val = val\n    this.next = next\n  }\n}\n\nconst head = new ListNode(1, new ListNode(2, new ListNode(3)))\nconst values = []\nlet cur = head\nwhile (cur) {\n  values.push(cur.val)\n  cur = cur.next\n}\n',
+  },
+  {
+    id: 'dummy-node',
+    title: 'Dummy node',
+    topic: 'patterns',
+    level: 4,
+    questions: ['solve', 'broke'],
+    keywords: ['dummy', 'sentinel', 'fake', 'head', 'linked', 'list', 'remove', 'insert', 'node'],
+    explanation:
+      'Put a fake node in front of the list. Now the real head has a node before it like every other node, so changing the front needs no special case. At the end, the answer is dummy.next.',
+    code: 'class ListNode {\n  constructor(val = 0, next = null) {\n    this.val = val\n    this.next = next\n  }\n}\n\n// remove every 1 from 1 -> 1 -> 2 -> 3\nlet head = new ListNode(1, new ListNode(1, new ListNode(2, new ListNode(3))))\nconst dummy = new ListNode(0, head)\nlet cur = dummy\nwhile (cur.next) {\n  if (cur.next.val === 1) {\n    cur.next = cur.next.next   // skip it\n  } else {\n    cur = cur.next\n  }\n}\nhead = dummy.next\n',
+  },
+  {
+    id: 'tree-recursion',
+    title: 'Trees and recursion',
+    topic: 'patterns',
+    level: 4,
+    questions: ['solve', 'repeat'],
+    keywords: ['tree', 'binary', 'treenode', 'left', 'right', 'root', 'depth', 'height', 'recursion', 'children'],
+    explanation:
+      'A binary tree node has a val and a left and right child, each another node or null. Solve a tree problem by asking each child for its answer and combining them: the depth is 1 + the deeper child. The base case is the empty tree, null.',
+    code: 'class TreeNode {\n  constructor(val = 0, left = null, right = null) {\n    this.val = val\n    this.left = left\n    this.right = right\n  }\n}\n\nfunction depth(node) {\n  if (node === null) return 0   // empty tree\n  return 1 + Math.max(depth(node.left), depth(node.right))\n}\n\nconst root = new TreeNode(1, new TreeNode(2, new TreeNode(4)), new TreeNode(3))\nconst answer = depth(root)   // 3\n',
+  },
+  {
+    id: 'bst',
+    title: 'Binary search trees',
+    topic: 'patterns',
+    level: 4,
+    questions: ['find', 'solve'],
+    keywords: ['bst', 'binary', 'search', 'tree', 'smaller', 'bigger', 'left', 'right', 'sorted', 'insert'],
+    explanation:
+      'In a binary search tree, everything to the left of a node is smaller and everything to the right is bigger. So you only ever go one way, like binary search, instead of visiting every node.',
+    code: 'class TreeNode {\n  constructor(val = 0, left = null, right = null) {\n    this.val = val\n    this.left = left\n    this.right = right\n  }\n}\n\nconst root = new TreeNode(5, new TreeNode(3, new TreeNode(2), new TreeNode(4)), new TreeNode(8))\nconst target = 4\nlet node = root\nlet found = false\nwhile (node) {\n  if (target === node.val) {\n    found = true\n    break\n  } else if (target < node.val) node = node.left\n  else node = node.right\n}\n',
+  },
+  {
+    id: 'bfs',
+    title: 'Breadth-first search (BFS)',
+    topic: 'patterns',
+    level: 4,
+    questions: ['find', 'solve'],
+    keywords: ['bfs', 'breadth', 'first', 'search', 'queue', 'level', 'order', 'shortest', 'path', 'head'],
+    explanation:
+      'BFS visits everything one step away, then two steps away, and so on. Keep a queue: take the next node from the front and push its neighbors on the back. Use an array with a head index, since shift is O(n).',
+    code: 'class TreeNode {\n  constructor(val = 0, left = null, right = null) {\n    this.val = val\n    this.left = left\n    this.right = right\n  }\n}\n\nconst root = new TreeNode(1, new TreeNode(2, new TreeNode(4)), new TreeNode(3))\nconst levels = []\nconst queue = [root]\nlet head = 0\nwhile (head < queue.length) {\n  const levelEnd = queue.length\n  const level = []\n  while (head < levelEnd) {\n    const node = queue[head++]\n    level.push(node.val)\n    if (node.left) queue.push(node.left)\n    if (node.right) queue.push(node.right)\n  }\n  levels.push(level)\n}\n',
+  },
+  {
+    id: 'grid-dfs',
+    title: 'Exploring a grid (flood fill)',
+    topic: 'patterns',
+    level: 4,
+    questions: ['solve', 'repeat'],
+    keywords: ['grid', 'matrix', 'dfs', 'depth', 'flood', 'fill', 'island', 'islands', 'neighbors', 'visited', 'rows', 'cols'],
+    explanation:
+      'A grid is an array of rows, and grid[r][c] is one cell. From a cell, try its four neighbors (up, down, left, right), skip any that are off the edge or already visited, and mark each cell as you visit it. That fills one connected area, like one island.',
+    code: 'const grid = [\n  ["1", "1", "0"],\n  ["0", "1", "0"],\n  ["0", "0", "1"],\n]\nconst rows = grid.length\nconst cols = grid[0].length\n\nfunction fill(r, c) {\n  if (r < 0 || r >= rows || c < 0 || c >= cols || grid[r][c] !== "1") return\n  grid[r][c] = "#"   // mark visited\n  fill(r + 1, c)\n  fill(r - 1, c)\n  fill(r, c + 1)\n  fill(r, c - 1)\n}\n\nlet islands = 0\nfor (let r = 0; r < rows; r++) {\n  for (let c = 0; c < cols; c++) {\n    if (grid[r][c] === "1") {\n      islands++\n      fill(r, c)\n    }\n  }\n}\n',
+  },
+  {
+    id: 'topological-sort',
+    title: 'Topological sort (tasks with prerequisites)',
+    topic: 'patterns',
+    level: 4,
+    questions: ['solve', 'organize'],
+    keywords: ['topological', 'sort', 'order', 'prerequisites', 'prerequisite', 'dependencies', 'indegree', 'kahn', 'cycle', 'courses'],
+    explanation:
+      'Count how many prerequisites each task still waits on (its in-degree). Repeatedly take a task that waits on nothing and cross it off for the tasks that follow it; this is Kahn\'s algorithm. If tasks are left over, they wait on each other in a cycle.',
+    code: 'const n = 4\nconst prereqs = [[1, 0], [2, 0], [3, 1], [3, 2]]   // [task, needs first]\nconst graph = new Map()\nfor (let i = 0; i < n; i++) graph.set(i, [])\nconst waiting = new Array(n).fill(0)\nfor (const [task, first] of prereqs) {\n  graph.get(first).push(task)\n  waiting[task]++\n}\n\nconst queue = []\nfor (let i = 0; i < n; i++) {\n  if (waiting[i] === 0) queue.push(i)\n}\nconst order = []\nlet head = 0\nwhile (head < queue.length) {\n  const task = queue[head++]\n  order.push(task)\n  for (const next of graph.get(task)) {\n    waiting[next]--\n    if (waiting[next] === 0) queue.push(next)\n  }\n}\nconst hasCycle = order.length < n\n',
+  },
+  {
+    id: 'backtracking',
+    title: 'Backtracking',
+    topic: 'patterns',
+    level: 4,
+    questions: ['solve', 'repeat'],
+    keywords: ['backtracking', 'backtrack', 'subsets', 'permutations', 'combinations', 'choose', 'undo', 'all', 'recursion'],
+    explanation:
+      'Build an answer one choice at a time: make a choice, recurse to make the rest, then undo it and try the next option. For subsets, each number is either in or out. Save a copy when an answer is complete, because the array keeps changing.',
+    code: 'const nums = [1, 2, 3]\nconst subsets = []\nconst chosen = []\n\nfunction build(i) {\n  if (i === nums.length) {\n    subsets.push([...chosen])\n    return\n  }\n  chosen.push(nums[i])   // choose it\n  build(i + 1)\n  chosen.pop()           // undo\n  build(i + 1)           // leave it out\n}\n\nbuild(0)\n',
+  },
+  {
+    id: 'heap',
+    title: 'Heaps (priority queues)',
+    topic: 'collections',
+    level: 4,
+    questions: ['find', 'remember'],
+    keywords: ['heap', 'minheap', 'priority', 'queue', 'smallest', 'largest', 'max', 'min', 'kth', 'top'],
+    explanation:
+      'A heap always hands back its smallest item fast: push and pop are O(log n), and peek looks without removing. JavaScript has no built-in heap, so problems give you a small MinHeap class like this one. Pass a different less function, like (a, b) => a > b, to get the largest first.',
+    code: 'class MinHeap {\n  constructor(less = (a, b) => a < b) {\n    this.items = []\n    this.less = less\n  }\n  size() {\n    return this.items.length\n  }\n  peek() {\n    return this.items[0]\n  }\n  push(x) {\n    const a = this.items\n    a.push(x)\n    let i = a.length - 1\n    while (i > 0) {\n      const parent = Math.floor((i - 1) / 2)\n      if (!this.less(a[i], a[parent])) break\n      ;[a[i], a[parent]] = [a[parent], a[i]]\n      i = parent\n    }\n  }\n  pop() {\n    const a = this.items\n    const top = a[0]\n    const last = a.pop()\n    if (a.length > 0) {\n      a[0] = last\n      let i = 0\n      while (true) {\n        const l = 2 * i + 1\n        const r = l + 1\n        let best = i\n        if (l < a.length && this.less(a[l], a[best])) best = l\n        if (r < a.length && this.less(a[r], a[best])) best = r\n        if (best === i) break\n        ;[a[i], a[best]] = [a[best], a[i]]\n        i = best\n      }\n    }\n    return top\n  }\n}\n\nconst h = new MinHeap()\nfor (const n of [5, 1, 8, 3]) h.push(n)\nconst smallest = h.pop()   // 1\nconst nextUp = h.peek()    // 3, still in the heap\nconst maxHeap = new MinHeap((a, b) => a > b)\nfor (const n of [5, 1, 8, 3]) maxHeap.push(n)\nconst largest = maxHeap.pop()   // 8\n',
+  },
+  {
+    id: 'monotonic-stack',
+    title: 'Monotonic stack',
+    topic: 'patterns',
+    level: 4,
+    questions: ['find', 'solve'],
+    keywords: ['monotonic', 'stack', 'next', 'greater', 'smaller', 'warmer', 'temperatures', 'increasing', 'decreasing'],
+    explanation:
+      'Keep a stack of positions still waiting for an answer, with values in decreasing order. Each new item pops every smaller one, because it is their next greater item. Every position is pushed and popped once, so it is O(n).',
+    code: 'const temps = [73, 74, 75, 71, 69, 72, 76]\nconst wait = new Array(temps.length).fill(0)\nconst stack = []   // positions still waiting for a warmer day\nfor (let i = 0; i < temps.length; i++) {\n  while (stack.length > 0 && temps[stack.at(-1)] < temps[i]) {\n    const j = stack.pop()\n    wait[j] = i - j\n  }\n  stack.push(i)\n}\n',
+  },
+  {
+    id: 'dp-table',
+    title: 'Dynamic programming in a table',
+    topic: 'patterns',
+    level: 4,
+    questions: ['solve', 'remember'],
+    keywords: ['dp', 'dynamic', 'programming', 'table', 'grid', '2d', 'lcs', 'subsequence', 'paths', 'diagonal'],
+    explanation:
+      'When the answer depends on two things, like two strings, keep a table. Each cell comes from cells already filled: the one above, to the left, or on the diagonal. Here dp[i][j] is the longest common subsequence of the first i letters of a and the first j of b.',
+    code: 'const a = "abcde"\nconst b = "ace"\nconst dp = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0))\nfor (let i = 1; i <= a.length; i++) {\n  for (let j = 1; j <= b.length; j++) {\n    if (a[i - 1] === b[j - 1]) {\n      dp[i][j] = dp[i - 1][j - 1] + 1               // diagonal\n    } else {\n      dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1])  // above or left\n    }\n  }\n}\nconst answer = dp[a.length][b.length]   // 3\n',
   },
 ]
