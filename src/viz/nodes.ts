@@ -67,7 +67,8 @@ function pointerFields(data: NodeData): [string, string | null][] {
   })
 }
 
-export function buildNodeGraph(step: Step, prev?: Step): NodeGraph | null {
+/** `skip`: nodes drawn some other way (a heap object), left out along with what only they reach. */
+export function buildNodeGraph(step: Step, prev?: Step, skip?: Set<string>): NodeGraph | null {
   const all = step.nodes
   if (!all) return null
   const names: Record<string, string[]> = {}
@@ -85,6 +86,7 @@ export function buildNodeGraph(step: Step, prev?: Step): NodeGraph | null {
   const visit = (id: string) => {
     if (seen.has(id)) return
     seen.add(id)
+    if (skip?.has(id)) return
     const data = all[id]
     if (!data) {
       missing = true

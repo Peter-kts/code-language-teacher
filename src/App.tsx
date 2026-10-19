@@ -571,6 +571,18 @@ export default function App() {
                 plans={trace!}
                 tick={stepIndex}
                 language={trace!.language}
+                steps={steps}
+                index={shownStep}
+                answer={
+                  // The answer card sits at the end of a problem's run, next to what the test expected.
+                  shownStep === steps.length - 1 && resultsFresh && problem && !problem.track && trace!.result && !trace!.error && !trace!.truncated
+                    ? {
+                        value: trace!.result,
+                        expected: JSON.stringify(problem.tests[caseIndex].expected),
+                        passed: tests?.[caseIndex]?.passed,
+                      }
+                    : null
+                }
               />
             ) : (
               <p className="muted">{status === 'loading' && language === 'python' ? 'Starting Python in your browser…' : 'Write some code.'}</p>

@@ -13,6 +13,7 @@ export function formatValue(v: Value): string {
     case 'other':
       return v.repr
     case 'list':
+      if (v.set) return v.items.length ? `{${v.items.map(formatValue).join(', ')}${v.truncated ? ', …' : ''}}` : 'set()'
       return `[${v.items.map(formatValue).join(', ')}${v.truncated ? ', …' : ''}]`
     case 'tuple':
       return `(${v.items.map(formatValue).join(', ')}${v.items.length === 1 ? ',' : ''})`
@@ -85,7 +86,7 @@ export function typeLabel(v: Value): string {
       if (typeof v.value === 'string') return 'str'
       return Number.isInteger(v.value) && !/[.e]/i.test(v.repr) ? 'int' : 'float'
     case 'list':
-      return `list · ${size(v.items.length, v.truncated)}`
+      return `${v.set ? 'set' : 'list'} · ${size(v.items.length, v.truncated)}`
     case 'tuple':
       return `tuple · ${size(v.items.length, v.truncated)}`
     case 'dict':

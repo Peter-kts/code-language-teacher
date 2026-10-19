@@ -1,4 +1,4 @@
-import type { PointerSpec, Step } from '../types'
+import type { PointerSpec, Step, Value } from '../types'
 
 export interface PlacedPointer {
   label: string
@@ -11,16 +11,24 @@ export function placePointers(step: Step, pointers: PointerSpec[]): Record<strin
   const placed: Record<string, PlacedPointer[]> = {}
   const seen = new Set<string>()
   for (const p of pointers) {
-    const list = step.vars[p.target]
-    if (!list || (list.type !== 'list' && list.type !== 'tuple')) continue
+    const length = lengthOf(step.vars[p.target])
+    if (length === null) continue
     const index = p.var in step.hidden ? step.hidden[p.var] : indexValue(step, p.var)
-    if (index === null || index < 0 || index > list.items.length) continue
+    if (index === null || index < 0 || index > length) continue
     const key = `${p.target}:${p.label}`
     if (seen.has(key)) continue
     seen.add(key)
     ;(placed[p.target] ??= []).push({ label: p.label, index })
   }
   return placed
+}
+
+/** How many boxes a list, tuple or string has; null for anything else (a set has no places). */
+function lengthOf(v: Value | undefined): number | null {
+  if (!v) return null
+  if (v.type === 'list' || v.type === 'tuple') return v.set ? null : v.items.length
+  if (v.type === 'prim' && typeof v.value === 'string') return v.value.length
+  return null
 }
 
 function indexValue(step: Step, name: string): number | null {
