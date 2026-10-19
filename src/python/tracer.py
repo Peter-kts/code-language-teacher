@@ -16,7 +16,13 @@ import sys
 USER_FILENAME = "<user>"
 HIDDEN_PREFIX = "_ct_idx_"
 RECORD_FN = "_ct_rec"
+# Records the length of what a `for` loop goes over, so a step can say "pass 3 of 8".
+RECORD_LEN = "_ct_len"
+# Records whether an `if` or `while` test came out true, so a step can say why the code went that way.
+RECORD_BOOL = "_ct_bool"
 MAX_LIST_ITEMS = 64
+# A variable's own list can be longer, so the boxes around a pointer far into it can still be drawn.
+MAX_TOP_ITEMS = 200
 MAX_DEPTH = 3
 MAX_BRIEF = 60
 MAX_SEQ_PARTS = 8
@@ -293,6 +299,37 @@ def _index_pointers(tree):
     return [{"label": var, "var": var, "target": target} for var, target in sorted(found)]
 
 
+def _cell_pointers(tree):
+    """`grid[r][c]` with plain names: the cell (r, c) of a grid or table that the code looks at."""
+    found = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Subscript)
+            and isinstance(node.slice, ast.Name)
+            and isinstance(node.value, ast.Subscript)
+            and isinstance(node.value.value, ast.Name)
+            and isinstance(node.value.slice, ast.Name)
+        ):
+            found.add((node.value.slice.id, node.slice.id, node.value.value.id))
+    return [{"row": r, "col": c, "target": target} for r, c, target in sorted(found)]
+
+
+_HEAPQ = {"heappush", "heappop", "heapify", "heapreplace", "heappushpop"}
+
+
+def _heap_names(tree):
+    """Lists the code uses as heaps: the first argument of heapq.heappush(h, x) and friends."""
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not node.args or not isinstance(node.args[0], ast.Name):
+            continue
+        f = node.func
+        name = f.attr if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id == "heapq" else f.id if isinstance(f, ast.Name) else None
+        if name in _HEAPQ and node.args[0].id not in found:
+            found.append(node.args[0].id)
+    return found
+
+
 _BIN_OPS = {
     ast.Add: "+", ast.Sub: "-", ast.Mult: "*", ast.Div: "/", ast.FloorDiv: "//", ast.Mod: "%",
     ast.Pow: "**", ast.LShift: "<<", ast.RShift: ">>", ast.BitOr: "|", ast.BitXor: "^",
@@ -333,7 +370,58 @@ class _Recorder(ast.NodeTransformer):
         self.source = source
         self.lines = source.split("\n")
         self.plans = []
+        # `if` and `while` tests (see CheckPlan in src/types.ts), and loops with the lines they span.
+        self.checks = []
+        self.blocks = []
         self.ids = 0
+
+    def visit_If(self, node):
+        self.generic_visit(node)
+        self.check(node, "if")
+        return node
+
+    def visit_While(self, node):
+        self.generic_visit(node)
+        self.check(node, "while")
+        self.blocks.append({"line": node.lineno, "end": node.end_lineno, "kind": "while"})
+        return node
+
+    def visit_For(self, node):
+        self.generic_visit(node)
+        # The loop goes over `node.iter`, or over its argument when it is `enumerate(xs)`
+        # (also the loops _LoopIndexer rewrote): its length is how many passes there will be.
+        it = node.iter
+        holder, field = node, "iter"
+        if isinstance(it, ast.Call) and isinstance(it.func, ast.Name) and it.func.id == "enumerate" and len(it.args) == 1 and not it.keywords:
+            holder, field = it.args, 0
+        self.ids += 1
+        target = holder[field] if field == 0 else getattr(holder, field)
+        wrapped = ast.copy_location(
+            ast.Call(func=ast.Name(id=RECORD_LEN, ctx=ast.Load()), args=[ast.Constant(self.ids), target], keywords=[]),
+            target,
+        )
+        if field == 0:
+            holder[0] = wrapped
+        else:
+            setattr(holder, field, wrapped)
+        self.blocks.append({"line": node.lineno, "end": node.end_lineno, "kind": "for", "id": self.ids})
+        return node
+
+    def check(self, node, kind):
+        """Record the parts of a test and whether it came out true."""
+        if isinstance(node.test, ast.Constant):
+            return  # `while True:` decides nothing
+        if kind == "if" and self.lines[node.lineno - 1].lstrip().startswith("elif"):
+            kind = "elif"
+        node.test, plan = self.expr(node.test)
+        if plan is None:
+            return
+        self.ids += 1
+        node.test = ast.copy_location(
+            ast.Call(func=ast.Name(id=RECORD_BOOL, ctx=ast.Load()), args=[ast.Constant(self.ids), node.test], keywords=[]),
+            node.test,
+        )
+        self.checks.append({"line": node.lineno, "kind": kind, "id": self.ids, "value": plan})
 
     def visit_Assign(self, node):
         targets = [self.target(t) for t in node.targets]
@@ -527,13 +615,28 @@ def _serialize(value, depth=0, heap=None):
             # JSON has no inf or nan (the browser can't parse them), so keep only the text.
             return {"type": "prim", "repr": repr(value)}
         return {"type": "prim", "repr": repr(value), "value": value}
+    limit = MAX_TOP_ITEMS if depth == 0 else MAX_LIST_ITEMS
     if isinstance(value, (list, tuple, collections.deque)) and depth < MAX_DEPTH:
         if isinstance(value, collections.deque):
             value = list(value)
         return {
             "type": "list" if isinstance(value, list) else "tuple",
-            "items": [_serialize(v, depth + 1, heap) for v in value[:MAX_LIST_ITEMS]],
-            "truncated": len(value) > MAX_LIST_ITEMS,
+            "items": [_serialize(v, depth + 1, heap) for v in value[:limit]],
+            "truncated": len(value) > limit,
+        }
+    if isinstance(value, (set, frozenset)) and depth < MAX_DEPTH:
+        # Drawn as boxes like a list. A set has no order of its own, so sort it when its
+        # items can be compared: the boxes then stay put when an item is added.
+        items = list(value)
+        try:
+            items.sort()
+        except Exception:  # noqa: BLE001 - mixed types, or a user class without <
+            pass
+        return {
+            "type": "list",
+            "set": True,
+            "items": [_serialize(v, depth + 1, heap) for v in items[:limit]],
+            "truncated": len(items) > limit,
         }
     if isinstance(value, dict) and depth < MAX_DEPTH:
         items = list(value.items())[:MAX_LIST_ITEMS]
@@ -578,6 +681,8 @@ def run_traced(source, max_steps=2000, call=None, node_io=None):
         )
 
     pointers = _index_pointers(tree)
+    cells = _cell_pointers(tree)
+    heaps = _heap_names(tree)
     loops = _loop_plans(tree, source)
     indexer = _LoopIndexer()
     tree = indexer.visit(tree)
@@ -623,8 +728,41 @@ def run_traced(source, max_steps=2000, call=None, node_io=None):
             describing = False
         return value
 
-    user_globals = {"__name__": "__main__", "__builtins__": __builtins__, RECORD_FN: record, **_NODE_CLASSES}
+    def record_len(part_id, value, _getframe=sys._getframe):
+        if not describing:
+            try:
+                n = len(value)
+                pending.setdefault(_getframe(1), {})[part_id] = [str(n), n]
+            except Exception:  # noqa: BLE001 - a generator has no length, and that's fine
+                pass
+        return value
+
+    def record_bool(part_id, value, _getframe=sys._getframe):
+        nonlocal describing
+        if describing:
+            return value
+        describing = True
+        try:
+            pending.setdefault(_getframe(1), {})[part_id] = ["True" if value else "False", None]
+        except Exception:  # noqa: BLE001
+            pass
+        finally:
+            describing = False
+        return value
+
+    user_globals = {
+        "__name__": "__main__",
+        "__builtins__": __builtins__,
+        RECORD_FN: record,
+        RECORD_LEN: record_len,
+        RECORD_BOOL: record_bool,
+        **_NODE_CLASSES,
+    }
     node_ids = {}
+    # What a call just gave back, kept for the next step of the call it returned to.
+    returns = {}
+    # Calls an exception is leaving: they give nothing back.
+    raising = set()
 
     def snapshot(frame, line):
         if len(steps) >= max_steps:
@@ -650,20 +788,63 @@ def run_traced(source, max_steps=2000, call=None, node_io=None):
         ran = pending.pop(frame, None)
         if ran:
             step["ran"] = ran
+        back = returns.pop(frame, None)
+        if back:
+            step["returned"] = back
         # Nodes the calls further out hold (the whole tree while a recursive call looks at one
-        # branch), so the drawing keeps its context.
+        # branch), so the drawing keeps its context; and the calls waiting on this one.
         outer = []
+        stack = []
         caller = frame.f_back
-        while caller is not None and caller.f_code.co_filename == USER_FILENAME and caller.f_code.co_name != "<module>":
-            for name, value in caller.f_locals.items():
-                if _visible(name, value) and not name.startswith(HIDDEN_PREFIX):
-                    _refs(_serialize(value, 0, heap), outer)
+        while caller is not None and caller.f_code.co_filename == USER_FILENAME:
+            stack.append(site(caller, caller.f_lineno))
+            if caller.f_code.co_name != "<module>":
+                for name, value in caller.f_locals.items():
+                    if _visible(name, value) and not name.startswith(HIDDEN_PREFIX):
+                        _refs(_serialize(value, 0, heap), outer)
             caller = caller.f_back
+        if stack:
+            step["stack"] = [*stack[::-1], site(frame, line)]
         if heap.nodes:
             step["nodes"] = heap.nodes
             if outer:
                 step["outer"] = list(dict.fromkeys(outer))
         steps.append(step)
+
+    # Each call's arguments as they came in, e.g. `n=5, memo={}`.
+    frame_args = {}
+
+    def site(frame, line):
+        out = {"func": frame.f_code.co_name, "line": line, "frame": frame_ids.get(frame, 0)}
+        if frame in frame_args:
+            out["args"] = frame_args[frame]
+        return out
+
+    def take_args(frame):
+        nonlocal describing
+        code = frame.f_code
+        if code.co_name == "<module>":
+            return
+        count = code.co_argcount + code.co_kwonlyargcount + bool(code.co_flags & 0x04) + bool(code.co_flags & 0x08)
+        names = code.co_varnames[:count]
+        describing = True
+        try:
+            scope = frame.f_locals
+            frame_args[frame] = ", ".join(f"{n}={_brief(scope[n])[0]}" for n in names if n in scope and n != "self")
+        except Exception:  # noqa: BLE001
+            pass
+        finally:
+            describing = False
+
+    def give_back(frame, value):
+        nonlocal describing
+        describing = True
+        try:
+            returns[frame.f_back] = {"func": frame.f_code.co_name, "value": _brief(value)}
+        except Exception:  # noqa: BLE001
+            pass
+        finally:
+            describing = False
 
     def tracer(frame, event, arg):
         if frame.f_code.co_filename != USER_FILENAME or (event == "call" and describing):
@@ -672,15 +853,24 @@ def run_traced(source, max_steps=2000, call=None, node_io=None):
             # A generator resuming after a yield carries on the same call.
             if frame not in frame_ids:
                 frame_ids[frame] = next(next_frame)
+                take_args(frame)
         elif event == "line":
+            raising.discard(frame)  # an exception caught here: the call carries on
             snapshot(frame, frame.f_lineno)
+        elif event == "exception":
+            raising.add(frame)
         elif event == "return":
             if frame.f_back is None or frame.f_back.f_code.co_filename != USER_FILENAME:
                 # Final state of the module, or of the problem's function when we call it.
                 snapshot(frame, steps[-1]["line"] if steps else 1)
+            elif frame not in raising and not frame.f_code.co_flags & _RESUMABLE:
+                give_back(frame, arg)
+            raising.discard(frame)
             pending.pop(frame, None)
+            returns.pop(frame, None)
             if not frame.f_code.co_flags & _RESUMABLE:
                 frame_ids.pop(frame, None)
+                frame_args.pop(frame, None)
         return tracer
 
     error = None
@@ -738,6 +928,10 @@ def run_traced(source, max_steps=2000, call=None, node_io=None):
             "call": _call_desc(call) if call is not None else None,
             "plans": recorder.plans,
             "loops": loops,
+            "checks": recorder.checks,
+            "blocks": recorder.blocks,
+            "cells": cells,
+            "heaps": heaps,
         }
     )
 

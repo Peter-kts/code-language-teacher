@@ -13,7 +13,7 @@
 
 import { parse } from 'acorn'
 import { generate } from 'astring'
-import type { AssignPlan, CodeError, ExprPlan, LoopPlan, PointerSpec, TargetPlan } from '../types'
+import type { AssignPlan, CellSpec, CheckPlan, CodeError, ExprPlan, LoopBlock, LoopPlan, PointerSpec, TargetPlan } from '../types'
 
 // ESTree nodes as acorn makes them; loosely typed, since this file builds and rewrites many kinds.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -30,6 +30,9 @@ export interface Instrumented {
   plans: AssignPlan[]
   loops: LoopPlan[]
   pointers: PointerSpec[]
+  checks: CheckPlan[]
+  blocks: LoopBlock[]
+  cells: CellSpec[]
 }
 
 /** Parse and rewrite `source`; a syntax error comes back as a CodeError. */
@@ -58,8 +61,9 @@ export function instrument(source: string, callName: string | null = null): Inst
   const t = new Instrumenter(source)
   const pointers = [...t.hiddenPointers(program), ...indexPointers(program)]
   const loops = loopPlans(program, source)
+  const cells = cellPointers(program)
   const body = t.program(program, callName)
-  return { code: generate(body), plans: t.plans, loops, pointers }
+  return { code: generate(body), plans: t.plans, loops, pointers, checks: t.checks, blocks: t.blocks, cells }
 }
 
 // ---- small node builders ----
@@ -174,6 +178,10 @@ type Scopes = string[][]
 
 class Instrumenter {
   plans: AssignPlan[] = []
+  /** `if`, `while` and `for` conditions, with whether each came out true (see CheckPlan). */
+  checks: CheckPlan[] = []
+  /** Loops and the lines they span, to count passes. */
+  blocks: LoopBlock[] = []
   private ids = 0
   private lines: string[]
   /** Hidden index counters for `for (const n of nums)`, keyed by the loop node. */
@@ -236,12 +244,13 @@ class Instrumenter {
     return out
   }
 
-  /** `{ __ct.e(name); try { body } catch (e) { __ct.x(e); throw e } finally { __ct.o() } }` */
-  private frame(name: string, body: Node[], captured: string[] = []): Node {
+  /** `{ __ct.e(name, captured, params); try { body } catch (e) { __ct.x(e); throw e } finally { __ct.o() } }` */
+  private frame(name: string, body: Node[], captured: string[] = [], params: string[] = []): Node {
     const err = '__ct_err'
-    const names = { type: 'ArrayExpression', elements: captured.map((n) => lit(n)) } as Node
+    const list = (xs: string[]) => ({ type: 'ArrayExpression', elements: xs.map((n) => lit(n)) }) as Node
+    const args = params.length ? [lit(name), list(captured), list(params)] : captured.length ? [lit(name), list(captured)] : [lit(name)]
     return block([
-      stmt(rt('e', captured.length ? [lit(name), names] : [lit(name)])),
+      stmt(rt('e', args)),
       {
         type: 'TryStatement',
         block: block(body),
@@ -298,7 +307,7 @@ class Instrumenter {
     const saved = this.current
     this.current = scopes
     this.depth++
-    fn.body = this.frame(name, this.statements(body, scopes, false), captured)
+    fn.body = this.frame(name, this.statements(body, scopes, false), captured, params)
     this.depth--
     this.current = saved
     return captured
@@ -402,6 +411,7 @@ class Instrumenter {
         this.expressions(s)
         return [...pre, s]
       case 'IfStatement':
+        this.check(s, /\belse\s+if\b/.test(this.lines[line - 1] ?? '') ? 'elif' : 'if', line)
         this.expressions(s.test)
         s.consequent = this.body(s.consequent, scopes)
         if (s.alternate) s.alternate = this.body(s.alternate, scopes)
@@ -413,6 +423,9 @@ class Instrumenter {
           for (const d of s.init.declarations) if (d.init) this.plans.push({ line, op: null, targets: [this.target(d.id)], value: this.planOnly(d.init) })
         }
         if (s.update) this.updatePlan(s.update, line)
+        const counted = this.countLoop(s)
+        const test = this.check(s, 'for', line)
+        this.blocks.push({ line, end: s.loc.end.line, kind: 'for', ...(counted && test ? { count: counted(test) } : {}) })
         ;[s.init, s.test, s.update].forEach((n) => this.expressions(n))
         s.body = this.body(s.body, inLoop)
         // The step before each update shows the loop line again, as Python's `for` line does on every pass.
@@ -420,12 +433,16 @@ class Instrumenter {
         return [...pre, s]
       }
       case 'WhileStatement':
+        this.check(s, 'while', line)
+        this.blocks.push({ line, end: s.loc.end.line, kind: 'while' })
         this.expressions(s.test)
         s.body = this.body(s.body, scopes)
         // A step on every check of the condition, including the first.
         s.test = seq([this.step(line, scopes), s.test])
         return [s]
       case 'DoWhileStatement':
+        this.check(s, 'while', s.test.loc.start.line)
+        this.blocks.push({ line: s.test.loc.start.line, end: s.loc.end.line, kind: 'while' })
         this.expressions(s.test)
         s.body = this.body(s.body, scopes)
         s.test = seq([this.step(s.test.loc.start.line, scopes), s.test])
@@ -443,6 +460,9 @@ class Instrumenter {
           s.body.body.push(stmt(this.step(end.line > start.line + 1 ? start.line + 1 : line, inLoop)))
         }
         const over = s.type === 'ForInStatement' ? rt('k', [s.right]) : s.right
+        // How many items it goes over is recorded under this id, when the thing has a length.
+        this.ids += 1
+        this.blocks.push({ line, end: s.loc.end.line, kind: 'for', id: this.ids })
         // Each pass after the first steps on the loop line before taking the next item.
         s.right = rt('i', [
           lit(line),
@@ -450,6 +470,7 @@ class Instrumenter {
           this.getters(scopes),
           { type: 'ArrayExpression', elements: names.map((n) => lit(n)) } as Node,
           lit(this.hidden.get(s) ?? null),
+          lit(this.ids),
         ])
         s.type = 'ForOfStatement'
         s.await = false
@@ -475,6 +496,11 @@ class Instrumenter {
         this.hoisted = outerHoisted
         return [...pre, s]
       }
+      case 'ReturnStatement':
+        this.expressions(s)
+        // `return x` hands x to the runtime on the way out, so the caller can say what it got back.
+        if (s.argument) s.argument = rt('v', [s.argument])
+        return [...pre, s]
       case 'LabeledStatement':
         // Nothing may come between a label and its loop, so the step goes before the label.
         s.body = (([one]) => one)(this.statement(s.body, scopes, false))
@@ -483,6 +509,41 @@ class Instrumenter {
         // return, throw, break, continue, class declarations and the like.
         this.expressions(s)
         return [...pre, s]
+    }
+  }
+
+  /** Record a test's parts and whether it came out true: `__ct.b(id, test)`. Returns its plan. */
+  private check(s: Node, kind: CheckPlan['kind'], line: number): ExprPlan | null {
+    // `while (true)` and `for (;;)` decide nothing.
+    if (!s.test || s.test.type === 'Literal') return null
+    const [node, plan] = this.expr(s.test)
+    if (!plan) return null
+    this.ids += 1
+    s.test = rt('b', [lit(this.ids), node])
+    this.checks.push({ line, kind, id: this.ids, value: plan })
+    return plan
+  }
+
+  /**
+   * `for (let i = a; i < b; i++)` (or counting down with `i--` and `>`): how many passes it makes
+   * is b - a, read from the values its first check recorded.
+   */
+  private countLoop(s: Node): ((test: ExprPlan) => LoopBlock['count']) | null {
+    const decl = s.init?.type === 'VariableDeclaration' && s.init.declarations.length === 1 ? s.init.declarations[0] : null
+    const v = decl?.id.type === 'Identifier' ? decl.id.name : null
+    const t = s.test
+    const u = s.update
+    if (!v || t?.type !== 'BinaryExpression' || t.left.type !== 'Identifier' || t.left.name !== v || !u) return null
+    let step: 1 | -1 | null = null
+    if (u.type === 'UpdateExpression' && u.argument.type === 'Identifier' && u.argument.name === v) step = u.operator === '++' ? 1 : -1
+    else if (u.type === 'AssignmentExpression' && u.left.type === 'Identifier' && u.left.name === v && u.right.type === 'Literal' && u.right.value === 1)
+      step = u.operator === '+=' ? 1 : u.operator === '-=' ? -1 : null
+    const op: string = t.operator
+    if (step === null || !(step === 1 ? ['<', '<='] : ['>', '>=']).includes(op)) return null
+    return (test) => {
+      const [from, to] = test.kind === 'other' ? test.parts : []
+      if (from?.id === undefined || to?.id === undefined) return undefined
+      return { from: from.id, to: to.id, step: step!, inclusive: op.length === 2 }
     }
   }
 
@@ -799,6 +860,29 @@ function indexPointers(program: Node): PointerSpec[] {
   return [...found].sort().map((pair) => {
     const [v, target] = pair.split('\0')
     return { label: v, var: v, target }
+  })
+}
+
+/** `grid[r][c]` with plain names: the cell (r, c) of a grid or table that the code looks at. */
+function cellPointers(program: Node): CellSpec[] {
+  const found = new Set<string>()
+  walk(program, (n) => {
+    const o = n.object
+    if (
+      n.type === 'MemberExpression' &&
+      n.computed &&
+      n.property.type === 'Identifier' &&
+      o.type === 'MemberExpression' &&
+      o.computed &&
+      o.object.type === 'Identifier' &&
+      o.property.type === 'Identifier'
+    ) {
+      found.add(`${o.property.name}\0${n.property.name}\0${o.object.name}`)
+    }
+  })
+  return [...found].sort().map((key) => {
+    const [row, col, target] = key.split('\0')
+    return { row, col, target }
   })
 }
 

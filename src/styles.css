@@ -686,3 +686,56 @@ kbd {
 .grid-table th { color: var(--faint); font-weight: 400; font-size: 0.68rem; padding: 0.1rem 0.35rem; }
 .grid-table td { border: 1px solid var(--line); min-width: 2rem; height: 1.9rem; text-align: center; padding: 0 0.3rem; color: var(--text); background: rgba(5, 4, 10, 0.35); }
 .grid-table td.changed { border-color: var(--pass); color: var(--pass); box-shadow: inset 0 0 0 1px var(--pass); }
+
+/* The chat pointing at the screen: [[reference]] chips, Show me, and the pointer tour (src/chat/PointerTour.tsx). */
+.ref-chip {
+  display: inline; padding: 0 0.4rem; margin: 0 0.05rem; border-radius: 999px;
+  font-family: var(--font-mono); font-size: 0.8em; line-height: 1.4;
+  color: var(--accent); background: var(--accent-soft); border: 1px solid transparent; cursor: pointer;
+}
+button.ref-chip:hover:not(:disabled), .ref-chip:focus-visible { border-color: currentColor; background: var(--accent-soft); color: var(--accent); }
+button.ref-chip.ref-var:hover:not(:disabled) { color: var(--pass); background: rgba(126, 224, 184, 0.2); }
+button.ref-chip.ref-step:hover:not(:disabled) { color: var(--source); background: rgba(255, 201, 120, 0.2); }
+.ref-chip.ref-var { color: var(--pass); background: rgba(126, 224, 184, 0.12); }
+.ref-chip.ref-step { color: var(--source); background: rgba(255, 201, 120, 0.12); }
+.ref-gone { font-family: var(--font-mono); font-size: 0.8em; color: var(--muted); }
+.show-me { margin-top: 0.35rem; font-size: 0.8rem; padding: 0.25rem 0.75rem; color: var(--accent); border-color: var(--accent); }
+
+.tour { position: fixed; inset: 0; z-index: 50; pointer-events: none; }
+.tour-ring {
+  position: fixed; z-index: 50; pointer-events: none; border-radius: 8px;
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 9999px rgba(5, 4, 10, 0.45), 0 0 18px rgba(200, 180, 255, 0.55);
+  transition: left 0.6s var(--ease), top 0.6s var(--ease), width 0.6s var(--ease), height 0.6s var(--ease);
+}
+.tour-ring.flash { box-shadow: 0 0 18px rgba(200, 180, 255, 0.55); animation: ring-flash 1.8s ease-out forwards; }
+@keyframes ring-flash {
+  0% { opacity: 0; transform: scale(1.08); }
+  15% { opacity: 1; transform: scale(1); }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.tour-hand {
+  position: fixed; left: 0; top: 0; z-index: 52;
+  fill: var(--panel-solid); stroke: var(--accent); stroke-width: 1.3; stroke-linejoin: round;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6));
+  transition: transform 0.65s var(--ease);
+}
+.tour-hand-crease { fill: none; stroke-width: 1; stroke-linecap: round; }
+.tour-bubble {
+  position: fixed; z-index: 51; pointer-events: auto;
+  background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: 10px;
+  padding: 0.55rem 0.7rem; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  transition: left 0.6s var(--ease), top 0.6s var(--ease), bottom 0.6s var(--ease);
+}
+.tour-bubble p { margin: 0.35rem 0 0.5rem; font-size: 0.88rem; line-height: 1.45; }
+.tour-head { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.tour-count { font-family: var(--font-mono); font-size: 0.7rem; color: var(--muted); }
+.tour-x { border: none; background: none; color: var(--muted); font-size: 1.1rem; line-height: 1; padding: 0 0.2rem; }
+.tour-buttons { display: flex; justify-content: flex-end; gap: 0.4rem; }
+.tour-buttons button { font-size: 0.78rem; padding: 0.2rem 0.75rem; }
+.tour-next { color: var(--accent); border-color: var(--accent); }
+@media (prefers-reduced-motion: reduce) {
+  .tour-hand, .tour-ring, .tour-bubble { transition: none; }
+  .tour-ring.flash { animation: none; }
+}

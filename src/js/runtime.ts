@@ -2,12 +2,14 @@
 // before each statement: the same TraceResult JSON that src/python/tracer.py makes,
 // so the visualizer, history and console don't need to know which language ran.
 
-import type { Brief, CodeError, ConsoleEntry, NodeData, NodeIo, NodeKind, RunCase, Step, TestResult, TraceResult, Value } from '../types'
+import type { Brief, CallSite, CodeError, ConsoleEntry, NodeData, NodeIo, NodeKind, RunCase, Step, TestResult, TraceResult, Value } from '../types'
 import { formatValue } from '../viz/format'
 import { instrument, MODULE } from './instrument'
 
 const MAX_STEPS = 2000
 const MAX_LIST_ITEMS = 64
+/** A variable's own array can be longer, so the boxes around a pointer far into it can still be drawn. */
+const MAX_TOP_ITEMS = 200
 const MAX_DEPTH = 3
 const MAX_BRIEF = 60
 const MAX_OTHER = 80
@@ -121,6 +123,15 @@ interface Frame {
   last: Step | null
   /** Outer variables it can read, when it is a closure. */
   captured: string[]
+  /** What its `return` handed back. */
+  ret?: Brief
+  /** An error is leaving it, so it gives nothing back. */
+  threw?: boolean
+  /** What a call it made just gave back, for its next step. */
+  returned?: Step['returned']
+  /** Its parameters' names, and their values as they came in (read on its first step). */
+  params: string[]
+  args?: string
 }
 
 type Getters = Record<string, () => unknown>
@@ -129,12 +140,23 @@ type Getters = Record<string, () => unknown>
 interface Hooks {
   s(line: number, getters: Getters): void
   r<T>(id: number, value: T): T
-  e(func: string, captured?: string[]): void
+  e(func: string, captured?: string[], params?: string[]): void
   o(): void
   f<F extends object>(fn: F, getters: Getters, name: string): F
   x(err: unknown): void
-  i(line: number, iterable: Iterable<unknown>, getters: Getters, carry: string[], hidden: string | null): Iterable<unknown>
+  i(line: number, iterable: Iterable<unknown>, getters: Getters, carry: string[], hidden: string | null, id: number): Iterable<unknown>
   k(obj: object): string[]
+  /** Whether an `if`, `while` or `for` test came out true. */
+  b<T>(id: number, value: T): T
+  /** What a `return` hands back. */
+  v<T>(value: T): T
+}
+
+/** How many items a loop will go over, when that can be told without running through it. */
+function sizeOf(iterable: unknown): number | null {
+  if (typeof iterable === 'string' || Array.isArray(iterable)) return iterable.length
+  if (iterable instanceof Map || iterable instanceof Set) return iterable.size
+  return null
 }
 
 /** The keys a `for...in` loop visits. */
@@ -183,8 +205,20 @@ class Tracer implements Hooks {
     return value
   }
 
-  e(func: string, captured: string[] = []) {
-    this.stack.push({ id: this.nextFrame++, func, line: this.top()?.line ?? 1, getters: null, hidden: {}, pending: null, last: null, captured })
+  b<T>(id: number, value: T): T {
+    const frame = this.top()
+    if (frame) (frame.pending ??= {})[id] = [value ? 'true' : 'false', null]
+    return value
+  }
+
+  v<T>(value: T): T {
+    const frame = this.top()
+    if (frame) frame.ret = brief(value)
+    return value
+  }
+
+  e(func: string, captured: string[] = [], params: string[] = []) {
+    this.stack.push({ id: this.nextFrame++, func, line: this.top()?.line ?? 1, getters: null, hidden: {}, pending: null, last: null, captured, params })
   }
 
   f<F extends object>(fn: F, getters: Getters, name: string): F {
@@ -196,9 +230,13 @@ class Tracer implements Hooks {
     const frame = this.stack.pop()
     // The final state of the program, or of the problem's function when it was called.
     if (frame && !this.stack.length && frame.getters && !this.truncated) this.snapshot(frame, frame.line, frame.getters)
+    const caller = this.top()
+    if (frame && caller && !frame.threw) caller.returned = { func: frame.func, value: frame.ret ?? brief(undefined) }
   }
 
   x(err: unknown) {
+    const top = this.top()
+    if (top) top.threw = true
     if (err instanceof StepLimit) return
     const trace = this.stack.map((f) => ({ line: f.line, func: f.func }))
     if (err !== null && typeof err === 'object') {
@@ -206,8 +244,10 @@ class Tracer implements Hooks {
     } else if (!this.lastTrace) this.lastTrace = trace
   }
 
-  *i(line: number, iterable: Iterable<unknown>, getters: Getters, carry: string[], hidden: string | null) {
+  *i(line: number, iterable: Iterable<unknown>, getters: Getters, carry: string[], hidden: string | null, id: number) {
     const frame = this.top()
+    const size = sizeOf(iterable)
+    if (size !== null) (frame.pending ??= {})[id] = [String(size), size]
     let index = 0
     for (const item of iterable) {
       // The step before the first pass is the one in front of the loop.
@@ -284,6 +324,14 @@ class Tracer implements Hooks {
     }
     for (const [name, value] of Object.entries(extra)) if (!(name in vars)) vars[name] = value
     const step: Step = { line, func: frame.func, frame: frame.id, vars, hidden: { ...frame.hidden }, stdout: this.stdout }
+    if (frame.args === undefined) frame.args = frame.params.filter((p) => p in vars).map((p) => `${p}=${brief(getters[p]?.())[0]}`).join(', ')
+    const waiting = this.stack.filter((f) => f !== frame)
+    const site = (f: Frame, at: number): CallSite => ({ func: f.func, line: at, frame: f.id, ...(f.func !== MODULE && f.args !== undefined && { args: f.args }) })
+    if (waiting.length) step.stack = [...waiting.map((f) => site(f, f.line)), site(frame, line)]
+    if (frame.returned) {
+      step.returned = frame.returned
+      frame.returned = undefined
+    }
     if (Object.keys(nodes).length) {
       step.nodes = nodes
       if (outer.length) step.outer = [...new Set(outer)]
@@ -333,6 +381,12 @@ class Guard implements Hooks {
   }
   k(obj: object) {
     return forInKeys(obj)
+  }
+  b<T>(_id: number, value: T) {
+    return value
+  }
+  v<T>(value: T) {
+    return value
   }
 }
 
@@ -409,6 +463,10 @@ export function runTraced(
     call: call ? callText(call) : null,
     plans: made.plans,
     loops: made.loops,
+    checks: made.checks,
+    blocks: made.blocks,
+    cells: made.cells,
+    heaps: [],
   }
 }
 
@@ -520,14 +578,15 @@ export function serialize(value: unknown, depth = 0): Value {
   if (heap && memory && isNode(obj, cls)) return nodeRef(obj, cls, objectId(obj)!, heap)
   if (depth >= MAX_DEPTH) return { type: 'other', repr: shortText(obj), t: cls }
   const id = objectId(obj)
+  const limit = depth === 0 ? MAX_TOP_ITEMS : MAX_LIST_ITEMS
   if (Array.isArray(obj)) {
     const items: Value[] = []
-    for (let i = 0; i < Math.min(obj.length, MAX_LIST_ITEMS); i++) items.push(serialize(obj[i], depth + 1))
-    return { type: 'list', items, truncated: obj.length > MAX_LIST_ITEMS, t: 'Array', id }
+    for (let i = 0; i < Math.min(obj.length, limit); i++) items.push(serialize(obj[i], depth + 1))
+    return { type: 'list', items, truncated: obj.length > limit, t: 'Array', id }
   }
   if (obj instanceof Set) {
     const all = [...obj]
-    return { type: 'list', items: all.slice(0, MAX_LIST_ITEMS).map((v) => serialize(v, depth + 1)), truncated: all.length > MAX_LIST_ITEMS, t: 'Set', id }
+    return { type: 'list', set: true, items: all.slice(0, limit).map((v) => serialize(v, depth + 1)), truncated: all.length > limit, t: 'Set', id }
   }
   if (obj instanceof Map) {
     const all = [...obj]

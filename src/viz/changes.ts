@@ -1,4 +1,4 @@
-import type { AssignPlan, Brief, ExprPlan, Language, LoopPlan, PointerSpec, Step, TargetPlan, Value } from '../types'
+import type { AssignPlan, Brief, CellSpec, CheckPlan, ExprPlan, LoopBlock, Language, LoopPlan, PointerSpec, Step, TargetPlan, Value } from '../types'
 import { formatValue } from './format'
 import { codeMask, nameRegex } from '../syntax/scan'
 
@@ -42,6 +42,11 @@ export interface Plans {
   plans: AssignPlan[]
   loops: LoopPlan[]
   pointers: PointerSpec[]
+  /** `if` and `while` tests: what they read lights up too. */
+  checks?: CheckPlan[]
+  blocks?: LoopBlock[]
+  cells?: CellSpec[]
+  heaps?: string[]
 }
 
 /** Something the line that ran read: a variable, or one item of a list or dict. */
@@ -49,6 +54,8 @@ export interface Read {
   name: string
   /** The list index or dict key it read, as shown (e.g. `2` or `'test'`). */
   item?: string
+  /** For a grid cell, `grid[r][c]`: the column it read in row `item`. */
+  col?: string
   /** Where its value went, e.g. `12` to `total`; empty when it was only used along the way (the `i` in `nums[i]`). */
   gave: { value: string; to: string }[]
   /** Its columns on the line that ran, for highlighting it in the editor. */
@@ -116,7 +123,9 @@ export function containerChanges(step: Step, prev: Step | undefined, plans?: Pla
       const badges = work.badges({ name, item }, o, n)
       return badges.length ? badges : [{ text: `was ${short(formatValue(o))}`, from: null }]
     }
-    if (value.type === 'dict' && old.type === 'dict') {
+    if (value.type === 'list' && old.type === 'list' && value.set && old.set) {
+      out[name] = setChange(old.items, value.items)
+    } else if (value.type === 'dict' && old.type === 'dict') {
       out[name] = dictChange(old.entries, value.entries, itemDelta)
     } else if ((value.type === 'list' || value.type === 'tuple') && old.type === value.type) {
       out[name] = listChange(old.items, value.items, itemDelta)
@@ -132,7 +141,12 @@ export function stepRoles(step: Step, prev: Step | undefined, plans?: Plans): St
   const scalars = scalarChanges(step, prev, plans)
   const boxes = containerChanges(step, prev, plans)
   const targets = [...Object.keys(scalars), ...Object.keys(boxes)]
-  const reads = prev && prev.func === step.func ? lineWork(step, prev, plans).reads(targets) : []
+  let reads: Read[] = []
+  if (prev && prev.func === step.func) {
+    const work = lineWork(step, prev, plans)
+    // What the line changed, then what an `if` or `while` test on it read.
+    reads = [...work.reads(targets), ...(plans?.checks ?? []).filter((c) => c.line === prev.line).flatMap((c) => work.readsIn(c.value))]
+  }
   const sources = reads.filter((r) => r.item === undefined && !targets.includes(r.name)).map((r) => r.name)
   return { targets, sources: [...new Set(sources)], reads }
 }
@@ -181,6 +195,18 @@ function listChange(oldItems: Value[], newItems: Value[], itemDelta: ItemDelta):
     if (grow < 0) summary.push(removed(-grow, 'item'))
   }
   return { summary, parts }
+}
+
+/** A set has no places, only members: new ones get `new`, and removals are counted. */
+function setChange(oldItems: Value[], newItems: Value[]): ContainerChange {
+  const before = new Set(oldItems.map(formatValue))
+  const after = new Set(newItems.map(formatValue))
+  const parts: Record<string, DeltaPart[]> = {}
+  newItems.forEach((v, i) => {
+    if (!before.has(formatValue(v))) parts[i] = [{ text: 'new', from: null }]
+  })
+  const gone = [...before].filter((v) => !after.has(v)).length
+  return { summary: gone ? [removed(gone, 'item')] : [], parts }
 }
 
 function dictChange(oldEntries: [Value, Value][], newEntries: [Value, Value][], itemDelta: ItemDelta): ContainerChange {
@@ -242,10 +268,13 @@ function lineWork(step: Step, prev: Step, plans?: Plans) {
     const box = state.vars[name]
     if (!k || !box) return null
     if (box.type === 'dict') return k[0]
-    if (box.type !== 'list' && box.type !== 'tuple') return null
+    // A string is read by index like a list: `s[i]`.
+    const length = box.type === 'list' || box.type === 'tuple' ? box.items.length : box.type === 'prim' && typeof box.value === 'string' ? box.value.length : null
+    if (length === null || (box.type === 'list' && box.set)) return null
     if (k[1] === null || !Number.isInteger(k[1])) return null
-    const i = k[1] < 0 ? box.items.length + k[1] : k[1]
-    return i >= 0 && !(k[1] < 0 && box.truncated) ? String(i) : null
+    const i = k[1] < 0 ? length + k[1] : k[1]
+    const cut = (box.type === 'list' || box.type === 'tuple') && box.truncated
+    return i >= 0 && !(k[1] < 0 && cut) ? String(i) : null
   }
   const matches = (target: TargetPlan, c: Changed) =>
     (target.kind === 'name' && c.item === undefined && target.name === c.name) ||
@@ -313,6 +342,31 @@ function lineWork(step: Step, prev: Step, plans?: Plans) {
     return index === null ? null : String(index)
   }
 
+  /** Every variable, box, row and grid cell the parts of `e` read while the line ran, one per part. */
+  const walkReads = (e: ExprPlan | null, byPart: Map<number, Read>) => {
+    const walk = (x: ExprPlan | null) => walkReads(x, byPart)
+    if (!e) return
+    if ((e.kind === 'name' || e.kind === 'sub') && e.id !== undefined && ran[e.id] && !byPart.has(e.id)) {
+      const at = e.line === line ? { start: e.start, end: e.end } : {}
+      const item = e.kind === 'sub' && e.name ? itemOf(e.name, e.key, prev) : null
+      if (e.kind === 'name') byPart.set(e.id, { name: e.name, gave: [], ...at })
+      else if (e.name && item !== null) byPart.set(e.id, { name: e.name, item, gave: [], ...at })
+      else if (e.kind === 'sub' && !e.name && e.of?.kind === 'sub' && e.of.name) {
+        // `grid[r][c]`: a cell, row r of grid and column c of that row.
+        const row = itemOf(e.of.name, e.of.key, prev)
+        const col = e.key ? valueOf(e.key, ran) : undefined
+        if (row !== null && col?.[1] !== null && col !== undefined && Number.isInteger(col[1]) && col[1]! >= 0) {
+          byPart.set(e.id, { name: e.of.name, item: row, col: String(col[1]), gave: [], ...at })
+        }
+      }
+    }
+    if (e.kind === 'sub') [e.of, e.key].forEach(walk)
+    if (e.kind === 'bin') [e.left, e.right].forEach(walk)
+    if (e.kind === 'unary') walk(e.operand)
+    if (e.kind === 'seq') e.items.forEach(walk)
+    if (e.kind === 'other') e.parts.forEach(walk)
+  }
+
   return {
     /** Badges for one change: how much it added and what from, or what it was set to. */
     badges(c: Changed, old: Value, now: Value): DeltaPart[] {
@@ -342,25 +396,19 @@ function lineWork(step: Step, prev: Step, plans?: Plans) {
       return d ? [{ text: signed(d), from: null }] : []
     },
 
+    /** What an expression read (an `if` test, say): its variables, boxes, rows and grid cells. */
+    readsIn(e: ExprPlan): Read[] {
+      const byPart = new Map<number, Read>()
+      walkReads(e, byPart)
+      return [...byPart.values()]
+    },
+
     /** What the line read to make the `changed` variables' changes, and what each read gave to which. */
     reads(changed: string[]): Read[] {
       // One read per part of the code, so `n + n` lights up both.
       const byPart = new Map<number, Read>()
       const loopReads: Read[] = []
-      const walk = (e: ExprPlan | null) => {
-        if (!e) return
-        if ((e.kind === 'name' || e.kind === 'sub') && e.id !== undefined && ran[e.id] && !byPart.has(e.id)) {
-          const at = e.line === line ? { start: e.start, end: e.end } : {}
-          const item = e.kind === 'sub' && e.name ? itemOf(e.name, e.key, prev) : null
-          if (e.kind === 'name') byPart.set(e.id, { name: e.name, gave: [], ...at })
-          else if (e.name && item !== null) byPart.set(e.id, { name: e.name, item, gave: [], ...at })
-        }
-        if (e.kind === 'sub') [e.of, e.key].forEach(walk)
-        if (e.kind === 'bin') [e.left, e.right].forEach(walk)
-        if (e.kind === 'unary') walk(e.operand)
-        if (e.kind === 'seq') e.items.forEach(walk)
-        if (e.kind === 'other') e.parts.forEach(walk)
-      }
+      const walk = (e: ExprPlan | null) => walkReads(e, byPart)
       for (const name of changed) {
         const old = prev.vars[name] ?? NOTHING
         const now = step.vars[name]

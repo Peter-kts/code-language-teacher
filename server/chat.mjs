@@ -21,7 +21,17 @@ const system = (lang) => `You are the syntax helper inside a code-learning IDE. 
 
 Answer the way a patient tutor would at a whiteboard: one or two sentences, then a short runnable ${lang.name} example in a \`\`\`${lang.fence} fenced block. The learner can insert your code into their editor with one click, so keep examples small and self-contained, using ${lang.simple} that a step-by-step visualizer can draw.
 
-When they ask about the problem they are working on, give hints and explain ideas rather than the full solution, unless they explicitly ask for the answer. Their current code is attached to their latest message for context; refer to it when it helps.`
+When they ask about the problem they are working on, give hints and explain ideas rather than the full solution, unless they explicitly ask for the answer. Their current code is attached to their latest message for context; refer to it when it helps.
+
+You can point at things on their screen. Write [[line:N]] for a line of their code, [[var:NAME]] for a variable in the visualizer, [[step:N]] for a step of the run, [[console]] for printed output, [[history]] for the list of every change, and [[glossary:ID]] for a glossary card. Each becomes a chip they can tap to see it light up. Use only the line numbers, steps, variable names and glossary ids listed in the <editor> block, and only when pointing helps them find something.
+
+When showing where things are would explain it better than words alone (how a loop moves through a list, where a value changes), end your answer with a tour: a \`\`\`tour block of two to six stops, one per line, each a reference and a short caption, like:
+\`\`\`tour
+line:3 | The loop starts here
+var:nums | It walks this list one box at a time
+step:12 | Here total jumps from 4 to 16
+\`\`\`
+They press "Show me" and a pointer moves through the stops in order. Leave the tour out for quick syntax questions.`
 
 let client
 
@@ -71,7 +81,8 @@ export async function handleChat(req, res) {
   const lang = Object.hasOwn(LANGUAGES, body.language) ? LANGUAGES[body.language] : LANGUAGES.python
   const context = [
     body.problem ? `Problem: ${body.problem}` : 'Mode: free playground',
-    `Current code:\n\`\`\`${lang.fence}\n${String(body.code ?? '').slice(0, 8000)}\n\`\`\``,
+    `Current code (numbered for [[line:N]]; the numbers are not part of the code):\n\`\`\`${lang.fence}\n${numbered(String(body.code ?? '').slice(0, 8000))}\n\`\`\``,
+    ...viewLines(body.view),
   ].join('\n')
   const messages = history.map((m, i) => ({
     role: m.role === 'assistant' ? 'assistant' : 'user',
@@ -114,6 +125,27 @@ export async function handleChat(req, res) {
     if (!res.headersSent) res.writeHead(502, { 'content-type': 'text/plain' })
     res.end(message)
   }
+}
+
+/** The code with its line numbers, so Claude can point at [[line:N]] without counting. */
+function numbered(code) {
+  return code
+    .split('\n')
+    .map((line, i) => `${String(i + 1).padStart(3)}  ${line}`)
+    .join('\n')
+}
+
+/** What the visualizer shows: the step, the variables and the glossary card ids Claude may point at. */
+function viewLines(view) {
+  if (!view || typeof view !== 'object') return []
+  const names = (list, max) => (Array.isArray(list) ? list.filter((v) => typeof v === 'string').slice(0, max).join(', ') : '')
+  const steps = Number(view.steps) || 0
+  return [
+    steps
+      ? `Visualizer: showing step ${Number(view.step) || steps} of ${steps}. Variables: ${names(view.vars, 60) || '(none)'}`
+      : 'Visualizer: nothing has run yet (no steps or variables to point at).',
+    `Glossary ids: ${names(view.glossary, 200)}`,
+  ]
 }
 
 // Trim stray spaces or newlines that sneak in when a key is pasted into a settings page.
