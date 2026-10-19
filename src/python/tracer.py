@@ -382,8 +382,11 @@ class _Recorder(ast.NodeTransformer):
 
     def visit_While(self, node):
         self.generic_visit(node)
-        self.check(node, "while")
-        self.blocks.append({"line": node.lineno, "end": node.end_lineno, "kind": "while"})
+        check = self.check(node, "while")
+        block = {"line": node.lineno, "end": node.end_lineno, "kind": "while"}
+        if check is not None:
+            block["check"] = check
+        self.blocks.append(block)
         return node
 
     def visit_For(self, node):
@@ -410,18 +413,19 @@ class _Recorder(ast.NodeTransformer):
     def check(self, node, kind):
         """Record the parts of a test and whether it came out true."""
         if isinstance(node.test, ast.Constant):
-            return  # `while True:` decides nothing
+            return None  # `while True:` decides nothing
         if kind == "if" and self.lines[node.lineno - 1].lstrip().startswith("elif"):
             kind = "elif"
         node.test, plan = self.expr(node.test)
         if plan is None:
-            return
+            return None
         self.ids += 1
         node.test = ast.copy_location(
             ast.Call(func=ast.Name(id=RECORD_BOOL, ctx=ast.Load()), args=[ast.Constant(self.ids), node.test], keywords=[]),
             node.test,
         )
         self.checks.append({"line": node.lineno, "kind": kind, "id": self.ids, "value": plan})
+        return self.ids
 
     def visit_Assign(self, node):
         targets = [self.target(t) for t in node.targets]

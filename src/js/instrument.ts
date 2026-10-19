@@ -425,28 +425,38 @@ class Instrumenter {
         if (s.update) this.updatePlan(s.update, line)
         const counted = this.countLoop(s)
         const test = this.check(s, 'for', line)
-        this.blocks.push({ line, end: s.loc.end.line, kind: 'for', ...(counted && test ? { count: counted(test) } : {}) })
+        this.blocks.push({
+          line,
+          end: s.loc.end.line,
+          kind: 'for',
+          ...(test && { check: this.checks[this.checks.length - 1].id }),
+          ...(counted && test ? { count: counted(test) } : {}),
+        })
         ;[s.init, s.test, s.update].forEach((n) => this.expressions(n))
         s.body = this.body(s.body, inLoop)
         // The step before each update shows the loop line again, as Python's `for` line does on every pass.
         s.update = seq([this.step(line, inLoop), ...(s.update ? [s.update] : [])])
         return [...pre, s]
       }
-      case 'WhileStatement':
-        this.check(s, 'while', line)
-        this.blocks.push({ line, end: s.loc.end.line, kind: 'while' })
+      case 'WhileStatement': {
+        const test = this.check(s, 'while', line)
+        this.blocks.push({ line, end: s.loc.end.line, kind: 'while', ...(test && { check: this.checks[this.checks.length - 1].id }) })
         this.expressions(s.test)
         s.body = this.body(s.body, scopes)
         // A step on every check of the condition, including the first.
         s.test = seq([this.step(line, scopes), s.test])
         return [s]
-      case 'DoWhileStatement':
-        this.check(s, 'while', s.test.loc.start.line)
-        this.blocks.push({ line: s.test.loc.start.line, end: s.loc.end.line, kind: 'while' })
+      }
+      case 'DoWhileStatement': {
+        // The body comes first; the loop steps on its `while` line before each further pass.
+        const head = s.test.loc.start.line
+        const test = this.check(s, 'while', head)
+        this.blocks.push({ line, end: s.loc.end.line, kind: 'while', head, bodyFirst: true, ...(test && { check: this.checks[this.checks.length - 1].id }) })
         this.expressions(s.test)
         s.body = this.body(s.body, scopes)
-        s.test = seq([this.step(s.test.loc.start.line, scopes), s.test])
+        s.test = seq([this.step(head, scopes), s.test])
         return [...pre, s]
+      }
       case 'ForOfStatement':
       case 'ForInStatement': {
         const names = s.left.type === 'VariableDeclaration' ? patternNames(s.left.declarations[0].id) : []
@@ -542,8 +552,9 @@ class Instrumenter {
     if (step === null || !(step === 1 ? ['<', '<='] : ['>', '>=']).includes(op)) return null
     return (test) => {
       const [from, to] = test.kind === 'other' ? test.parts : []
-      if (from?.id === undefined || to?.id === undefined) return undefined
-      return { from: from.id, to: to.id, step: step!, inclusive: op.length === 2 }
+      const limit = to?.kind === 'const' ? to.value[1] : null
+      if (from?.id === undefined || (to?.id === undefined && limit === null)) return undefined
+      return { from: from.id, to: to.id ?? { value: limit! }, step: step!, inclusive: op.length === 2 }
     }
   }
 
