@@ -8,7 +8,8 @@ export type Language = 'python' | 'javascript'
  */
 export type Value = { t?: string } & (
   | { type: 'prim'; repr: string; value?: string | number | boolean | null }
-  | { type: 'list' | 'tuple'; items: Value[]; truncated: boolean; id?: number }
+  /** `set` marks a set (Python's set, JavaScript's Set), drawn as boxes with no index. */
+  | { type: 'list' | 'tuple'; items: Value[]; truncated: boolean; id?: number; set?: boolean }
   | { type: 'dict'; entries: [Value, Value][]; truncated: boolean; id?: number }
   /** A JavaScript closure carries `captured`: the outer variables it remembers, and their values now. */
   | { type: 'other'; repr: string; captured?: Record<string, Value> }
@@ -43,6 +44,22 @@ export interface Step {
   nodes?: Record<string, NodeData>
   /** Nodes that calls further out point at (ids in `nodes`), drawn too so a recursive call keeps the whole tree in view. */
   outer?: string[]
+  /**
+   * The calls running right now, outermost first (the program's top level included), this one
+   * last. Only there when some call is waiting on this one.
+   */
+  stack?: CallSite[]
+  /** What a call this frame made just gave back, on the frame's first step after it returned. */
+  returned?: { func: string; value: Brief }
+}
+
+/** A running call: which function, the line it is on (paused at, for a caller), its `frame` number and what it was given. */
+export interface CallSite {
+  func: string
+  line: number
+  frame: number
+  /** Its arguments as they came in, e.g. `n=5, memo={}`. */
+  args?: string
 }
 
 /** A value recorded while a line ran: its text (Python's repr), and the number when it is one. */
@@ -98,6 +115,37 @@ export interface LoopPlan {
   end?: number
 }
 
+/**
+ * An `if` or `while` test (or a JavaScript `for` loop's condition). Its parts are recorded
+ * like an assignment's; `id` holds whether it came out true.
+ */
+export interface CheckPlan {
+  line: number
+  kind: 'if' | 'elif' | 'while' | 'for'
+  id: number
+  value: ExprPlan
+}
+
+/**
+ * A loop and the lines it spans. A `for` over something with a length records it under
+ * `id`; a JavaScript counting loop (`for (let i = 0; i < n; i++)`) gives `count` instead.
+ */
+export interface LoopBlock {
+  line: number
+  end: number
+  kind: 'for' | 'while'
+  id?: number
+  /** The counter's start and the limit it is checked against, as part ids, and how it moves. */
+  count?: { from: number; to: number; step: 1 | -1; inclusive: boolean }
+}
+
+/** `grid[r][c]`: the row and column variables that point at a cell of `target`. */
+export interface CellSpec {
+  row: string
+  col: string
+  target: string
+}
+
 export interface PointerSpec {
   /** Name shown under the arrow, e.g. `n` in `for n in nums`. */
   label: string
@@ -144,6 +192,11 @@ export type TraceResult =
       /** Every assignment in the code, so a step can say what a change was made of. */
       plans: AssignPlan[]
       loops: LoopPlan[]
+      checks?: CheckPlan[]
+      blocks?: LoopBlock[]
+      cells?: CellSpec[]
+      /** Lists the code uses as heaps (Python's heapq calls). */
+      heaps?: string[]
     }
 
 export interface TestResult {
