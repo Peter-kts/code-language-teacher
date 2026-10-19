@@ -111,27 +111,47 @@ export function loopPasses(steps: Step[], index: number, blocks: LoopBlock[] | u
   const step = steps[index]
   if (!step || !blocks?.length) return []
   const same = (s: Step) => (step.frame !== undefined ? s.frame === step.frame : s.func === step.func)
+  // The run's last step repeats its last line to show the final state: it is not another pass.
+  const before = steps[index - 1]
+  if (index > 0 && index === steps.length - 1 && before && same(before) && before.line === step.line) return loopPasses(steps, index - 1, blocks)
+  const next = steps.slice(index + 1).find(same)
   const around = blocks.filter((b) => b.line <= step.line && step.line <= b.end).sort((a, b) => a.line - b.line || b.end - a.end)
   return around.map((b) => {
+    const head = b.head ?? b.line
     let count = 0
     let total: number | null = null
+    const totalFrom = (s: Step | undefined) => {
+      const ran = s?.ran ?? {}
+      if (b.id !== undefined && ran[b.id]?.[1] != null) total = ran[b.id][1]
+      if (b.count) {
+        // The values from the loop's first check: the counter's start and the limit.
+        const from = ran[b.count.from]?.[1]
+        const to = typeof b.count.to === 'number' ? ran[b.count.to]?.[1] : b.count.to.value
+        if (from != null && to != null) total = Math.max(0, (to - from) * b.count.step + (b.count.inclusive ? 1 : 0))
+      }
+    }
     for (let j = index; j >= 0; j--) {
       const s = steps[j]
       if (!same(s)) continue
       if (s.line < b.line || s.line > b.end) break
-      if (s.line === b.line) count++
-      const ran = s.ran ?? {}
-      if (b.id !== undefined && ran[b.id]?.[1] != null) total = ran[b.id][1]
-      if (b.count) {
-        const from = ran[b.count.from]?.[1]
-        const to = ran[b.count.to]?.[1]
-        // The values from the loop's first check: the counter's start and the limit.
-        if (from != null && to != null) total = Math.max(0, (to - from) * b.count.step + (b.count.inclusive ? 1 : 0))
+      if (s.line === head) count++
+      totalFrom(s)
+    }
+    // On the step just before the loop starts, what it goes over is recorded on the next one.
+    if (total === null && next && next.line >= b.line && next.line <= b.end) totalFrom(next)
+    // A do-while has run its first pass before its line ever steps.
+    if (b.bodyFirst) count++
+    let done = total !== null && count > total
+    // On the loop's line, the test that runs next says whether another pass comes.
+    if (!done && step.line === head && b.check !== undefined) {
+      const result = next?.ran?.[b.check]?.[0]
+      if (result !== undefined && !/^(true|True)$/.test(result)) {
+        done = true
+        total ??= count - 1
       }
     }
-    const pass = Math.max(1, count)
-    const done = total !== null && pass > total
-    return { line: b.line, kind: b.kind, pass: done ? total! : pass, total, done }
+    const pass = done ? total! : Math.max(1, count)
+    return { line: b.line, kind: b.kind, pass, total, done }
   })
 }
 
@@ -253,16 +273,19 @@ export function shapesFor(name: string, value: Value, heaps: Set<string>): Shape
   const grid = isGrid(value)
   const intervals = isIntervals(value)
   const graph = graphOf(value) !== null
-  const numbers = value.items.length > 1 && value.items.every((i) => i.type === 'prim' || isSeq(i))
-  if (heaps.has(name) || (HEAP_NAME.test(name) && numbers)) out.push('heap', 'boxes')
-  if (graph && GRAPH_NAME.test(name)) out.push('graph')
+  const named = GRAPH_NAME.test(name)
+  // A heap holds plain values or tuples (`(count, word)`), not rows of a table.
+  const heapable = value.items.length > 1 && value.items.every((i) => i.type === 'prim' || (isSeq(i) && i.type === 'tuple') || i.type === 'ref' || (isSeq(i) && i.items.length <= 3 && !grid && !intervals))
+  if (heaps.has(name) || (HEAP_NAME.test(name) && heapable)) out.push('heap')
+  if (graph && named) out.push('graph')
   // Two numbers per row, start before end: almost always intervals (a 2-wide DP table is rare).
-  if (intervals && (!grid || value.items.every((p) => isSeq(p) && p.items.length === 2))) out.push('intervals')
+  if (intervals) out.push('intervals')
   if (grid) out.push('grid')
-  if (intervals && !out.includes('intervals')) out.push('intervals')
-  if (graph && !out.includes('graph')) out.push('graph')
-  if (!out.includes('boxes')) out.push('boxes')
-  if (numbers && !out.includes('heap')) out.push('heap')
+  // Rows of different lengths are more likely neighbor lists than a table.
+  const ragged = grid && new Set(value.items.map((r) => (isSeq(r) ? r.items.length : 0))).size > 1
+  if (graph && !named && (!grid || ragged) && !intervals) out.push('graph')
+  out.push('boxes')
+  if (heapable && !out.includes('heap')) out.push('heap')
   return out
 }
 
@@ -291,7 +314,9 @@ export function heapLists(step: Step): { name: string; value: Value; owner?: str
   // Same object (JavaScript knows) or the same items (Python, where `a = self.items`).
   for (const [name, v] of Object.entries(step.vars)) {
     if (v.type !== 'list' || v.set || !v.items.length) continue
-    if (lists.some((l) => l.type === 'list' && ((l.id !== undefined && l.id === v.id) || formatValue(l) === formatValue(v)))) out.push({ name, value: v })
+    // JavaScript gives lists ids, so only the same list counts; Python has none, so the same items do.
+    const same = (l: Value) => l.type === 'list' && (l.id !== undefined && v.id !== undefined ? l.id === v.id : formatValue(l) === formatValue(v))
+    if (lists.some(same)) out.push({ name, value: v })
   }
   return out
 }

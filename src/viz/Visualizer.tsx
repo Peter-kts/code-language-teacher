@@ -263,7 +263,8 @@ function Variables({
     <>
       {graph && <NodeView graph={graph} language={language} colorOf={nameColor} />}
       {heapOwned
-        .filter((h) => h.owner)
+        // Inside the heap's own methods a local variable (`a = this.items`) already draws it.
+        .filter((h) => h.owner && !heapOwned.some((o) => !o.owner))
         .map((h) => (
           <div key={h.name} className="list" data-target={`var:${h.name}`}>
             <div className="list-name">
@@ -592,7 +593,10 @@ function ListView({
   const marks = [...pointers.map((p) => p.index), ...value.items.flatMap((_, i) => (changed(i) || read(i) ? [i] : []))]
   const slots = visibleSlots(length, marks)
   const isGap = (s: Slot): s is { gap: number } => typeof s !== 'number'
-  const columns = slots.map((s) => (isGap(s) ? '2.4rem' : kind === 'string' ? '2.1rem' : '3.25rem')).join(' ')
+  // Boxes widen for longer items (a set of (row, col) pairs), up to a point.
+  const longest = Math.max(1, ...slots.map((s) => (isGap(s) || s >= value.items.length ? 1 : text(value.items[s], nodes).length)))
+  const boxWidth = kind === 'string' ? '2.6rem' : `${Math.min(7, Math.max(3.25, longest * 0.62 + 1))}rem`
+  const columns = slots.map((s) => (isGap(s) ? '2.4rem' : boxWidth)).join(' ')
   const label = kind === 'string' ? 'string' : kind === 'set' ? (value.t === 'Set' ? 'Set' : 'set') : null
   return (
     <div className={`list${kind === 'string' ? ' string' : ''}`} data-target={`var:${name}`}>

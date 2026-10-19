@@ -325,3 +325,41 @@ print(a, ys, zs, ok, w, sq, first, rest, t, s, got, nxt, again, big, len(calls))
         self.assertIsNone(result["error"])
         last = result["steps"][-1]["vars"]
         self.assertEqual([last[k]["repr"] for k in ("best", "worst", "nan")], ["inf", "-inf", "nan"])
+
+    def test_sets_are_boxes_sorted_when_they_can_be(self):
+        result = run("seen = set()\nseen.add(3)\nseen.add(1)\nx = 0\n")
+        seen = result["steps"][-1]["vars"]["seen"]
+        self.assertEqual(seen["type"], "list")
+        self.assertTrue(seen["set"])
+        self.assertEqual([i["value"] for i in seen["items"]], [1, 3])
+
+    def test_if_and_while_tests_record_whether_they_were_true(self):
+        result = run("n = 3\nwhile n > 1:\n    n -= 1\nif n == 0:\n    x = 1\nelif n == 1:\n    x = 2\n")
+        checks = {c["line"]: c for c in result["checks"]}
+        self.assertEqual([checks[k]["kind"] for k in (2, 4, 6)], ["while", "if", "elif"])
+        outcomes = [st["ran"][str(checks[2]["id"])][0] for st in result["steps"] if str(checks[2]["id"]) in st.get("ran", {})]
+        self.assertEqual(outcomes, ["True", "True", "False"])
+        [block] = result["blocks"]
+        self.assertEqual((block["line"], block["end"], block["kind"], block["check"]), (2, 3, "while", checks[2]["id"]))
+
+    def test_for_loops_record_how_many_passes_they_make(self):
+        result = run("nums = [5, 6, 7]\nfor n in nums:\n    pass\nfor i in range(4):\n    pass\n")
+        lengths = [st["ran"][str(b["id"])][1] for b in result["blocks"] for st in result["steps"] if str(b["id"]) in st.get("ran", {})]
+        self.assertEqual(lengths, [3, 4])
+
+    def test_grid_cells_and_heaps_are_found(self):
+        result = run("import heapq\ngrid = [[1]]\nr = c = 0\nx = grid[r][c]\nh = []\nheapq.heappush(h, 2)\n")
+        self.assertEqual(result["cells"], [{"row": "r", "col": "c", "target": "grid"}])
+        self.assertEqual(result["heaps"], ["h"])
+
+    def test_steps_carry_the_call_stack_and_what_calls_gave_back(self):
+        result = run("def f(n):\n    if n == 0:\n        return 7\n    got = f(n - 1)\n    return got\nx = f(1)\n")
+        deepest = max((st for st in result["steps"] if st.get("stack")), key=lambda st: len(st["stack"]))
+        self.assertEqual([(c["func"], c.get("args")) for c in deepest["stack"]], [("<module>", None), ("f", "n=1"), ("f", "n=0")])
+        self.assertEqual(deepest["stack"][1]["line"], 4)
+        returned = [st["returned"] for st in result["steps"] if st.get("returned")]
+        self.assertEqual(returned, [{"func": "f", "value": ["7", 7]}, {"func": "f", "value": ["7", 7]}])
+
+    def test_a_call_that_raises_gives_nothing_back(self):
+        result = run("def f():\n    raise ValueError()\ntry:\n    f()\nexcept ValueError:\n    x = 1\n")
+        self.assertFalse([st for st in result["steps"] if st.get("returned")])

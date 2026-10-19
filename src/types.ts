@@ -134,9 +134,15 @@ export interface LoopBlock {
   line: number
   end: number
   kind: 'for' | 'while'
+  /** The line it steps on before each pass, when not its first line (the `while` of a do-while). */
+  head?: number
+  /** Its test's check id (see CheckPlan): a check that came out false means the loop is over. */
+  check?: number
+  /** The body runs once before the first check (do-while). */
+  bodyFirst?: boolean
   id?: number
-  /** The counter's start and the limit it is checked against, as part ids, and how it moves. */
-  count?: { from: number; to: number; step: 1 | -1; inclusive: boolean }
+  /** The counter's start and the limit it is checked against (part ids, or the limit itself when written as a number), and how it moves. */
+  count?: { from: number; to: number | { value: number }; step: 1 | -1; inclusive: boolean }
 }
 
 /** `grid[r][c]`: the row and column variables that point at a cell of `target`. */
