@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type Ref } from 'react'
 import { loadHistory, saveHistory, type ChatMessage } from './history'
 import type { Language } from '../types'
+import { refExists, refLabel, splitRefs, takeTour, type Ref as ScreenRef, type RefContext, type TourStop, type ViewSummary } from './refs'
 
 const PASSCODE_KEY = 'chat-passcode'
 
@@ -23,11 +24,23 @@ export function Chat({
   problem,
   onInsert,
   inputRef,
+  view,
+  refContext,
+  onPoint,
+  onShowMe,
 }: {
   code: string
   language: Language
   problem: string | null
   onInsert: (code: string) => void
+  /** What the visualizer shows, sent along so Claude can name real steps and variables. */
+  view: ViewSummary
+  /** What exists on screen, so references to anything else render as plain words. */
+  refContext: RefContext
+  /** A reference chip was clicked: light that thing up. */
+  onPoint: (ref: ScreenRef) => void
+  /** Show me was pressed: walk the pointer through these stops, starting from the button. */
+  onShowMe: (stops: TourStop[], from: { x: number; y: number }) => void
   /** The question box, so a shortcut can jump to it. */
   inputRef?: Ref<HTMLInputElement>
 }) {
@@ -63,7 +76,7 @@ export function Chat({
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-chat-passcode': encodeURIComponent(passcode) },
-        body: JSON.stringify({ messages: history, code, language, problem }),
+        body: JSON.stringify({ messages: history, code, language, problem, view }),
       })
       if (res.status === 401) {
         setNeedsPasscode(true)
@@ -105,7 +118,14 @@ export function Chat({
         {messages.map((m, i) => (
           <div key={i} className={`msg msg-${m.role}`}>
             {m.role === 'assistant' ? (
-              <AssistantText text={m.content} onInsert={onInsert} pending={busy && i === messages.length - 1} />
+              <AssistantText
+                text={m.content}
+                onInsert={onInsert}
+                pending={busy && i === messages.length - 1}
+                refContext={refContext}
+                onPoint={onPoint}
+                onShowMe={onShowMe}
+              />
             ) : (
               m.content
             )}
@@ -168,20 +188,65 @@ export function Chat({
   )
 }
 
-/** Render prose with ```fenced``` code blocks, each with an Insert button. */
-function AssistantText({ text, onInsert, pending }: { text: string; onInsert: (code: string) => void; pending: boolean }) {
+/**
+ * Render prose with ```fenced``` code blocks, each with an Insert button. [[References]] to the
+ * screen become chips, and a ```tour block becomes a Show me button.
+ */
+function AssistantText({
+  text,
+  onInsert,
+  pending,
+  refContext,
+  onPoint,
+  onShowMe,
+}: {
+  text: string
+  onInsert: (code: string) => void
+  pending: boolean
+  refContext: RefContext
+  onPoint: (ref: ScreenRef) => void
+  onShowMe: (stops: TourStop[], from: { x: number; y: number }) => void
+}) {
   if (!text && pending) return <span className="muted">Thinking…</span>
+  const { body, stops } = takeTour(text)
+  // Stops for things that aren't there (an old run, a line since deleted) are skipped.
+  const tour = stops.filter((s) => refExists(s.ref, refContext))
   return (
     <>
-      {splitFences(text).map((part, i) =>
+      {splitFences(body).map((part, i) =>
         part.code !== undefined ? (
           <div key={i} className="chat-code">
             <pre>{part.code}</pre>
             {part.closed && <button onClick={() => onInsert(part.code!)}>Insert</button>}
           </div>
         ) : (
-          <p key={i}>{part.text}</p>
+          <p key={i}>
+            {splitRefs(part.text!).map((p, j) =>
+              'text' in p ? (
+                p.text
+              ) : refExists(p.ref, refContext) ? (
+                <button key={j} className={`ref-chip ref-${p.ref.kind}`} onClick={() => onPoint(p.ref)} title="Show where this is">
+                  {refLabel(p.ref)}
+                </button>
+              ) : (
+                <span key={j} className="ref-gone" title="Not on screen any more">
+                  {refLabel(p.ref)}
+                </span>
+              ),
+            )}
+          </p>
         ),
+      )}
+      {!pending && tour.length > 0 && (
+        <button
+          className="show-me"
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect()
+            onShowMe(tour, { x: r.left + r.width / 2, y: r.top + r.height / 2 })
+          }}
+        >
+          👆 Show me
+        </button>
       )}
     </>
   )

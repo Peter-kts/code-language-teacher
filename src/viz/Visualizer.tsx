@@ -265,7 +265,7 @@ function Variables({
       {heapOwned
         .filter((h) => h.owner)
         .map((h) => (
-          <div key={h.name} className="list">
+          <div key={h.name} className="list" data-target={`var:${h.name}`}>
             <div className="list-name">
               {h.name} <span className="muted">(heap)</span>
             </div>
@@ -296,7 +296,7 @@ function Variables({
           const old = prevStep?.vars[name]
           if (!g) return null
           return (
-            <div key={name} className="list">
+            <div key={name} className="list" data-target={`var:${name}`}>
               <div className="list-name">
                 {name} <span className="muted">({g.nodes.length} nodes, {g.undirected ? 'two-way edges' : 'arrows show direction'})</span>
                 {notes(name, shapes[name])}
@@ -313,7 +313,7 @@ function Variables({
         }
         if (value.type !== 'list' && value.type !== 'tuple') return null
         return (
-          <div key={name} className="list">
+          <div key={name} className="list" data-target={`var:${name}`}>
             <div className="list-name">
               {name} <span className="muted">({value.items.length} interval{value.items.length === 1 ? '' : 's'})</span>
               {notes(name, shapes[name])}
@@ -367,7 +367,7 @@ function Variables({
             const color = shown.has(name) ? colorOf(name) : undefined
             const cls = ['var-card', change && 'changed', sources.has(name) && 'source'].filter(Boolean).join(' ')
             return (
-              <div key={name} className={cls} style={color ? ({ '--var-color': color } as CSSProperties) : undefined}>
+              <div key={name} className={cls} data-target={`var:${name}`} style={color ? ({ '--var-color': color } as CSSProperties) : undefined}>
                 {sources.has(name) && <span key={`p${tick}`} className="var-pulse" aria-hidden />}
                 <div className="var-name">
                   {name}
@@ -595,7 +595,7 @@ function ListView({
   const columns = slots.map((s) => (isGap(s) ? '2.4rem' : kind === 'string' ? '2.1rem' : '3.25rem')).join(' ')
   const label = kind === 'string' ? 'string' : kind === 'set' ? (value.t === 'Set' ? 'Set' : 'set') : null
   return (
-    <div className={`list${kind === 'string' ? ' string' : ''}`}>
+    <div className={`list${kind === 'string' ? ' string' : ''}`} data-target={`var:${name}`}>
       <div className="list-name">
         {name}
         {label && <span className="muted"> ({label}{kind === 'string' ? `, ${value.items.length} letters` : ''})</span>}
@@ -683,7 +683,7 @@ function DictView({
 }) {
   if (value.type !== 'dict') return null
   return (
-    <div className="dict">
+    <div className="dict" data-target={`var:${name}`}>
       <div className="list-name">
         {name} <span className="muted">({value.t ?? 'dict'})</span>
         {notes}
@@ -781,7 +781,7 @@ function GridView({
   const rowRead = (r: number) => reads.some((x) => x.item === String(r) && x.col === undefined) && !reads.some((x) => x.item === String(r) && x.col !== undefined)
   const unique = <T extends { label: string; index: number }>(xs: T[]) => xs.filter((x, i) => xs.findIndex((y) => y.label === x.label) === i)
   return (
-    <div className="list grid">
+    <div className="list grid" data-target={`var:${name}`}>
       <div className="list-name">
         {name} <span className="muted">({rows.length} × {width})</span>
         {notes}

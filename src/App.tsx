@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type * as monaco from 'monaco-editor/editor/editor.api'
@@ -14,6 +14,9 @@ import { ConsolePanel } from './console/ConsolePanel'
 import { SyntaxHelper } from './syntax/SyntaxHelper'
 import { CodeHover } from './syntax/CodeHover'
 import { Chat } from './chat/Chat'
+import { PointerFlash, PointerTour, type Pointing } from './chat/PointerTour'
+import type { Ref, RefContext, TourStop, ViewSummary } from './chat/refs'
+import { CARDS } from './syntax/cards'
 import { DIFFICULTIES, PROBLEM_TOPICS, PROBLEMS, type Problem } from './problems/problems'
 import { ProblemPanel } from './problems/ProblemPanel'
 import { loadSolutions, saveSolution, type Solutions } from './problems/solutions'
@@ -162,7 +165,7 @@ export default function App() {
   const step = steps[shownStep]
   const prevStep = previousInFrame(steps, shownStep)
   const history = useMemo(() => (trace && !covered ? buildHistory(trace.steps, trace) : []), [trace, covered])
-  const variables = useMemo(() => new Set(steps.flatMap((s) => Object.keys(s.vars))), [trace])
+  const variables = useMemo(() => new Set(steps.flatMap((s) => Object.keys(s.vars))), [trace, covered])
 
   // What the step buttons and the keyboard shortcuts do (keys in src/shortcuts.ts).
   const stepTo = (next: (i: number) => number) => {
@@ -314,6 +317,79 @@ export default function App() {
     action('askClaude', 'Ask Claude', [KeyMod.CtrlCmd | KeyCode.KeyI])
     action('showShortcuts', 'Keyboard shortcuts')
   }
+
+  // Pointing at things for the chat: its [[references]] and the Show me tour (src/chat/refs.ts).
+  const glossaryIds = useMemo(() => CARDS[language].map((c) => c.id), [language])
+  const refContext: RefContext = useMemo(
+    () => ({ lineCount: code.split('\n').length, stepCount: steps.length, vars: variables, glossary: new Set(glossaryIds) }),
+    [code, steps.length, variables, glossaryIds],
+  )
+  const view: ViewSummary = { step: steps.length ? shownStep + 1 : 0, steps: steps.length, vars: [...variables], glossary: glossaryIds }
+  const [flash, setFlash] = useState<{ ref: Ref; n: number } | null>(null)
+  const [tour, setTour] = useState<{ stops: TourStop[]; from: { x: number; y: number }; panel: typeof sidePanel } | null>(null)
+  const endFlash = useCallback(() => setFlash(null), [])
+  // App owns the editor, steps and tabs, so it is the one that knows where each thing is.
+  const placesRef = useRef({ steps, shownStep })
+  placesRef.current = { steps, shownStep }
+  const pointing: Pointing = useMemo(() => {
+    const element = (ref: Ref): Element | null => {
+      switch (ref.kind) {
+        case 'var':
+          return document.querySelector(`.viz-pane [data-target="var:${CSS.escape(ref.arg)}"]`)
+        case 'step':
+          return document.querySelector('.viz-pane .controls')
+        case 'console':
+          return document.querySelector('.console-dock')
+        default:
+          return document.querySelector('.syntax-pane')
+      }
+    }
+    const shown = (r: DOMRect | null) => (r && r.width > 0 && r.height > 0 ? r : null)
+    const locate = (ref: Ref): DOMRect | null => {
+      if (ref.kind !== 'line') return shown(element(ref)?.getBoundingClientRect() ?? null)
+      const editor = editorRef.current
+      const model = editor?.getModel()
+      const n = Number(ref.arg)
+      if (!editor || !model || n > model.getLineCount()) return null
+      const start = editor.getScrolledVisiblePosition({ lineNumber: n, column: model.getLineFirstNonWhitespaceColumn(n) || 1 })
+      const end = editor.getScrolledVisiblePosition({ lineNumber: n, column: model.getLineMaxColumn(n) })
+      const box = editor.getDomNode()?.getBoundingClientRect()
+      if (!start || !end || !box || start.top < 0 || start.top > box.height) return null
+      return shown(new DOMRect(box.left + start.left, box.top + start.top, Math.max(end.left - start.left, 24), start.height))
+    }
+    const settle = () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())))
+    return {
+      locate,
+      async reveal(ref) {
+        const { steps, shownStep } = placesRef.current
+        if (ref.kind === 'step' || ref.kind === 'var') setPlaying(false)
+        if (ref.kind === 'step') setStepIndex(Number(ref.arg) - 1)
+        if (ref.kind === 'var' && !(ref.arg in (steps[shownStep]?.vars ?? {}))) {
+          // Not alive at this step: go to the nearest step where it is.
+          const near = steps
+            .map((s, i) => (ref.arg in s.vars ? i : -1))
+            .filter((i) => i >= 0)
+            .sort((a, b) => Math.abs(a - shownStep) - Math.abs(b - shownStep))[0]
+          if (near !== undefined) setStepIndex(near)
+        }
+        if (ref.kind === 'history') setSidePanel('history')
+        if (ref.kind === 'glossary') {
+          setGlossaryFocus(ref.arg)
+          setSidePanel('cards')
+        }
+        await settle()
+        if (ref.kind === 'line') {
+          const editor = editorRef.current
+          editor?.getDomNode()?.scrollIntoView({ block: 'nearest' })
+          editor?.revealLineInCenterIfOutsideViewport(Number(ref.arg))
+        } else {
+          element(ref)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+        }
+        await settle()
+        return locate(ref)
+      },
+    }
+  }, [])
 
   const insert = (snippet: string) => {
     const editor = editorRef.current
@@ -621,7 +697,20 @@ export default function App() {
             </div>
             {/* Keep the chat mounted so switching tabs doesn't lose the conversation. */}
             <div hidden={sidePanel !== 'chat'} className="side-body">
-              <Chat code={code} language={language} problem={problem?.title ?? null} onInsert={insert} inputRef={chatInputRef} />
+              <Chat
+                code={code}
+                language={language}
+                problem={problem?.title ?? null}
+                onInsert={insert}
+                inputRef={chatInputRef}
+                view={view}
+                refContext={refContext}
+                onPoint={(ref) => setFlash((f) => ({ ref, n: (f?.n ?? 0) + 1 }))}
+                onShowMe={(stops, from) => {
+                  setFlash(null)
+                  setTour({ stops, from, panel: sidePanel })
+                }}
+              />
             </div>
             {sidePanel === 'history' && (
               <div className="side-body">
@@ -648,6 +737,19 @@ export default function App() {
           </section>
         </main>
       </div>
+      {flash && <PointerFlash key={flash.n} target={flash.ref} pointing={pointing} onDone={endFlash} />}
+      {tour && (
+        <PointerTour
+          stops={tour.stops}
+          origin={tour.from}
+          pointing={pointing}
+          onClose={() => {
+            // Back to the tab the tour started on (the chat), if a stop opened History or the Glossary.
+            setSidePanel(tour.panel)
+            setTour(null)
+          }}
+        />
+      )}
       <ShortcutsDialog dialogRef={shortcutsRef} />
       <TapTip />
     </div>

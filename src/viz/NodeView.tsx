@@ -128,6 +128,7 @@ export function NodeView({
                   <text
                     key={name}
                     className="node-name"
+                    data-target={`var:${name}`}
                     x={p.x + (tree ? TREE.r : (LIST.box - 18) / 2)}
                     y={p.y - 6 - i * 13}
                     textAnchor="middle"
