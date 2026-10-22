@@ -85,3 +85,12 @@ export const AutoLayoutIcon = () => (
     <rect x="16" y="4" width="5" height="16" rx="1.5" />
   </Icon>
 )
+
+// Background switch: a framed picture of hills and a sun.
+export const PictureIcon = () => (
+  <Icon>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <circle cx="9" cy="10" r="1.6" />
+    <path d="m4 18 5-5 3 3 3-4 5 6" />
+  </Icon>
+)

@@ -3,8 +3,9 @@ import { flushSync } from 'react-dom'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type * as monaco from 'monaco-editor/editor/editor.api'
 import { EDITOR_THEME } from './monaco'
-import { GalaxyBackground } from './galaxy/GalaxyBackground'
-import { AutoLayoutIcon, ColumnsIcon, KeyboardIcon, PauseIcon, PlayIcon, RowsIcon, SkipBackIcon, SkipForwardIcon, StepBackIcon, StepForwardIcon } from './icons'
+import { Background, useTodaysScene } from './backgrounds/Background'
+import { loadBackgroundMode, saveBackgroundMode, type BackgroundMode } from './backgrounds/scenes'
+import { AutoLayoutIcon, ColumnsIcon, KeyboardIcon, PauseIcon, PictureIcon, PlayIcon, RowsIcon, SkipBackIcon, SkipForwardIcon, StepBackIcon, StepForwardIcon } from './icons'
 import { useRunner } from './runner/useRunner'
 import { Visualizer } from './viz/Visualizer'
 import { findNames, previousInFrame, stepRoles } from './viz/changes'
@@ -104,6 +105,13 @@ export default function App() {
   // Each language keeps its own code, so switching back finds the code where it was left.
   // Code that passes every test is saved per problem and language, and reopens on the next visit.
   const [solutions, setSolutions] = useState(loadSolutions)
+  const [background, setBackground] = useState<BackgroundMode>(loadBackgroundMode)
+  const todaysScene = useTodaysScene()
+  const toggleBackground = () => {
+    const next = background === 'daily' ? 'galaxy' : 'daily'
+    setBackground(next)
+    saveBackgroundMode(next)
+  }
   const [codeByMode, setCodeByMode] = useState(() => startingCode(solutions))
   const [caseIndex, setCaseIndex] = useState(0)
   const layout = usePaneLayout()
@@ -404,8 +412,8 @@ export default function App() {
     status === 'loading' ? (language === 'python' ? 'Loading Python…' : 'Starting…') : status === 'running' ? 'Running…' : error ? 'Error' : 'Up to date'
 
   return (
-    <div className="app">
-      <GalaxyBackground />
+    <div className={background === 'daily' ? 'app pixel-bg' : 'app'}>
+      <Background mode={background} scene={todaysScene} />
       <span className="tick tl" aria-hidden="true" />
       <span className="tick tr" aria-hidden="true" />
       <span className="tick bl" aria-hidden="true" />
@@ -494,6 +502,19 @@ export default function App() {
                 </button>
               ))}
             </div>
+            <button
+              className={background === 'daily' ? 'icon-btn bg-btn active' : 'icon-btn bg-btn'}
+              aria-pressed={background === 'daily'}
+              aria-label="Daily pixel background"
+              title={
+                background === 'daily'
+                  ? `Background: ${todaysScene.title}, a new pixel scene each day. Click for the galaxy.`
+                  : "Background: the galaxy. Click for today's pixel scene."
+              }
+              onClick={toggleBackground}
+            >
+              <PictureIcon />
+            </button>
             <button
               className="icon-btn keys-btn"
               onClick={commands.showShortcuts}
