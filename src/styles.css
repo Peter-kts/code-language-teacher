@@ -54,6 +54,24 @@ strong { font-weight: 500; }
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
+/* ---------- Daily pixel scene (src/backgrounds) ---------- */
+/* Sized in JS to a whole number of screen pixels per art pixel; pixelated keeps the edges sharp. */
+.pixel-sky {
+  position: fixed; z-index: 0; display: block; max-width: none; pointer-events: none;
+  image-rendering: pixelated; image-rendering: crisp-edges;
+  opacity: 0; transition: opacity 1.2s var(--ease);
+}
+.pixel-sky.ready { opacity: 1; }
+@supports (image-rendering: pixelated) { .pixel-sky { image-rendering: pixelated; } }
+/* Darker toward the edges, where the frame's corner ticks and labels sit. */
+.pixel-shade {
+  position: fixed; inset: 0; z-index: 1; pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(5, 4, 10, 0.55) 100%);
+}
+/* Over a pixel scene the glass only frosts lightly, so the scene reads through the panes; the tint
+   and the scene's own dimming keep the text on them readable. */
+.app.pixel-bg .pane, .app.pixel-bg .top { -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+
 /* ---------- Frame ---------- */
 .app { position: relative; height: 100vh; height: 100dvh; padding: var(--gutter); }
 .frame {
@@ -504,6 +522,8 @@ button.console-at:hover { color: var(--accent); background: none; box-shadow: no
 
 /* ---------- Keyboard shortcuts: header button and the ? cheat sheet ---------- */
 .keys-btn { align-self: center; margin-right: 0.75rem; width: 1.8rem; height: 1.8rem; }
+.bg-btn { align-self: center; margin-right: 0.3rem; width: 1.8rem; height: 1.8rem; }
+.bg-btn.active { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 
 /* ---------- Layout switch (header): auto / side by side / stacked ---------- */
 .layout-switch { display: flex; align-items: center; gap: 0.2rem; margin-right: 0.75rem; }
@@ -618,7 +638,7 @@ kbd {
 /* "Coarse" means the main pointer is a finger, not a mouse. Fingers need bigger
    targets (about 44px), so buttons and divider handles grow on touch screens only. */
 @media (pointer: coarse) {
-  .icon-btn, .layout-switch .icon-btn, .keys-btn { width: 2.6rem; height: 2.6rem; }
+  .icon-btn, .layout-switch .icon-btn, .keys-btn, .bg-btn { width: 2.6rem; height: 2.6rem; }
   .play-btn { width: 2.9rem; height: 2.9rem; }
   .tab, .problem-select { padding-top: 0.6rem; padding-bottom: 0.6rem; }
   /* A phone or tablet without a keyboard has no use for the shortcuts list. */
