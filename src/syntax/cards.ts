@@ -595,6 +595,17 @@ export const PYTHON_CARDS: SyntaxCard[] = [
     code: 'nums = [4, 1, 3, 1, 2]\nnums.sort()\nhas_dup = any(nums[i] == nums[i + 1] for i in range(len(nums) - 1))\n',
   },
   {
+    id: 'simple-sorts',
+    title: 'Bubble, selection and insertion sort',
+    topic: 'patterns',
+    level: 3,
+    questions: ['transform', 'solve'],
+    keywords: ['sort', 'sorting', 'bubble', 'selection', 'insertion', 'swap', 'neighbors', 'in', 'place', 'algorithm', 'pattern'],
+    explanation:
+      'Three simple ways to sort a list yourself. Bubble sort swaps neighbors that are out of order, so big items bubble to the end. Selection sort finds the smallest of the rest and swaps it into place. Insertion sort slides each item left past the bigger ones. All three compare pairs again and again, so they are O(n²), but they sort in place with O(1) extra memory.',
+    code: 'nums = [5, 2, 4, 1]\n# insertion sort: slide each item left past bigger ones\nfor i in range(1, len(nums)):\n    j = i\n    while j > 0 and nums[j - 1] > nums[j]:\n        nums[j - 1], nums[j] = nums[j], nums[j - 1]   # swap\n        j -= 1\n# nums is [1, 2, 4, 5]\n',
+  },
+  {
     id: 'intervals',
     title: 'Merging intervals',
     topic: 'patterns',
@@ -869,6 +880,39 @@ export const PYTHON_CARDS: SyntaxCard[] = [
     explanation:
       'When the answer depends on two things, like two strings, keep a table. Each cell comes from cells already filled: the one above, to the left, or on the diagonal. Here dp[i][j] is the longest common subsequence of the first i letters of a and the first j of b.',
     code: 'a, b = "abcde", "ace"\ndp = [[0] * (len(b) + 1) for _ in range(len(a) + 1)]\nfor i in range(1, len(a) + 1):\n    for j in range(1, len(b) + 1):\n        if a[i - 1] == b[j - 1]:\n            dp[i][j] = dp[i - 1][j - 1] + 1              # diagonal\n        else:\n            dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])   # above or left\nanswer = dp[len(a)][len(b)]    # 3\n',
+  },
+  {
+    id: 'divide-and-conquer',
+    title: 'Divide and conquer: merge sort and quicksort',
+    topic: 'patterns',
+    level: 4,
+    questions: ['solve', 'transform'],
+    keywords: ['divide', 'conquer', 'merge', 'sort', 'quicksort', 'quick', 'pivot', 'split', 'halves', 'recursion', 'log', 'pattern'],
+    explanation:
+      'Split the problem into smaller pieces, solve each piece the same way (recursion), then combine the answers. Merge sort cuts a list in half, sorts both halves, and merges them with two pointers. Halving takes log n levels, and each level touches all n items, so it is O(n log n). Quicksort splits around a pivot instead: smaller items to the left, bigger ones to the right.',
+    code: 'def merge_sort(a):\n    if len(a) <= 1:\n        return a                     # already sorted\n    mid = len(a) // 2\n    left = merge_sort(a[:mid])       # divide\n    right = merge_sort(a[mid:])\n    out, i, j = [], 0, 0             # combine: merge two sorted lists\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            out.append(left[i])\n            i += 1\n        else:\n            out.append(right[j])\n            j += 1\n    return out + left[i:] + right[j:]\n\nresult = merge_sort([5, 2, 4, 1, 3])\n',
+  },
+  {
+    id: 'binary-search-boundary',
+    title: 'Binary search for a boundary',
+    topic: 'patterns',
+    level: 4,
+    questions: ['find', 'solve'],
+    keywords: ['binary', 'search', 'boundary', 'first', 'last', 'lower', 'bound', 'insert', 'answer', 'smallest', 'minimum', 'rotated', 'pattern'],
+    explanation:
+      'Binary search can find where something changes, not just an exact match: the first index where nums[i] >= target, the lowest point of a rotated list, or the smallest speed that is fast enough ("binary search on the answer"). Keep lo and hi so the boundary is always between them, and stop when they meet.',
+    code: 'nums = [1, 3, 3, 3, 8]\ntarget = 3\n# the first index where nums[i] >= target\nlo, hi = 0, len(nums)\nwhile lo < hi:\n    mid = (lo + hi) // 2\n    if nums[mid] < target:\n        lo = mid + 1    # the boundary is to the right of mid\n    else:\n        hi = mid        # mid might be it, so keep it\nfirst = lo    # 1\n',
+  },
+  {
+    id: 'subset-sum',
+    title: 'Subset sums (0/1 knapsack)',
+    topic: 'patterns',
+    level: 4,
+    questions: ['solve', 'remember'],
+    keywords: ['subset', 'sum', 'knapsack', 'partition', 'reachable', 'target', 'pick', 'dp', 'dynamic', 'programming', 'pattern'],
+    explanation:
+      'Can some of the items add up to a target, using each one at most once? Keep track of which sums you can reach. Each new item can be added to every sum already reachable. A list of True and False for the sums 0 to target, walked from the top down so an item is not used twice, makes it O(n · target) instead of trying all 2ⁿ picks.',
+    code: 'nums = [1, 5, 11, 5]\ntarget = 11\ncan = [False] * (target + 1)\ncan[0] = True                      # picking nothing adds up to 0\nfor n in nums:\n    for s in range(target, n - 1, -1):   # top down: each item once\n        if can[s - n]:\n            can[s] = True\nanswer = can[target]    # True: 11, or 1 + 5 + 5\n',
   },
 ]
 

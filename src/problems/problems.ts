@@ -1,5 +1,6 @@
 import type { Language, NodeIo } from '../types'
 import { ADVANCED } from './sets/advanced'
+import { ALGORITHMS } from './sets/algorithms'
 import { GRAPHS } from './sets/graphs'
 import { LINKED } from './sets/linked'
 import { PATTERNS } from './sets/patterns'
@@ -36,6 +37,7 @@ export type ProblemTopic =
   | 'two-pointers'
   | 'sliding-window'
   | 'stack'
+  | 'sorting'
   | 'binary-search'
   | 'intervals'
   | 'dp-1d'
@@ -53,6 +55,7 @@ export const PROBLEM_TOPICS: { id: ProblemTopic; label: string }[] = [
   { id: 'two-pointers', label: 'Two pointers' },
   { id: 'sliding-window', label: 'Sliding window' },
   { id: 'stack', label: 'Stack' },
+  { id: 'sorting', label: 'Sorting' },
   { id: 'binary-search', label: 'Binary search' },
   { id: 'intervals', label: 'Intervals' },
   { id: 'dp-1d', label: 'Greedy and 1D dynamic programming' },
@@ -872,4 +875,4 @@ const FIRST: Problem[] = [
   },
 ]
 
-export const PROBLEMS: Problem[] = [...FIRST, ...PATTERNS, ...LINKED, ...GRAPHS, ...ADVANCED]
+export const PROBLEMS: Problem[] = [...FIRST, ...PATTERNS, ...LINKED, ...GRAPHS, ...ADVANCED, ...ALGORITHMS]
