@@ -11,6 +11,7 @@ export type Command =
   | 'askClaude'
   | 'focusEditor'
   | 'showShortcuts'
+  | 'toggleTopBar'
   | 'save'
 
 /** Where a key was pressed, which decides whether a plain key is ours or the page's. */
@@ -68,6 +69,8 @@ export function commandFor(e: KeyPress, where: FocusKind, platform: Platform = P
   if (typing) return null
   if (e.key === '?') return 'showShortcuts'
   if (e.shiftKey) return null
+  // F for "full", like a video player's full-screen key.
+  if (isLetter(e, 'f')) return 'toggleTopBar'
   // A focused slider already steps with the arrows, Home and End.
   const slider = where === 'range'
   switch (e.key) {
@@ -121,6 +124,7 @@ export const SHORTCUT_SECTIONS: { title: string; note?: string; rows: ShortcutRo
       { command: 'askClaude', label: 'Ask Claude', keys: ['Mod+I'] },
       { label: 'Back to the code', keys: ['Esc'] },
       { command: 'showShortcuts', label: 'This list', keys: ['?'] },
+      { command: 'toggleTopBar', label: 'Hide / show the top bar', keys: ['F'] },
       { label: 'All editor commands', keys: ['F1'] },
       { label: 'Tab leaves the editor (on/off)', keys: { pc: ['Ctrl+M'], mac: ['Ctrl+Shift+M'] } },
     ],

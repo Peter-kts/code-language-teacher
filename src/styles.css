@@ -525,6 +525,24 @@ button.console-at:hover { color: var(--accent); background: none; box-shadow: no
 .bg-btn { align-self: center; margin-right: 0.3rem; width: 1.8rem; height: 1.8rem; }
 .bg-btn.active { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 
+/* ---------- More room: hide the top bar, and the tab that brings it back ---------- */
+.hide-top-btn { align-self: center; margin-right: 0.3rem; width: 1.8rem; height: 1.8rem; }
+/* A small tab hanging from the top edge of the frame, in the right corner where the panes have
+   the least going on. It carries the status light, since the status text went with the bar. */
+.top-restore {
+  position: absolute; z-index: 6; top: -1px; right: 0.9rem;
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  height: 1.5rem; padding: 0 0.5rem;
+  border: 1px solid var(--line-strong); border-top: 0; border-radius: 0 0 10px 10px;
+  background: rgba(13, 10, 26, 0.85); color: var(--muted);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+:where(.top-restore)::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--pass); box-shadow: 0 0 8px var(--pass);
+}
+.top-restore:hover:not(:disabled) { background: var(--accent-soft); color: var(--text); border-color: var(--accent); }
+
 /* ---------- Layout switch (header): auto / side by side / stacked ---------- */
 .layout-switch { display: flex; align-items: center; gap: 0.2rem; margin-right: 0.75rem; }
 .layout-switch .icon-btn { width: 1.8rem; height: 1.8rem; }
@@ -591,7 +609,7 @@ kbd {
 
 @media (prefers-reduced-motion: reduce) {
   .sky { transition: none; }
-  .status::before { animation: none !important; }
+  .status::before, .top-restore::before { animation: none !important; }
   .var-old, .var-pulse { display: none; }
   .var-new { animation: none; }
   .var-delta { animation: none; }
@@ -638,7 +656,8 @@ kbd {
 /* "Coarse" means the main pointer is a finger, not a mouse. Fingers need bigger
    targets (about 44px), so buttons and divider handles grow on touch screens only. */
 @media (pointer: coarse) {
-  .icon-btn, .layout-switch .icon-btn, .keys-btn, .bg-btn { width: 2.6rem; height: 2.6rem; }
+  .icon-btn, .layout-switch .icon-btn, .keys-btn, .bg-btn, .hide-top-btn { width: 2.6rem; height: 2.6rem; }
+  .top-restore { height: 2.2rem; padding: 0 0.8rem; }
   .play-btn { width: 2.9rem; height: 2.9rem; }
   .tab, .problem-select { padding-top: 0.6rem; padding-bottom: 0.6rem; }
   /* A phone or tablet without a keyboard has no use for the shortcuts list. */

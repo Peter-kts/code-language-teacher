@@ -19,6 +19,15 @@ describe('commandFor', () => {
     expect(commandFor(press('Home'), 'other', 'win')).toBe('firstStep')
     expect(commandFor(press('End'), 'other', 'win')).toBe('lastStep')
     expect(commandFor(press('?', { shiftKey: true }), 'other', 'win')).toBe('showShortcuts')
+    expect(commandFor(press('f'), 'other', 'win')).toBe('toggleTopBar')
+    expect(commandFor(press('f'), 'button', 'mac')).toBe('toggleTopBar')
+  })
+
+  it('leaves F alone while typing, and with modifiers (Ctrl+F is find)', () => {
+    for (const where of ['text', 'sideText', 'editor'] as const) expect(commandFor(press('f'), where, 'win')).toBeNull()
+    expect(commandFor(press('f', { ctrlKey: true }), 'other', 'win')).toBeNull()
+    expect(commandFor(press('F', { shiftKey: true }), 'other', 'win')).toBeNull()
+    expect(commandFor(press('f', { altKey: true }, 'KeyF'), 'other', 'win')).toBeNull()
   })
 
   it('leaves plain keys to text boxes, and to the editor', () => {

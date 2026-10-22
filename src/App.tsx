@@ -5,7 +5,7 @@ import type * as monaco from 'monaco-editor/editor/editor.api'
 import { EDITOR_THEME } from './monaco'
 import { Background, useTodaysScene } from './backgrounds/Background'
 import { loadBackgroundMode, saveBackgroundMode, type BackgroundMode } from './backgrounds/scenes'
-import { AutoLayoutIcon, ColumnsIcon, KeyboardIcon, PauseIcon, PictureIcon, PlayIcon, RowsIcon, SkipBackIcon, SkipForwardIcon, StepBackIcon, StepForwardIcon } from './icons'
+import { AutoLayoutIcon, CollapseIcon, ColumnsIcon, ExpandIcon, KeyboardIcon, PauseIcon, PictureIcon, PlayIcon, RowsIcon, SkipBackIcon, SkipForwardIcon, StepBackIcon, StepForwardIcon } from './icons'
 import { useRunner } from './runner/useRunner'
 import { Visualizer } from './viz/Visualizer'
 import { findNames, previousInFrame, stepRoles } from './viz/changes'
@@ -25,6 +25,7 @@ import { JS_CONCEPTS } from './problems/concepts'
 import { commandFor, focusKind, withShortcut, type Command } from './shortcuts'
 import { ShortcutsDialog } from './ShortcutsDialog'
 import { TapTip } from './TapTip'
+import { loadTopBarHidden, saveTopBarHidden } from './layout/topBar'
 import { usePaneLayout, type LayoutMode } from './layout/usePaneLayout'
 import type { Language, RunRequest } from './types'
 
@@ -107,6 +108,11 @@ export default function App() {
   const [solutions, setSolutions] = useState(loadSolutions)
   const [background, setBackground] = useState<BackgroundMode>(loadBackgroundMode)
   const todaysScene = useTodaysScene()
+  const [topBarHidden, setTopBarHidden] = useState(loadTopBarHidden)
+  const toggleTopBar = () => {
+    setTopBarHidden(!topBarHidden)
+    saveTopBarHidden(!topBarHidden)
+  }
   const toggleBackground = () => {
     const next = background === 'daily' ? 'galaxy' : 'daily'
     setBackground(next)
@@ -207,6 +213,7 @@ export default function App() {
       if (dialog?.open) dialog.close()
       else dialog?.showModal()
     },
+    toggleTopBar,
     save: () => {},
   }
   // The editor actions and the key listener are set up once; this keeps them current.
@@ -324,6 +331,7 @@ export default function App() {
     action('firstStep', 'First step', [KeyMod.Alt | KeyMod.Shift | KeyCode.Comma])
     action('askClaude', 'Ask Claude', [KeyMod.CtrlCmd | KeyCode.KeyI])
     action('showShortcuts', 'Keyboard shortcuts')
+    action('toggleTopBar', 'Hide / show the top bar')
   }
 
   // Pointing at things for the chat: its [[references]] and the Show me tour (src/chat/refs.ts).
@@ -419,113 +427,134 @@ export default function App() {
       <span className="tick bl" aria-hidden="true" />
       <span className="tick br" aria-hidden="true" />
       <div className="frame">
-        <header className="top">
-          <nav className="tabs">
-            <button className={mode === PLAYGROUND ? 'tab active' : 'tab'} onClick={() => openProblem(PLAYGROUND)}>
-              Playground
-            </button>
-            <select
-              className={problem && !problem.track ? 'problem-select active' : 'problem-select'}
-              value={problem && !problem.track ? problem.id : ''}
-              onChange={(e) => openProblem(e.target.value)}
-              aria-label="Problem"
-            >
-              {(!problem || problem.track) && (
-                <option value="" disabled>
-                  Problems ({PROBLEMS.length})
-                </option>
-              )}
-              {PROBLEM_TOPICS.map((t) => {
-                // Easiest first within a section.
-                const group = PROBLEMS.filter((p) => p.topic === t.id).sort(
-                  (a, b) => DIFFICULTIES.indexOf(a.difficulty) - DIFFICULTIES.indexOf(b.difficulty),
-                )
-                return (
-                  group.length > 0 && (
-                    <optgroup key={t.id} label={t.label}>
-                      {group.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {`${solutions[language][p.id] ? '✓ ' : ''}${p.title} · ${p.difficulty}`}
-                        </option>
-                      ))}
-                    </optgroup>
-                  )
-                )
-              })}
-            </select>
-            {language === 'javascript' && (
+        {topBarHidden ? (
+          // The bar is gone, so this small tab is the way back. It keeps the status light,
+          // so "Loading…" or "Error" still shows while the bar is hidden.
+          <button
+            className={`top-restore status-${error ? 'error' : status}`}
+            onClick={toggleTopBar}
+            aria-label="Show the top bar"
+            title={withShortcut(`Show the top bar · ${statusText}`, 'toggleTopBar')}
+          >
+            <CollapseIcon />
+          </button>
+        ) : (
+          <header className="top">
+            <nav className="tabs">
+              <button className={mode === PLAYGROUND ? 'tab active' : 'tab'} onClick={() => openProblem(PLAYGROUND)}>
+                Playground
+              </button>
               <select
-                className={problem?.track ? 'problem-select concept-select active' : 'problem-select concept-select'}
-                value={problem?.track ? problem.id : ''}
+                className={problem && !problem.track ? 'problem-select active' : 'problem-select'}
+                value={problem && !problem.track ? problem.id : ''}
                 onChange={(e) => openProblem(e.target.value)}
-                aria-label="JavaScript concept"
-                title="How JavaScript itself behaves: closures, references, array methods"
+                aria-label="Problem"
               >
-                {!problem?.track && (
+                {(!problem || problem.track) && (
                   <option value="" disabled>
-                    JS concepts ({JS_CONCEPTS.length})
+                    Problems ({PROBLEMS.length})
                   </option>
                 )}
-                {JS_CONCEPTS.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.kind === 'predict' ? `${p.title} (predict)` : solutions.javascript[p.id] ? `✓ ${p.title}` : p.title}
-                  </option>
-                ))}
+                {PROBLEM_TOPICS.map((t) => {
+                  // Easiest first within a section.
+                  const group = PROBLEMS.filter((p) => p.topic === t.id).sort(
+                    (a, b) => DIFFICULTIES.indexOf(a.difficulty) - DIFFICULTIES.indexOf(b.difficulty),
+                  )
+                  return (
+                    group.length > 0 && (
+                      <optgroup key={t.id} label={t.label}>
+                        {group.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {`${solutions[language][p.id] ? '✓ ' : ''}${p.title} · ${p.difficulty}`}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )
+                  )
+                })}
               </select>
-            )}
-          </nav>
-          <h1 className="wordmark">Code Language Teacher</h1>
-          <div className="top-right">
-            <div className="lang-switch" role="group" aria-label="Language">
-              {LANGUAGES.map((l) => (
-                <button
-                  key={l.id}
-                  className={language === l.id ? 'tab active' : 'tab'}
-                  aria-pressed={language === l.id}
-                  onClick={() => setLanguage(l.id)}
+              {language === 'javascript' && (
+                <select
+                  className={problem?.track ? 'problem-select concept-select active' : 'problem-select concept-select'}
+                  value={problem?.track ? problem.id : ''}
+                  onChange={(e) => openProblem(e.target.value)}
+                  aria-label="JavaScript concept"
+                  title="How JavaScript itself behaves: closures, references, array methods"
                 >
-                  {l.label}
-                </button>
-              ))}
+                  {!problem?.track && (
+                    <option value="" disabled>
+                      JS concepts ({JS_CONCEPTS.length})
+                    </option>
+                  )}
+                  {JS_CONCEPTS.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.kind === 'predict' ? `${p.title} (predict)` : solutions.javascript[p.id] ? `✓ ${p.title}` : p.title}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </nav>
+            <h1 className="wordmark">Code Language Teacher</h1>
+            <div className="top-right">
+              <div className="lang-switch" role="group" aria-label="Language">
+                {LANGUAGES.map((l) => (
+                  <button
+                    key={l.id}
+                    className={language === l.id ? 'tab active' : 'tab'}
+                    aria-pressed={language === l.id}
+                    onClick={() => setLanguage(l.id)}
+                  >
+                    {l.label}
+                  </button>
+                ))}
+              </div>
+              <div className="layout-switch" role="group" aria-label="Layout">
+                {LAYOUT_OPTIONS.map(({ mode: m, label, Icon }) => (
+                  <button
+                    key={m}
+                    className={layout.mode === m ? 'icon-btn active' : 'icon-btn'}
+                    aria-pressed={layout.mode === m}
+                    aria-label={label}
+                    title={label}
+                    onClick={() => layout.setMode(m)}
+                  >
+                    <Icon />
+                  </button>
+                ))}
+              </div>
+              <button
+                className={background === 'daily' ? 'icon-btn bg-btn active' : 'icon-btn bg-btn'}
+                aria-pressed={background === 'daily'}
+                aria-label="Daily pixel background"
+                title={
+                  background === 'daily'
+                    ? `Background: ${todaysScene.title}, a new pixel scene each day. Click for the galaxy.`
+                    : "Background: the galaxy. Click for today's pixel scene."
+                }
+                onClick={toggleBackground}
+              >
+                <PictureIcon />
+              </button>
+              <button
+                className="icon-btn hide-top-btn"
+                onClick={toggleTopBar}
+                aria-label="Hide the top bar for more room"
+                title={withShortcut('Hide the top bar for more room', 'toggleTopBar')}
+              >
+                <ExpandIcon />
+              </button>
+              <button
+                className="icon-btn keys-btn"
+                onClick={commands.showShortcuts}
+                aria-label="Keyboard shortcuts"
+                title={withShortcut('Keyboard shortcuts', 'showShortcuts')}
+              >
+                <KeyboardIcon />
+              </button>
+              <span className={`status status-${error ? 'error' : status}`}>{statusText}</span>
             </div>
-            <div className="layout-switch" role="group" aria-label="Layout">
-              {LAYOUT_OPTIONS.map(({ mode: m, label, Icon }) => (
-                <button
-                  key={m}
-                  className={layout.mode === m ? 'icon-btn active' : 'icon-btn'}
-                  aria-pressed={layout.mode === m}
-                  aria-label={label}
-                  title={label}
-                  onClick={() => layout.setMode(m)}
-                >
-                  <Icon />
-                </button>
-              ))}
-            </div>
-            <button
-              className={background === 'daily' ? 'icon-btn bg-btn active' : 'icon-btn bg-btn'}
-              aria-pressed={background === 'daily'}
-              aria-label="Daily pixel background"
-              title={
-                background === 'daily'
-                  ? `Background: ${todaysScene.title}, a new pixel scene each day. Click for the galaxy.`
-                  : "Background: the galaxy. Click for today's pixel scene."
-              }
-              onClick={toggleBackground}
-            >
-              <PictureIcon />
-            </button>
-            <button
-              className="icon-btn keys-btn"
-              onClick={commands.showShortcuts}
-              aria-label="Keyboard shortcuts"
-              title={withShortcut('Keyboard shortcuts', 'showShortcuts')}
-            >
-              <KeyboardIcon />
-            </button>
-            <span className={`status status-${error ? 'error' : status}`}>{statusText}</span>
-          </div>
-        </header>
+          </header>
+        )}
         <main className={layout.panesClass} ref={layout.panesRef} style={layout.panesStyle}>
           <section className={`pane editor-pane${layout.paneClass(0)}`}>
             {problem && (
