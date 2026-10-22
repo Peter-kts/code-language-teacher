@@ -94,3 +94,16 @@ export const PictureIcon = () => (
     <path d="m4 18 5-5 3 3 3-4 5 6" />
   </Icon>
 )
+
+// Top bar switch: arrows pointing out to the corners for more room, and back in to bring the bar back.
+export const ExpandIcon = () => (
+  <Icon>
+    <path d="M14 4h6v6M10 20H4v-6M20 4l-6.5 6.5M4 20l6.5-6.5" />
+  </Icon>
+)
+
+export const CollapseIcon = () => (
+  <Icon>
+    <path d="M19.5 10.5h-6v-6M4.5 13.5h6v6M13.5 10.5 20 4M10.5 13.5 4 20" />
+  </Icon>
+)
