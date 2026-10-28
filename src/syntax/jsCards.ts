@@ -666,6 +666,17 @@ export const JS_CARDS: SyntaxCard[] = [
     code: 'const nums = [4, 1, 3, 1]\nconst sorted = nums.toSorted((a, b) => a - b)\nlet hasDuplicate = false\nfor (let i = 1; i < sorted.length; i++) {\n  if (sorted[i] === sorted[i - 1]) hasDuplicate = true\n}\n',
   },
   {
+    id: 'simple-sorts',
+    title: 'Bubble, selection and insertion sort',
+    topic: 'patterns',
+    level: 3,
+    questions: ['transform', 'solve'],
+    keywords: ['sort', 'sorting', 'bubble', 'selection', 'insertion', 'swap', 'neighbors', 'in', 'place', 'algorithm'],
+    explanation:
+      'Three simple ways to sort an array yourself. Bubble sort swaps neighbors that are out of order, so big items bubble to the end. Selection sort finds the smallest of the rest and swaps it into place. Insertion sort slides each item left past the bigger ones. All three compare pairs again and again, so they are O(n²), but they sort in place with O(1) extra memory.',
+    code: 'const nums = [5, 2, 4, 1]\n// insertion sort: slide each item left past bigger ones\nfor (let i = 1; i < nums.length; i++) {\n  let j = i\n  while (j > 0 && nums[j - 1] > nums[j]) {\n    ;[nums[j - 1], nums[j]] = [nums[j], nums[j - 1]]   // swap\n    j--\n  }\n}\n// nums is [1, 2, 4, 5]\n',
+  },
+  {
     id: 'group-by',
     title: 'Grouping into a Map of arrays',
     topic: 'patterns',
@@ -941,5 +952,38 @@ export const JS_CARDS: SyntaxCard[] = [
     explanation:
       'When the answer depends on two things, like two strings, keep a table. Each cell comes from cells already filled: the one above, to the left, or on the diagonal. Here dp[i][j] is the longest common subsequence of the first i letters of a and the first j of b.',
     code: 'const a = "abcde"\nconst b = "ace"\nconst dp = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0))\nfor (let i = 1; i <= a.length; i++) {\n  for (let j = 1; j <= b.length; j++) {\n    if (a[i - 1] === b[j - 1]) {\n      dp[i][j] = dp[i - 1][j - 1] + 1               // diagonal\n    } else {\n      dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1])  // above or left\n    }\n  }\n}\nconst answer = dp[a.length][b.length]   // 3\n',
+  },
+  {
+    id: 'divide-and-conquer',
+    title: 'Divide and conquer: merge sort and quicksort',
+    topic: 'patterns',
+    level: 4,
+    questions: ['solve', 'transform'],
+    keywords: ['divide', 'conquer', 'merge', 'sort', 'quicksort', 'quick', 'pivot', 'split', 'halves', 'recursion', 'log'],
+    explanation:
+      'Split the problem into smaller pieces, solve each piece the same way (recursion), then combine the answers. Merge sort cuts an array in half, sorts both halves, and merges them with two pointers. Halving takes log n levels, and each level touches all n items, so it is O(n log n). Quicksort splits around a pivot instead: smaller items to the left, bigger ones to the right.',
+    code: 'function mergeSort(a) {\n  if (a.length <= 1) return a          // already sorted\n  const mid = Math.floor(a.length / 2)\n  const left = mergeSort(a.slice(0, mid))   // divide\n  const right = mergeSort(a.slice(mid))\n  const out = []                       // combine: merge two sorted arrays\n  let i = 0\n  let j = 0\n  while (i < left.length && j < right.length) {\n    if (left[i] <= right[j]) out.push(left[i++])\n    else out.push(right[j++])\n  }\n  return [...out, ...left.slice(i), ...right.slice(j)]\n}\n\nconst result = mergeSort([5, 2, 4, 1, 3])\n',
+  },
+  {
+    id: 'binary-search-boundary',
+    title: 'Binary search for a boundary',
+    topic: 'patterns',
+    level: 4,
+    questions: ['find', 'solve'],
+    keywords: ['binary', 'search', 'boundary', 'first', 'last', 'lower', 'bound', 'insert', 'answer', 'smallest', 'minimum', 'rotated'],
+    explanation:
+      'Binary search can find where something changes, not just an exact match: the first index where nums[i] >= target, the lowest point of a rotated array, or the smallest speed that is fast enough ("binary search on the answer"). Keep lo and hi so the boundary is always between them, and stop when they meet.',
+    code: 'const nums = [1, 3, 3, 3, 8]\nconst target = 3\n// the first index where nums[i] >= target\nlet lo = 0\nlet hi = nums.length\nwhile (lo < hi) {\n  const mid = Math.floor((lo + hi) / 2)\n  if (nums[mid] < target) lo = mid + 1   // the boundary is to the right of mid\n  else hi = mid                          // mid might be it, so keep it\n}\nconst first = lo   // 1\n',
+  },
+  {
+    id: 'subset-sum',
+    title: 'Subset sums (0/1 knapsack)',
+    topic: 'patterns',
+    level: 4,
+    questions: ['solve', 'remember'],
+    keywords: ['subset', 'sum', 'knapsack', 'partition', 'reachable', 'target', 'pick', 'dp', 'dynamic', 'programming'],
+    explanation:
+      'Can some of the items add up to a target, using each one at most once? Keep track of which sums you can reach. Each new item can be added to every sum already reachable. An array of true and false for the sums 0 to target, walked from the top down so an item is not used twice, makes it O(n · target) instead of trying all 2ⁿ picks.',
+    code: 'const nums = [1, 5, 11, 5]\nconst target = 11\nconst can = new Array(target + 1).fill(false)\ncan[0] = true                          // picking nothing adds up to 0\nfor (const n of nums) {\n  for (let s = target; s >= n; s--) {  // top down: each item once\n    if (can[s - n]) can[s] = true\n  }\n}\nconst answer = can[target]   // true: 11, or 1 + 5 + 5\n',
   },
 ]
