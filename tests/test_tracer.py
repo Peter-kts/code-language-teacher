@@ -387,3 +387,27 @@ print(a, ys, zs, ok, w, sq, first, rest, t, s, got, nxt, again, big, len(calls))
         ]
         results = json.loads(run_tests(source, "pair", cases))
         self.assertEqual([r["passed"] for r in results], [True, False])
+
+    def test_wrapped_closures_and_lists_of_closures_show(self):
+        source = (
+            "from functools import wraps\n"
+            "def deco(fn):\n"
+            "    @wraps(fn)\n"
+            "    def wrapper():\n"
+            "        return fn()\n"
+            "    return wrapper\n"
+            "@deco\n"
+            "def hi():\n"
+            "    return 1\n"
+            "hi()\n"
+            "def make():\n"
+            "    return [lambda: i for i in range(2)]\n"
+            "fs = make()\n"
+        )
+        result = run(source)
+        last = result["steps"][-1]["vars"]
+        self.assertIn("fn", last["hi"]["captured"])  # wraps copies the name, but it is still a closure
+        self.assertEqual(last["fs"]["items"][0]["captured"]["i"]["value"], 1)
+        inside = [s for s in result["steps"] if s["func"] == "wrapper"]
+        self.assertIn("fn", inside[0]["vars"])  # the remembered function shows
+        self.assertEqual(inside[0]["captured"], ["fn"])

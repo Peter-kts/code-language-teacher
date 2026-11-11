@@ -606,6 +606,7 @@ print(list(my_zip([1, 2, 3], "ab")))
       { name: 'my_zip stops at the shortest', args: [], run: 'return list(my_zip([1, 2, 3], "ab", (True, False, None)))', expected: [[1, 'a', true], [2, 'b', false]] },
       { name: 'my_zip works on generators', args: [], run: 'return list(my_zip((n * n for n in range(3)), range(10)))', expected: [[0, 0], [1, 1], [4, 2]] },
       { name: 'my_zip() yields nothing', args: [], run: 'return list(my_zip())', expected: [] },
+      { name: 'my_zip yields tuples, like zip', args: [], run: 'return type(next(my_zip([1], [2]))).__name__', expected: 'tuple' },
       {
         name: 'both are generators',
         args: [],

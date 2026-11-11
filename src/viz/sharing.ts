@@ -20,7 +20,12 @@ export interface SharedNote {
 export function sharedObjects(vars: Record<string, Value>): Record<string, SharedNote[]> {
   const paths = new Map<number, { path: string; root: string; kind: string }[]>()
   const visit = (v: Value, path: string, root: string) => {
-    if ((v.type !== 'list' && v.type !== 'tuple' && v.type !== 'dict') || v.id === undefined) return
+    if (v.type !== 'list' && v.type !== 'tuple' && v.type !== 'dict') return
+    if (v.id === undefined) {
+      // A Python tuple has no id (it can't change), but a list inside it can be shared.
+      if (v.type === 'tuple') v.items.forEach((item, i) => visit(item, `${path}[${i}]`, root))
+      return
+    }
     const seen = paths.get(v.id)
     const kind = kindOf(v)
     if (seen) {

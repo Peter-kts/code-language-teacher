@@ -679,8 +679,9 @@ _ADDRESS = re.compile(r" at 0x[0-9a-fA-F]+")
 def _number(value, heap):
     """`{"id": n}` for a list, dict or set, so two names for one object can be told apart
     from two objects that look alike (`b = a` vs `b = a.copy()`). Tuples can't change,
-    so sharing one doesn't matter and they get none."""
-    if heap is None or isinstance(value, tuple):
+    so sharing one doesn't matter and they get none (nor do frozensets); a list inside one
+    still gets its own id."""
+    if heap is None or isinstance(value, (tuple, frozenset)):
         return {}
     return {"id": heap.number(value)}
 
@@ -690,7 +691,8 @@ def _function(fn, depth, heap):
     inside another one, like a decorator's wrapper) also carries the outer variables it
     remembers, as JavaScript closures do."""
     out = {"type": "other", "repr": f"<function {fn.__name__}>"}
-    if depth == 0 and _is_closure(fn):
+    # Also one level down, so a list of closures (the lambdas-in-a-loop trap) shows what each remembers.
+    if depth <= 1 and _is_closure(fn):
         captured = {}
         for name, cell in zip(fn.__code__.co_freevars, fn.__closure__ or ()):
             if name == "__class__":
@@ -708,7 +710,8 @@ def _is_closure(value):
     return (
         isinstance(value, types.FunctionType)
         and value.__code__.co_filename == USER_FILENAME
-        and "<locals>" in value.__qualname__
+        # The code's own name, not __qualname__, which functools.wraps overwrites with the wrapped function's.
+        and "<locals>" in getattr(value.__code__, "co_qualname", value.__qualname__)
     )
 
 
@@ -837,10 +840,12 @@ def run_traced(source, max_steps=2000, call=None, node_io=None):
         variables = {}
         hidden = {}
         heap = _Heap(node_ids)
+        free = frame.f_code.co_freevars
         for name, value in scope.items():
             if name.startswith(HIDDEN_PREFIX):
                 hidden[name] = value
-            elif _visible(name, value):
+            elif _visible(name, value) or (name in free and isinstance(value, types.FunctionType)):
+                # A remembered function (a decorator wrapper's fn) shows too: it is what the closure keeps.
                 variables[name] = _serialize(value, 0, heap)
         step = {
             "line": line,

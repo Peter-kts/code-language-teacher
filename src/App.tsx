@@ -99,7 +99,7 @@ export default function App() {
   const setLanguage = (next: Language) => {
     setLanguageState(next)
     // Each concept track only exists in its own language.
-    if (CONCEPTS[language].some((p) => p.id === mode) && !CONCEPTS[next].some((p) => p.id === mode)) setMode(PLAYGROUND)
+    if (next !== language && CONCEPTS[language].some((p) => p.id === mode)) setMode(PLAYGROUND)
     try {
       localStorage.setItem(LANGUAGE_KEY, next)
     } catch {
@@ -492,26 +492,7 @@ export default function App() {
                     {language === 'python' ? 'Python' : 'JS'} concepts ({CONCEPTS[language].length})
                   </option>
                 )}
-                {(() => {
-                  const option = (p: Problem) => (
-                    <option key={p.id} value={p.id}>
-                      {p.kind === 'predict' ? `${p.title} (predict)` : `${solutions[language][p.id] ? '✓ ' : ''}${p.title}`}
-                    </option>
-                  )
-                  const track = CONCEPTS[language]
-                  // Python's track is long enough to need sections; JavaScript's is one short list.
-                  if (!track.some((p) => p.group)) return track.map(option)
-                  return CONCEPT_GROUPS.map((g) => {
-                    const group = track.filter((p) => p.group === g.id)
-                    return (
-                      group.length > 0 && (
-                        <optgroup key={g.id} label={g.label}>
-                          {group.map(option)}
-                        </optgroup>
-                      )
-                    )
-                  })
-                })()}
+                <ConceptOptions problems={CONCEPTS[language]} solved={solutions[language]} />
               </select>
             </nav>
             <h1 className="wordmark">Code Language Teacher</h1>
@@ -823,5 +804,29 @@ export default function App() {
       <ShortcutsDialog dialogRef={shortcutsRef} />
       <TapTip />
     </div>
+  )
+}
+
+/** The concept picker's options: in sections when the track has them (Python), one list otherwise. */
+function ConceptOptions({ problems, solved }: { problems: Problem[]; solved: Record<string, unknown> }) {
+  const option = (p: Problem) => (
+    <option key={p.id} value={p.id}>
+      {p.kind === 'predict' ? `${p.title} (predict)` : `${solved[p.id] ? '✓ ' : ''}${p.title}`}
+    </option>
+  )
+  if (!problems.some((p) => p.group)) return <>{problems.map(option)}</>
+  return (
+    <>
+      {CONCEPT_GROUPS.map((g) => {
+        const group = problems.filter((p) => p.group === g.id)
+        return (
+          group.length > 0 && (
+            <optgroup key={g.id} label={g.label}>
+              {group.map(option)}
+            </optgroup>
+          )
+        )
+      })}
+    </>
   )
 }
