@@ -26,6 +26,20 @@ export type Text = string | Record<Language, string>
 /** The text in the given language. */
 export const say = (text: Text, language: Language) => (typeof text === 'string' ? text : text[language])
 
+export type ConceptTrack = 'js-concepts' | 'py-concepts'
+
+/** The sections of the Python concept list, in the order they're meant to be learned. */
+export type ConceptGroup = 'predict' | 'functions' | 'builtins' | 'iteration' | 'collections' | 'classes'
+
+export const CONCEPT_GROUPS: { id: ConceptGroup; label: string }[] = [
+  { id: 'predict', label: 'Predict the output' },
+  { id: 'functions', label: 'Closures, decorators, *args' },
+  { id: 'builtins', label: 'Write the built-ins yourself' },
+  { id: 'iteration', label: 'Generators and iterators' },
+  { id: 'collections', label: 'Collections and sorting' },
+  { id: 'classes', label: 'Classes and dunder methods' },
+]
+
 export type Difficulty = 'Warm-up' | 'Easy' | 'Medium' | 'Hard'
 
 export const DIFFICULTIES: Difficulty[] = ['Warm-up', 'Easy', 'Medium', 'Hard']
@@ -123,11 +137,13 @@ export interface Problem {
   starters: Record<Language, string>
   tests: TestCase[]
   /**
-   * Set on the JavaScript concept problems (src/problems/concepts.ts). They only exist in
-   * JavaScript, and their code runs as a whole (with its example lines) instead of calling
-   * the function once per test case.
+   * Set on the concept problems: JavaScript's (src/problems/concepts.ts) and Python's
+   * (src/problems/pyConcepts.ts). Each track only exists in its own language, and its code
+   * runs as a whole (with its example lines) instead of calling the function once per test case.
    */
-  track?: 'js-concepts'
+  track?: ConceptTrack
+  /** Which section of a concept track's list it sits in (the JavaScript track has none). */
+  group?: ConceptGroup
   /** `predict`: guess what the code prints, then step through it. `build`: write a function the tests check. */
   kind?: 'build' | 'predict'
   /** A predict problem's explanation, shown once the guess is in. */

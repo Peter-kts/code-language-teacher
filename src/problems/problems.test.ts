@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { CARDS } from '../syntax/cards'
 import { JS_CONCEPTS } from './concepts'
+import { PY_CONCEPTS } from './pyConcepts'
 import { BIG_OS, PROBLEMS, say } from './problems'
 
 describe('problems', () => {
@@ -41,7 +42,7 @@ describe('problems', () => {
   it('link only to glossary entries that exist, in each language', () => {
     for (const [language, cards] of Object.entries(CARDS)) {
       const ids = new Set(cards.map((c) => c.id))
-      for (const p of [...PROBLEMS, ...JS_CONCEPTS]) {
+      for (const p of [...PROBLEMS, ...JS_CONCEPTS, ...PY_CONCEPTS]) {
         for (const c of p.concepts[language as keyof typeof CARDS]) expect(ids.has(c), `${language}: ${p.id} → ${c}`).toBe(true)
       }
     }
@@ -50,6 +51,7 @@ describe('problems', () => {
       expect(p.concepts.javascript.length, p.id).toBeGreaterThan(0)
     }
     for (const p of JS_CONCEPTS) expect(p.concepts.javascript.length, p.id).toBeGreaterThan(0)
+    for (const p of PY_CONCEPTS) expect(p.concepts.python.length, p.id).toBeGreaterThan(0)
   })
 
   it("use each language's own words", () => {

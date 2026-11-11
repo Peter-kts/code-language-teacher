@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Language } from '../types'
 import { PROBLEMS } from '../problems/problems'
-import { JS_CONCEPTS } from '../problems/concepts'
+import { CONCEPTS } from '../problems/concepts'
 import { CARDS, groupCards, searchCards, type GroupBy, type SyntaxCard } from './cards'
 
 const GROUP_BYS: { id: GroupBy; label: string }[] = [
@@ -33,8 +33,8 @@ function CardView({
   onInsert: (code: string) => void
   onOpenProblem: (id: string) => void
 }) {
-  // The JavaScript concept problems only exist in JavaScript.
-  const problems = language === 'javascript' ? [...PROBLEMS, ...JS_CONCEPTS] : PROBLEMS
+  // Each concept track only exists in its own language.
+  const problems = [...PROBLEMS, ...CONCEPTS[language]]
   const practice = problems.filter((p) => p.concepts[language].includes(card.id))
   return (
     <div className="card">

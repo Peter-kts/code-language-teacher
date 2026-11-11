@@ -18,10 +18,10 @@ import { Chat } from './chat/Chat'
 import { PointerFlash, PointerTour, type Pointing } from './chat/PointerTour'
 import type { Ref, RefContext, TourStop, ViewSummary } from './chat/refs'
 import { CARDS } from './syntax/cards'
-import { DIFFICULTIES, PROBLEM_TOPICS, PROBLEMS, type Problem } from './problems/problems'
+import { CONCEPT_GROUPS, DIFFICULTIES, PROBLEM_TOPICS, PROBLEMS, type Problem } from './problems/problems'
 import { ProblemPanel } from './problems/ProblemPanel'
 import { loadSolutions, saveSolution, type Solutions } from './problems/solutions'
-import { JS_CONCEPTS } from './problems/concepts'
+import { CONCEPTS } from './problems/concepts'
 import { commandFor, focusKind, withShortcut, type Command } from './shortcuts'
 import { ShortcutsDialog } from './ShortcutsDialog'
 import { TapTip } from './TapTip'
@@ -64,10 +64,13 @@ function savedLanguage(): Language {
 
 /** Everyone's starting code: the playground and each problem, in each language. */
 const starterCode = (): Record<Language, Record<string, string>> => ({
-  python: { [PLAYGROUND]: STARTERS.python, ...Object.fromEntries(PROBLEMS.map((p) => [p.id, p.starters.python])) },
+  python: {
+    [PLAYGROUND]: STARTERS.python,
+    ...Object.fromEntries([...PROBLEMS, ...CONCEPTS.python].map((p) => [p.id, p.starters.python])),
+  },
   javascript: {
     [PLAYGROUND]: STARTERS.javascript,
-    ...Object.fromEntries([...PROBLEMS, ...JS_CONCEPTS].map((p) => [p.id, p.starters.javascript])),
+    ...Object.fromEntries([...PROBLEMS, ...CONCEPTS.javascript].map((p) => [p.id, p.starters.javascript])),
   },
 })
 
@@ -95,8 +98,8 @@ export default function App() {
   const [language, setLanguageState] = useState<Language>(savedLanguage)
   const setLanguage = (next: Language) => {
     setLanguageState(next)
-    // The concept problems are JavaScript only.
-    if (next !== 'javascript' && JS_CONCEPTS.some((p) => p.id === mode)) setMode(PLAYGROUND)
+    // Each concept track only exists in its own language.
+    if (CONCEPTS[language].some((p) => p.id === mode) && !CONCEPTS[next].some((p) => p.id === mode)) setMode(PLAYGROUND)
     try {
       localStorage.setItem(LANGUAGE_KEY, next)
     } catch {
@@ -122,7 +125,7 @@ export default function App() {
   const [caseIndex, setCaseIndex] = useState(0)
   const layout = usePaneLayout()
   const [sidePanel, setSidePanel] = useState<'chat' | 'history' | 'cards'>('chat')
-  const problem: Problem | undefined = PROBLEMS.find((p) => p.id === mode) ?? JS_CONCEPTS.find((p) => p.id === mode)
+  const problem: Problem | undefined = PROBLEMS.find((p) => p.id === mode) ?? CONCEPTS[language].find((p) => p.id === mode)
   // Predict problems keep the output and steps covered until the learner has guessed (or skipped).
   const [revealed, setRevealed] = useState<Set<string>>(() => new Set())
   const covered = problem?.kind === 'predict' && !revealed.has(problem.id)
@@ -473,26 +476,43 @@ export default function App() {
                   )
                 })}
               </select>
-              {language === 'javascript' && (
-                <select
-                  className={problem?.track ? 'problem-select concept-select active' : 'problem-select concept-select'}
-                  value={problem?.track ? problem.id : ''}
-                  onChange={(e) => openProblem(e.target.value)}
-                  aria-label="JavaScript concept"
-                  title="How JavaScript itself behaves: closures, references, array methods"
-                >
-                  {!problem?.track && (
-                    <option value="" disabled>
-                      JS concepts ({JS_CONCEPTS.length})
-                    </option>
-                  )}
-                  {JS_CONCEPTS.map((p) => (
+              <select
+                className={problem?.track ? 'problem-select concept-select active' : 'problem-select concept-select'}
+                value={problem?.track ? problem.id : ''}
+                onChange={(e) => openProblem(e.target.value)}
+                aria-label={language === 'python' ? 'Python concept' : 'JavaScript concept'}
+                title={
+                  language === 'python'
+                    ? 'How Python itself behaves, and the built-ins interviews ask you to write yourself'
+                    : 'How JavaScript itself behaves: closures, references, array methods'
+                }
+              >
+                {!problem?.track && (
+                  <option value="" disabled>
+                    {language === 'python' ? 'Python' : 'JS'} concepts ({CONCEPTS[language].length})
+                  </option>
+                )}
+                {(() => {
+                  const option = (p: Problem) => (
                     <option key={p.id} value={p.id}>
-                      {p.kind === 'predict' ? `${p.title} (predict)` : solutions.javascript[p.id] ? `✓ ${p.title}` : p.title}
+                      {p.kind === 'predict' ? `${p.title} (predict)` : `${solutions[language][p.id] ? '✓ ' : ''}${p.title}`}
                     </option>
-                  ))}
-                </select>
-              )}
+                  )
+                  const track = CONCEPTS[language]
+                  // Python's track is long enough to need sections; JavaScript's is one short list.
+                  if (!track.some((p) => p.group)) return track.map(option)
+                  return CONCEPT_GROUPS.map((g) => {
+                    const group = track.filter((p) => p.group === g.id)
+                    return (
+                      group.length > 0 && (
+                        <optgroup key={g.id} label={g.label}>
+                          {group.map(option)}
+                        </optgroup>
+                      )
+                    )
+                  })
+                })()}
+              </select>
             </nav>
             <h1 className="wordmark">Code Language Teacher</h1>
             <div className="top-right">

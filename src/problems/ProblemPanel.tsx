@@ -51,7 +51,7 @@ export function ProblemPanel({
   const passed = caseResults?.filter((t) => t.passed).length ?? 0
   const allPassed = !!tests?.length && tests.every((t) => t.passed)
   const current = tests?.[caseIndex]
-  const concept = problem.track === 'js-concepts'
+  const concept = problem.track !== undefined
   return (
     <div className="problem">
       <div className="problem-head">
@@ -110,7 +110,7 @@ export function ProblemPanel({
           </button>
         ))}
       </div>
-      {problem.kind === 'predict' && <Predict problem={problem} output={output} revealed={revealed} onReveal={onReveal} />}
+      {problem.kind === 'predict' && <Predict problem={problem} language={language} output={output} revealed={revealed} onReveal={onReveal} />}
       {concept && problem.kind === 'build' && (
         <ul className="check-list">
           {problem.tests.map((t, i) => {
@@ -246,11 +246,13 @@ function ComplexityCheck({ complexity, language }: { complexity: Complexity; lan
 /** Guess what the code prints, then see the real output and why. */
 function Predict({
   problem,
+  language,
   output,
   revealed,
   onReveal,
 }: {
   problem: Problem
+  language: Language
   output: string | null
   revealed: boolean
   onReveal: () => void
@@ -267,7 +269,7 @@ function Predict({
       <textarea
         value={guess}
         onChange={(e) => setGuess(e.target.value)}
-        placeholder="Your guess: what it prints, one line per console.log"
+        placeholder={`Your guess: what it prints, one line per ${language === 'python' ? 'print' : 'console.log'}`}
         aria-label="Your guess"
         spellCheck={false}
       />

@@ -2,7 +2,7 @@ import { useState, type CSSProperties, type ReactNode } from 'react'
 import type { CellSpec, Language, NodeData, PointerSpec, Step, Value } from '../types'
 import { CallStack } from './CallStack'
 import { containerChanges, scalarChanges, stepRoles, type DeltaPart, type Plans, type Read } from './changes'
-import { formatValue, nodeText } from './format'
+import { formatValue, functionName, nodeText } from './format'
 import { buildNodeGraph } from './nodes'
 import { NodeView } from './NodeView'
 import { placePointers, type PlacedPointer } from './pointers'
@@ -463,7 +463,7 @@ function SharedChip({ name, note }: { name: string; note: SharedNote }) {
 
 /** A closure: the function, and the outer variables it remembers with their values now. */
 function ClosureView({ value, changed, tick }: { value: Extract<Value, { type: 'other' }>; changed: boolean; tick?: number }) {
-  const name = /^\[Function: (.*)\]$/.exec(value.repr)?.[1]
+  const name = functionName(value.repr)
   const entries = Object.entries(value.captured ?? {})
   return (
     <div className="closure">
