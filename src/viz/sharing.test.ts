@@ -22,7 +22,13 @@ describe('sharedObjects', () => {
     expect(notes.copy).toEqual([{ path: 'copy.tags', others: ['user.tags'], kind: 'array', group: 0 }])
   })
 
-  it('says nothing for Python values, which have no ids', () => {
+  it('says nothing for values without ids', () => {
     expect(sharedObjects({ a: { type: 'list', items: [], truncated: false } })).toEqual({})
+  })
+
+  it('finds a Python list shared through a tuple, which has no id of its own', () => {
+    const a = { type: 'list' as const, items: [], truncated: false, id: 1 }
+    const shared = sharedObjects({ a, pair: { type: 'tuple', items: [a, { type: 'prim', repr: '2', value: 2 }], truncated: false } })
+    expect(shared.pair).toEqual([{ path: 'pair[0]', others: ['a'], kind: 'list', group: 0 }])
   })
 })

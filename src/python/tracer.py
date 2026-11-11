@@ -10,8 +10,11 @@ import io
 import itertools
 import json
 import math
+import re
 import reprlib
 import sys
+import textwrap
+import types
 
 USER_FILENAME = "<user>"
 HIDDEN_PREFIX = "_ct_idx_"
@@ -178,12 +181,16 @@ class _Heap:
         self.ids = ids
         self.nodes = {}
 
-    def ref(self, obj):
+    def number(self, obj):
+        """The object's number for this run, the same at every step."""
         entry = self.ids.get(id(obj))
         if entry is None:
             # Keep the object alive so its id() can't be reused by another one.
             entry = self.ids[id(obj)] = (len(self.ids) + 1, obj)
-        n = entry[0]
+        return entry[0]
+
+    def ref(self, obj):
+        n = self.number(obj)
         key = str(n)
         if key not in self.nodes and len(self.nodes) < MAX_NODES:
             self.nodes[key] = None  # placeholder, so a cycle stops here
@@ -614,6 +621,10 @@ def _brief(value):
 def _serialize(value, depth=0, heap=None):
     if heap is not None and _is_node(value):
         return heap.ref(value)
+    if isinstance(value, types.FunctionType):
+        return _function(value, depth, heap)
+    if isinstance(value, types.GeneratorType):
+        return {"type": "other", "repr": f"<generator {value.__name__}>"}
     if value is None or isinstance(value, (bool, int, float, str)):
         if isinstance(value, float) and not math.isfinite(value):
             # JSON has no inf or nan (the browser can't parse them), so keep only the text.
@@ -621,12 +632,14 @@ def _serialize(value, depth=0, heap=None):
         return {"type": "prim", "repr": repr(value), "value": value}
     limit = MAX_TOP_ITEMS if depth == 0 else MAX_LIST_ITEMS
     if isinstance(value, (list, tuple, collections.deque)) and depth < MAX_DEPTH:
+        number = _number(value, heap)
         if isinstance(value, collections.deque):
             value = list(value)
         return {
             "type": "list" if isinstance(value, list) else "tuple",
             "items": [_serialize(v, depth + 1, heap) for v in value[:limit]],
             "truncated": len(value) > limit,
+            **number,
         }
     if isinstance(value, (set, frozenset)) and depth < MAX_DEPTH:
         # Drawn as boxes like a list. A set has no order of its own, so sort it when its
@@ -641,6 +654,7 @@ def _serialize(value, depth=0, heap=None):
             "set": True,
             "items": [_serialize(v, depth + 1, heap) for v in items[:limit]],
             "truncated": len(items) > limit,
+            **_number(value, heap),
         }
     if isinstance(value, dict) and depth < MAX_DEPTH:
         items = list(value.items())[:MAX_LIST_ITEMS]
@@ -648,15 +662,66 @@ def _serialize(value, depth=0, heap=None):
             "type": "dict",
             "entries": [[_serialize(k, depth + 1, heap), _serialize(v, depth + 1, heap)] for k, v in items],
             "truncated": len(value) > MAX_LIST_ITEMS,
+            **_number(value, heap),
         }
-    text = repr(value)
+    try:
+        text = repr(value)
+    except Exception:  # noqa: BLE001 - a user __repr__ may raise
+        text = f"<{type(value).__name__}>"
+    # `<zip object at 0x7f…>`: the address changes every run and means nothing to a learner.
+    text = _ADDRESS.sub("", text)
     return {"type": "other", "repr": text if len(text) <= 80 else text[:77] + "..."}
+
+
+_ADDRESS = re.compile(r" at 0x[0-9a-fA-F]+")
+
+
+def _number(value, heap):
+    """`{"id": n}` for a list, dict or set, so two names for one object can be told apart
+    from two objects that look alike (`b = a` vs `b = a.copy()`). Tuples can't change,
+    so sharing one doesn't matter and they get none (nor do frozensets); a list inside one
+    still gets its own id."""
+    if heap is None or isinstance(value, (tuple, frozenset)):
+        return {}
+    return {"id": heap.number(value)}
+
+
+def _function(fn, depth, heap):
+    """A function: `<function name>`. A closure made in the learner's code (a function made
+    inside another one, like a decorator's wrapper) also carries the outer variables it
+    remembers, as JavaScript closures do."""
+    out = {"type": "other", "repr": f"<function {fn.__name__}>"}
+    # Also one level down, so a list of closures (the lambdas-in-a-loop trap) shows what each remembers.
+    if depth <= 1 and _is_closure(fn):
+        captured = {}
+        for name, cell in zip(fn.__code__.co_freevars, fn.__closure__ or ()):
+            if name == "__class__":
+                continue
+            try:
+                captured[name] = _serialize(cell.cell_contents, depth + 1, heap)
+            except ValueError:  # not set yet: its line hasn't run
+                pass
+        out["captured"] = captured
+    return out
+
+
+def _is_closure(value):
+    """A function the learner's code made inside another function (it may remember nothing yet)."""
+    return (
+        isinstance(value, types.FunctionType)
+        and value.__code__.co_filename == USER_FILENAME
+        # The code's own name, not __qualname__, which functools.wraps overwrites with the wrapped function's.
+        and "<locals>" in getattr(value.__code__, "co_qualname", value.__qualname__)
+    )
 
 
 def _visible(name, value):
     if name.startswith("__"):
         return False
-    if callable(value) or type(value).__name__ == "module":
+    if callable(value):
+        # Functions are left out, except closures: what they remember is the point of them.
+        return _is_closure(value)
+    if type(value).__name__ == "module":
         return False
     return True
 
@@ -775,10 +840,12 @@ def run_traced(source, max_steps=2000, call=None, node_io=None):
         variables = {}
         hidden = {}
         heap = _Heap(node_ids)
+        free = frame.f_code.co_freevars
         for name, value in scope.items():
             if name.startswith(HIDDEN_PREFIX):
                 hidden[name] = value
-            elif _visible(name, value):
+            elif _visible(name, value) or (name in free and isinstance(value, types.FunctionType)):
+                # A remembered function (a decorator wrapper's fn) shows too: it is what the closure keeps.
                 variables[name] = _serialize(value, 0, heap)
         step = {
             "line": line,
@@ -788,6 +855,10 @@ def run_traced(source, max_steps=2000, call=None, node_io=None):
             "hidden": hidden,
             "stdout": stdout.getvalue(),
         }
+        # The outer variables this call remembers (a closure's), tagged "remembered".
+        captured = [n for n in frame.f_code.co_freevars if n in variables]
+        if captured:
+            step["captured"] = captured
         # What the frame's previous line computed on the way to this state.
         ran = pending.pop(frame, None)
         if ran:
@@ -944,6 +1015,22 @@ def _copy_args(args):
     return json.loads(json.dumps(args))
 
 
+def _case_function(run, user_globals):
+    """A test's `run` code as a function body, defined among the learner's names."""
+    scope = {}
+    exec(compile("def _ct_case():\n" + textwrap.indent(run, "    "), "<test>", "exec"), user_globals, scope)
+    return scope["_ct_case"]
+
+
+def _plain(value):
+    """Tuples as lists, all the way down, to compare with the JSON a test expects."""
+    if isinstance(value, (list, tuple)):
+        return [_plain(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _plain(v) for k, v in value.items()}
+    return value
+
+
 def run_tests(source, name, cases, max_seconds=2.0, node_io=None):
     """Run `name(*case["args"])` for each case without tracing.
 
@@ -984,11 +1071,19 @@ def run_tests(source, name, cases, max_seconds=2.0, node_io=None):
 
             counted = {"steps": steps} if limit is not None else {}
             try:
-                call_args = _call_args(case["args"], node_io, user_globals)
-                sys.settrace(guard)
-                got = func(*call_args)
-                sys.settrace(None)
-                got = _answer(got, node_io)
+                if case.get("run"):
+                    # Concept problems: code that uses the learner's function (or class) and returns
+                    # what to check, for answers that are functions or need several calls.
+                    test = _case_function(case["run"], user_globals)
+                    sys.settrace(guard)
+                    got = _plain(test())
+                    sys.settrace(None)
+                else:
+                    call_args = _call_args(case["args"], node_io, user_globals)
+                    sys.settrace(guard)
+                    got = func(*call_args)
+                    sys.settrace(None)
+                    got = _answer(got, node_io)
                 expected = case["expected"]
                 if case.get("unordered") and isinstance(got, (list, tuple)):
                     passed = sorted(got) == sorted(expected)

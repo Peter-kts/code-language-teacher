@@ -363,3 +363,51 @@ print(a, ys, zs, ok, w, sq, first, rest, t, s, got, nxt, again, big, len(calls))
     def test_a_call_that_raises_gives_nothing_back(self):
         result = run("def f():\n    raise ValueError()\ntry:\n    f()\nexcept ValueError:\n    x = 1\n")
         self.assertFalse([st for st in result["steps"] if st.get("returned")])
+
+    def test_closures_show_what_they_remember(self):
+        source = "def outer():\n    n = 1\n    def inner():\n        return n\n    return inner\nf = outer()\nf()\ng = len\n"
+        result = run(source)
+        last = result["steps"][-1]["vars"]
+        self.assertEqual(last["f"]["repr"], "<function inner>")
+        self.assertEqual(last["f"]["captured"]["n"]["value"], 1)
+        self.assertNotIn("g", last)  # plain functions stay hidden
+        self.assertTrue(any(s.get("captured") == ["n"] for s in result["steps"] if s["func"] == "inner"))
+
+    def test_lists_carry_an_id_so_sharing_shows(self):
+        last = run("a = [1]\nb = a\nc = a[:]\nt = (1,)\n")["steps"][-1]["vars"]
+        self.assertEqual(last["a"]["id"], last["b"]["id"])
+        self.assertNotEqual(last["a"]["id"], last["c"]["id"])
+        self.assertNotIn("id", last["t"])
+
+    def test_run_cases_call_the_code_they_are_given(self):
+        source = "def pair(a, b):\n    return (a, b)\n"
+        cases = [
+            {"args": [], "run": "x = pair(1, 2)\nreturn [x, pair(3, 4)]", "expected": [[1, 2], [3, 4]]},
+            {"args": [], "run": "return pair(1, 2)", "expected": [2, 1]},
+        ]
+        results = json.loads(run_tests(source, "pair", cases))
+        self.assertEqual([r["passed"] for r in results], [True, False])
+
+    def test_wrapped_closures_and_lists_of_closures_show(self):
+        source = (
+            "from functools import wraps\n"
+            "def deco(fn):\n"
+            "    @wraps(fn)\n"
+            "    def wrapper():\n"
+            "        return fn()\n"
+            "    return wrapper\n"
+            "@deco\n"
+            "def hi():\n"
+            "    return 1\n"
+            "hi()\n"
+            "def make():\n"
+            "    return [lambda: i for i in range(2)]\n"
+            "fs = make()\n"
+        )
+        result = run(source)
+        last = result["steps"][-1]["vars"]
+        self.assertIn("fn", last["hi"]["captured"])  # wraps copies the name, but it is still a closure
+        self.assertEqual(last["fs"]["items"][0]["captured"]["i"]["value"], 1)
+        inside = [s for s in result["steps"] if s["func"] == "wrapper"]
+        self.assertIn("fn", inside[0]["vars"])  # the remembered function shows
+        self.assertEqual(inside[0]["captured"], ["fn"])

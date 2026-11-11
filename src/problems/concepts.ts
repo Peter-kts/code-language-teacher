@@ -1,4 +1,6 @@
+import type { Language } from '../types'
 import type { Problem } from './problems'
+import { PY_CONCEPTS } from './pyConcepts'
 
 // JavaScript concept problems: how the language itself behaves, rather than an algorithm.
 // They only exist in JavaScript. Their code runs as a whole, example lines included, so the
@@ -297,3 +299,6 @@ console.log(state.user.address.city, next?.user?.address?.city)
     ],
   }),
 ]
+
+/** Each language's concept track: JavaScript's above, Python's in pyConcepts.ts. */
+export const CONCEPTS: Record<Language, Problem[]> = { javascript: JS_CONCEPTS, python: PY_CONCEPTS }

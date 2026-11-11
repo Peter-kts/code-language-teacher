@@ -10,8 +10,9 @@ export function formatValue(v: Value): string {
   if (v.t !== undefined) return formatJs(v)
   switch (v.type) {
     case 'prim':
-    case 'other':
       return v.repr
+    case 'other':
+      return v.captured ? closureText(v.repr, v.captured) : v.repr
     case 'list':
       if (v.set) return v.items.length ? `{${v.items.map(formatValue).join(', ')}${v.truncated ? ', …' : ''}}` : 'set()'
       return `[${v.items.map(formatValue).join(', ')}${v.truncated ? ', …' : ''}]`
@@ -51,9 +52,16 @@ function formatJs(v: Value): string {
   }
 }
 
+/** A function's name from its text: `[Function: increment]` in JavaScript, `<function increment>` in Python. */
+export function functionName(repr: string): string | undefined {
+  const m = /^\[Function: (.*)\]$|^<function (.*)>$/.exec(repr)
+  const name = m?.[1] ?? m?.[2]
+  return name === '<lambda>' ? 'anonymous' : name
+}
+
 /** A closure, with what it remembers: `ƒ increment ⟨count: 2⟩`. */
 function closureText(repr: string, captured: Record<string, Value>): string {
-  const name = /^\[Function: (.*)\]$/.exec(repr)?.[1]
+  const name = functionName(repr)
   const head = name && name !== 'anonymous' ? `ƒ ${name}` : 'ƒ'
   const inner = Object.entries(captured)
     .map(([k, val]) => `${k}: ${formatValue(val)}`)
