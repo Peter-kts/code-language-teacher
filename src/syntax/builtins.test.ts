@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BUILTIN_FUNCTIONS, BUILTIN_METHODS, builtinAt, nameAt } from './builtins'
+import { BUILTIN_FUNCTIONS, BUILTIN_METHODS, MODULE_FUNCTIONS, builtinAt, nameAt } from './builtins'
 import { PYTHON_CARDS } from './cards'
 import { jsBuiltinAt, JS_FUNCTIONS, JS_METHODS, JS_STATICS } from './jsBuiltins'
 import { JS_CARDS } from './jsCards'
@@ -9,7 +9,22 @@ const builtinNamed = (line: string, word: string) => builtinAt(line, line.indexO
 describe('built-in hover', () => {
   it('links only to glossary entries that exist', () => {
     const ids = new Set(PYTHON_CARDS.map((c) => c.id))
-    for (const b of [...BUILTIN_FUNCTIONS, ...BUILTIN_METHODS]) if (b.card) expect(ids).toContain(b.card)
+    for (const b of [...BUILTIN_FUNCTIONS, ...BUILTIN_METHODS, ...MODULE_FUNCTIONS]) if (b.card) expect(ids).toContain(b.card)
+  })
+
+  it('explains module helpers after their module or on their own', () => {
+    expect(builtinNamed('heapq.heappush(heap, (p, i, task))', 'heappush')).toBe('heappush')
+    expect(builtinNamed('heappush(heap, 3)', 'heappush')).toBe('heappush')
+    expect(builtinNamed('pairs = list(itertools.combinations(s, 2))', 'combinations')).toBe('combinations')
+    expect(builtinNamed('    @wraps(fn)', 'wraps')).toBe('wraps')
+    expect(builtinNamed('@functools.cache', 'cache')).toBe('cache')
+    expect(builtinNamed('@cache', 'cache')).toBe('cache')
+    expect(builtinNamed('grid2 = copy.deepcopy(grid)', 'deepcopy')).toBe('deepcopy')
+    expect(builtinNamed('counts = Counter(words)', 'Counter')).toBe('Counter')
+    // The same names on the learner's own objects are just names.
+    expect(builtinNamed('if args in self.cache:', 'cache')).toBeNull()
+    expect(builtinNamed('x = obj.product(2)', 'product')).toBeNull()
+    expect(builtinNamed('cache = {}', 'cache')).toBeNull()
   })
 
   it('finds a called built-in function under the mouse', () => {

@@ -57,8 +57,8 @@ export const BUILTIN_FUNCTIONS: Builtin[] = [
   fn('ord', 'ord(ch)', 'The number that stands for a character.', 'ord("a")  # 97'),
   fn('chr', 'chr(n)', 'The character for a number; the opposite of ord.', 'chr(98)  # "b"'),
   fn('input', 'input(prompt="")', 'Reads a line of text typed by the user. It always returns a string.', 'name = input("Name? ")'),
-  fn('iter', 'iter(items)', 'An iterator: something you can pull items from one at a time with next.', 'it = iter([1, 2])'),
-  fn('next', 'next(iterator, default)', 'The next item from an iterator, or default when it runs out.', 'next(iter([1, 2]))  # 1'),
+  fn('iter', 'iter(items)', 'An iterator: something you can pull items from one at a time with next. A for loop calls it for you.', 'it = iter([1, 2])', 'iterators'),
+  fn('next', 'next(iterator, default)', 'The next item from an iterator or generator, or default when it runs out (without a default, it raises StopIteration).', 'next(iter([1, 2]))  # 1', 'iterators'),
   fn('hash', 'hash(x)', 'The number Python uses to find x quickly in a dict or set.', 'hash("hi")  # some big number', 'dict-vs-list-lookup'),
   fn('id', 'id(x)', 'A number unique to this object while it exists. Two names with the same id point at the same thing.', 'a = []\nb = a\nid(a) == id(b)  # True', 'aliasing'),
 ]
@@ -106,8 +106,43 @@ export const BUILTIN_METHODS: Builtin[] = [
   fn('appendleft', 'deque.appendleft(x)', 'Adds x to the front of the deque.', 'q.appendleft(0)', 'deque'),
 ]
 
-const FUNCTIONS = new Map(BUILTIN_FUNCTIONS.map((b) => [b.name, b]))
+/**
+ * From the standard library modules interviews lean on. They're reached both ways:
+ * after the module's name (heapq.heappush) or on their own after `from heapq import heappush`.
+ */
+export const MODULE_FUNCTIONS: Builtin[] = [
+  // collections
+  fn('Counter', 'collections.Counter(items)', 'A dict that counts: each item maps to how many times it appears. Missing items count as 0.', 'Counter("banana")  # {"a": 3, "n": 2, "b": 1}', 'counter'),
+  fn('defaultdict', 'collections.defaultdict(make)', 'A dict that calls make() to create a value the first time a missing key is used, e.g. defaultdict(list) starts each key with [].', 'groups = defaultdict(list)\ngroups["a"].append(1)  # {"a": [1]}', 'defaultdict'),
+  fn('deque', 'collections.deque(items, maxlen=None)', 'A list that is fast at both ends: append and popleft are O(1). With maxlen, the oldest items fall off.', 'q = deque([1, 2])\nq.append(3)\nq.popleft()  # 1', 'deque'),
+  fn('OrderedDict', 'collections.OrderedDict()', 'A dict with extras for order: move_to_end(key) and popitem(last=False). Plain dicts keep insertion order too.', 'd = OrderedDict(a=1, b=2)\nd.move_to_end("a")  # b, then a', 'dicts'),
+  // heapq
+  fn('heappush', 'heapq.heappush(heap, item)', 'Adds item to the heap list, keeping the smallest at heap[0]. O(log n).', 'h = []\nheappush(h, 5)\nheappush(h, 2)  # h[0] is 2', 'heapq'),
+  fn('heappop', 'heapq.heappop(heap)', 'Removes and returns the smallest item. O(log n). Push tuples like (priority, order, task) to choose what "smallest" means.', 'h = [1, 3, 2]\nheappop(h)  # 1', 'heapq'),
+  fn('heapify', 'heapq.heapify(items)', 'Rearranges a list into a heap in place, in O(n). It returns None.', 'h = [5, 1, 8]\nheapify(h)  # h[0] is 1', 'heapq'),
+  fn('nlargest', 'heapq.nlargest(k, items, key=None)', 'The k largest items, largest first.', 'nlargest(2, [5, 1, 8, 3])  # [8, 5]', 'heapq'),
+  fn('nsmallest', 'heapq.nsmallest(k, items, key=None)', 'The k smallest items, smallest first.', 'nsmallest(2, [5, 1, 8, 3])  # [1, 3]', 'heapq'),
+  // itertools
+  fn('combinations', 'itertools.combinations(items, r)', 'Every way to pick r items, ignoring order, as tuples.', 'list(combinations("abc", 2))  # [("a", "b"), ("a", "c"), ("b", "c")]', 'itertools'),
+  fn('permutations', 'itertools.permutations(items, r=None)', 'Every ordering of r items (all of them by default), as tuples.', 'list(permutations([1, 2]))  # [(1, 2), (2, 1)]', 'itertools'),
+  fn('product', 'itertools.product(a, b, ..., repeat=1)', 'Every pairing, like nested for loops.', 'list(product("ab", [0, 1]))  # [("a", 0), ("a", 1), ("b", 0), ("b", 1)]', 'itertools'),
+  fn('accumulate', 'itertools.accumulate(items, func=add)', 'Running totals (or running results of func).', 'list(accumulate([1, 2, 3]))  # [1, 3, 6]', 'itertools'),
+  fn('chain', 'itertools.chain(a, b, ...)', 'Walks one iterable after another, as if they were joined.', 'list(chain([1], [2, 3]))  # [1, 2, 3]', 'itertools'),
+  fn('groupby', 'itertools.groupby(items, key=None)', 'Groups runs of neighbouring equal items into (key, group) pairs. Sort first to group all equal items.', '[(k, len(list(g))) for k, g in groupby("aabba")]  # [("a", 2), ("b", 2), ("a", 1)]', 'itertools'),
+  fn('islice', 'itertools.islice(items, stop) / islice(items, start, stop)', 'A slice of any iterable, even a generator, without making a list first.', 'list(islice(count(), 3))  # [0, 1, 2]', 'itertools'),
+  // functools
+  fn('reduce', 'functools.reduce(func, items, initial)', 'Combines the items into one value: func(func(func(initial, a), b), c)...', 'reduce(lambda a, b: a * b, [1, 2, 3, 4])  # 24', 'functions'),
+  fn('wraps', 'functools.wraps(fn)', 'Used as @wraps(fn) on a decorator\'s wrapper, so the wrapper keeps fn\'s name and docstring.', '@wraps(fn)\ndef wrapper(*args, **kwargs):\n    return fn(*args, **kwargs)', 'decorators'),
+  fn('lru_cache', 'functools.lru_cache(maxsize=128)', 'A decorator that remembers a function\'s answers by its arguments, dropping the least recently used ones when full.', '@lru_cache(maxsize=None)\ndef fib(n): ...', 'memoization'),
+  fn('cache', 'functools.cache', 'A decorator that remembers every answer by its arguments: lru_cache with no limit.', '@cache\ndef fib(n): ...', 'memoization'),
+  // copy
+  fn('deepcopy', 'copy.deepcopy(x)', 'A copy of x with everything inside copied too, all the way down, so no part is shared.', 'grid2 = deepcopy(grid)', 'copy-deepcopy'),
+]
+
+const FUNCTIONS = new Map([...BUILTIN_FUNCTIONS, ...MODULE_FUNCTIONS].map((b) => [b.name, b]))
 const METHODS = new Map(BUILTIN_METHODS.map((b) => [b.name, b]))
+/** heappush → heapq, read off its signature. */
+const MODULE_OF = new Map(MODULE_FUNCTIONS.map((b) => [b.name, b.signature.split('.')[0]]))
 
 /** A name in a line of code, with 0-based start and end (exclusive). */
 export interface NameHit {
@@ -147,12 +182,17 @@ export function builtinAt(line: string, column: number): BuiltinHit | null {
   if (!hit) return null
   const { name, start, end } = hit
   if (hit.afterDot) {
+    // heapq.heappush, but not self.cache or grid.product: only right after its module's name.
+    const module = MODULE_OF.get(name)
+    if (module && new RegExp(`(^|[^\\w.])${module}\\s*\\.\\s*$`).test(line.slice(0, start))) return { builtin: FUNCTIONS.get(name)!, start, end }
     const builtin = METHODS.get(name)
     return builtin ? { builtin, start, end } : null
   }
   // def sum(...) or class list: is the learner's own name.
   if (/(^|\W)(def|class)$/.test(line.slice(0, start).trimEnd())) return null
-  if (!/^\s*\(/.test(line.slice(end))) return null
+  // Called, or used as a decorator (@cache with no brackets).
+  const decorator = /^\s*@$/.test(line.slice(0, start))
+  if (!decorator && !/^\s*\(/.test(line.slice(end))) return null
   const builtin = FUNCTIONS.get(name)
   return builtin ? { builtin, start, end } : null
 }
