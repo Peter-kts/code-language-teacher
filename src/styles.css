@@ -93,7 +93,9 @@ strong { font-weight: 500; }
 
 /* ---------- Header: tabs | wordmark | status ---------- */
 .top {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: stretch;
+  /* The side columns never shrink below their buttons; when room runs out the wordmark
+     in the middle gives way (it trims to "…") instead of sliding under them. */
+  display: grid; grid-template-columns: minmax(min-content, 1fr) minmax(0, auto) minmax(max-content, 1fr); align-items: stretch;
   border-bottom: 1px solid var(--line);
   background: rgba(5, 4, 10, 0.35);
   -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
@@ -103,9 +105,11 @@ strong { font-weight: 500; }
   align-self: center; margin: 0; padding: 0 1.25rem;
   font-family: var(--font-display); font-size: 0.8rem; font-weight: 400;
   text-transform: uppercase; letter-spacing: 0.45em; margin-right: -0.45em;
-  white-space: nowrap;
+  white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis;
 }
 .top-right { display: flex; justify-content: flex-end; }
+/* Just above the 900px two-row header there's only room for a sliver of it, so drop it. */
+@media (min-width: 901px) and (max-width: 1060px) { .wordmark { display: none; } }
 .status {
   display: flex; align-items: center; gap: 0.5rem;
   padding: 0 1.25rem; border-left: 1px solid var(--line);
@@ -544,6 +548,14 @@ button.console-at:hover { color: var(--accent); background: none; box-shadow: no
 .top-restore:hover:not(:disabled) { background: var(--accent-soft); color: var(--text); border-color: var(--accent); }
 
 /* ---------- Layout switch (header): auto / side by side / stacked ---------- */
+/* Text size: A− / A+. The tooltip says the current size; 0 goes back to normal. */
+/* The A− / A+ size scales every rem, but the top bar is zoomed back to normal so its
+   row of switches keeps fitting. --font-scale is set by src/layout/fontSize.ts. */
+.top, .top-restore { zoom: calc(1 / var(--font-scale, 1)); }
+.font-size { display: flex; align-items: center; gap: 0.2rem; margin-right: 0.75rem; }
+.font-btn { display: inline-flex; align-items: center; justify-content: center; width: 1.8rem; height: 1.8rem; font-family: var(--font-display); font-size: 0.72rem; font-weight: 400; line-height: 1; }
+.font-btn-big { font-size: 0.92rem; }
+.font-btn span { font-size: 0.8em; margin-left: 0.05em; }
 .layout-switch { display: flex; align-items: center; gap: 0.2rem; margin-right: 0.75rem; }
 .layout-switch .icon-btn { width: 1.8rem; height: 1.8rem; }
 .layout-switch .icon-btn.active { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
@@ -656,7 +668,7 @@ kbd {
 /* "Coarse" means the main pointer is a finger, not a mouse. Fingers need bigger
    targets (about 44px), so buttons and divider handles grow on touch screens only. */
 @media (pointer: coarse) {
-  .icon-btn, .layout-switch .icon-btn, .keys-btn, .bg-btn, .hide-top-btn { width: 2.6rem; height: 2.6rem; }
+  .icon-btn, .layout-switch .icon-btn, .font-btn, .keys-btn, .bg-btn, .hide-top-btn { width: 2.6rem; height: 2.6rem; }
   .top-restore { height: 2.2rem; padding: 0 0.8rem; }
   .play-btn { width: 2.9rem; height: 2.9rem; }
   .tab, .problem-select { padding-top: 0.6rem; padding-bottom: 0.6rem; }

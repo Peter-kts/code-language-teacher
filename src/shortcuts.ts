@@ -12,6 +12,9 @@ export type Command =
   | 'focusEditor'
   | 'showShortcuts'
   | 'toggleTopBar'
+  | 'fontBigger'
+  | 'fontSmaller'
+  | 'fontReset'
   | 'save'
 
 /** Where a key was pressed, which decides whether a plain key is ours or the page's. */
@@ -68,9 +71,13 @@ export function commandFor(e: KeyPress, where: FocusKind, platform: Platform = P
   if (e.key === 'Escape') return where === 'sideText' ? 'focusEditor' : null
   if (typing) return null
   if (e.key === '?') return 'showShortcuts'
+  // Text size. By the character typed, since + needs Shift on many keyboards.
+  if (e.key === '+' || e.key === '=') return 'fontBigger'
+  if (e.key === '-' || e.key === '_') return 'fontSmaller'
   if (e.shiftKey) return null
   // F for "full", like a video player's full-screen key.
   if (isLetter(e, 'f')) return 'toggleTopBar'
+  if (e.key === '0') return 'fontReset'
   // A focused slider already steps with the arrows, Home and End.
   const slider = where === 'range'
   switch (e.key) {
@@ -125,6 +132,9 @@ export const SHORTCUT_SECTIONS: { title: string; note?: string; rows: ShortcutRo
       { label: 'Back to the code', keys: ['Esc'] },
       { command: 'showShortcuts', label: 'This list', keys: ['?'] },
       { command: 'toggleTopBar', label: 'Hide / show the top bar', keys: ['F'] },
+      { command: 'fontBigger', label: 'Bigger text', keys: ['+'] },
+      { command: 'fontSmaller', label: 'Smaller text', keys: ['-'] },
+      { command: 'fontReset', label: 'Normal text size', keys: ['0'] },
       { label: 'All editor commands', keys: ['F1'] },
       { label: 'Tab leaves the editor (on/off)', keys: { pc: ['Ctrl+M'], mac: ['Ctrl+Shift+M'] } },
     ],

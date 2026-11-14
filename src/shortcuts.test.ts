@@ -23,6 +23,19 @@ describe('commandFor', () => {
     expect(commandFor(press('f'), 'button', 'mac')).toBe('toggleTopBar')
   })
 
+  it('changes the text size with + - and 0, but not while typing or with Ctrl (browser zoom)', () => {
+    expect(commandFor(press('+', { shiftKey: true }), 'other', 'win')).toBe('fontBigger')
+    expect(commandFor(press('='), 'button', 'win')).toBe('fontBigger')
+    expect(commandFor(press('-'), 'other', 'mac')).toBe('fontSmaller')
+    expect(commandFor(press('0'), 'other', 'win')).toBe('fontReset')
+    for (const where of ['text', 'sideText', 'editor'] as const) {
+      expect(commandFor(press('+', { shiftKey: true }), where, 'win')).toBeNull()
+      expect(commandFor(press('-'), where, 'win')).toBeNull()
+    }
+    expect(commandFor(press('=', { ctrlKey: true }), 'other', 'win')).toBeNull()
+    expect(commandFor(press('-', { metaKey: true }), 'other', 'mac')).toBeNull()
+  })
+
   it('leaves F alone while typing, and with modifiers (Ctrl+F is find)', () => {
     for (const where of ['text', 'sideText', 'editor'] as const) expect(commandFor(press('f'), where, 'win')).toBeNull()
     expect(commandFor(press('f', { ctrlKey: true }), 'other', 'win')).toBeNull()
