@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type * as monaco from 'monaco-editor/editor/editor.api'
@@ -27,6 +27,7 @@ import { ShortcutsDialog } from './ShortcutsDialog'
 import { stepAfterRerun } from './timeline'
 import { TapTip } from './TapTip'
 import { loadTopBarHidden, saveTopBarHidden } from './layout/topBar'
+import { DEFAULT_FONT_SCALE, applyFontScale, editorFont, isLargest, isSmallest, loadFontScale, saveFontScale, stepFontScale } from './layout/fontSize'
 import { usePaneLayout, type LayoutMode } from './layout/usePaneLayout'
 import type { Language, RunRequest } from './types'
 
@@ -117,6 +118,14 @@ export default function App() {
     setTopBarHidden(!topBarHidden)
     saveTopBarHidden(!topBarHidden)
   }
+  // Text size (src/layout/fontSize.ts): one root size that every rem follows, plus the editor's.
+  const [fontScale, setFontScale] = useState(loadFontScale)
+  const changeFontScale = (next: number) => {
+    setFontScale(next)
+    saveFontScale(next)
+  }
+  // Before paint, so a saved size never flashes at normal first.
+  useLayoutEffect(() => applyFontScale(fontScale), [fontScale])
   const toggleBackground = () => {
     const next = background === 'daily' ? 'galaxy' : 'daily'
     setBackground(next)
@@ -218,6 +227,9 @@ export default function App() {
       else dialog?.showModal()
     },
     toggleTopBar,
+    fontBigger: () => changeFontScale(stepFontScale(fontScale, 1)),
+    fontSmaller: () => changeFontScale(stepFontScale(fontScale, -1)),
+    fontReset: () => changeFontScale(DEFAULT_FONT_SCALE),
     save: () => {},
   }
   // The editor actions and the key listener are set up once; this keeps them current.
@@ -349,6 +361,10 @@ export default function App() {
     action('askClaude', 'Ask Claude', [KeyMod.CtrlCmd | KeyCode.KeyI])
     action('showShortcuts', 'Keyboard shortcuts')
     action('toggleTopBar', 'Hide / show the top bar')
+    // No keys inside the editor (+ and - are for typing), but they show up in F1.
+    action('fontBigger', 'Bigger text')
+    action('fontSmaller', 'Smaller text')
+    action('fontReset', 'Normal text size')
   }
 
   // Pointing at things for the chat: its [[references]] and the Show me tour (src/chat/refs.ts).
@@ -523,6 +539,26 @@ export default function App() {
                   </button>
                 ))}
               </div>
+              <div className="font-size" role="group" aria-label="Text size">
+                <button
+                  className="icon-btn font-btn"
+                  onClick={commands.fontSmaller}
+                  disabled={isSmallest(fontScale)}
+                  aria-label="Smaller text"
+                  title={withShortcut(`Smaller text · now ${Math.round(fontScale * 100)}%`, 'fontSmaller')}
+                >
+                  A<span aria-hidden="true">−</span>
+                </button>
+                <button
+                  className="icon-btn font-btn font-btn-big"
+                  onClick={commands.fontBigger}
+                  disabled={isLargest(fontScale)}
+                  aria-label="Bigger text"
+                  title={withShortcut(`Bigger text · now ${Math.round(fontScale * 100)}%`, 'fontBigger')}
+                >
+                  A<span aria-hidden="true">+</span>
+                </button>
+              </div>
               <div className="layout-switch" role="group" aria-label="Layout">
                 {LAYOUT_OPTIONS.map(({ mode: m, label, Icon }) => (
                   <button
@@ -601,9 +637,8 @@ export default function App() {
               onMount={onMount}
               theme={EDITOR_THEME}
               options={{
-                fontSize: 15,
+                ...editorFont(fontScale),
                 fontFamily: "'JetBrains Mono', ui-monospace, Consolas, monospace",
-                lineHeight: 24,
                 padding: { top: 14 },
                 minimap: { enabled: false },
                 scrollBeyondLastLine: false,
