@@ -400,7 +400,7 @@ export const EDGE_CASES: Record<string, TestCase[]> = {
     { name: "one row, 100 wide", args: [1, 100], expected: 1 },
     { name: "one column, 100 tall", args: [100, 1], expected: 1 },
     { name: "two by two", args: [2, 2], expected: 2 },
-    { name: "ten by ten", args: [10, 10], expected: 48620 },
+    { name: "eight by eight", args: [8, 8], expected: 3432 },
     { name: "long and thin", args: [3, 15], expected: 120 },
   ],
   'longest-common-subsequence': [

@@ -8,7 +8,7 @@ Run from the repository root:  python3 scripts/gen-edge-cases.py
 Keep every input inside the problem's constraints, and keep inputs small: slow answers must
 still pass every case (only the speed test should be too big for them).
 """
-import json, itertools, math, heapq
+import json, itertools, math
 from collections import Counter, deque
 from functools import lru_cache
 
@@ -368,7 +368,7 @@ for nm,a,k in [("k is every value",[1,2,2,3,3,3],3),("negative values",[-3,-3,-3
     add('top-k-frequent', nm, [a,k], tk(a,k), True)
 
 # ---------- 2D DP ----------
-for nm,m,n in [("one row, 100 wide",1,100),("one column, 100 tall",100,1),("two by two",2,2),("ten by ten",10,10),("long and thin",3,15)]:
+for nm,m,n in [("one row, 100 wide",1,100),("one column, 100 tall",100,1),("two by two",2,2),("eight by eight",8,8),("long and thin",3,15)]:
     add('unique-paths', nm, [m,n], math.comb(m+n-2,m-1))
 def lcs(a,b):
     @lru_cache(None)
