@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type Ref } from 'react'
 import { loadHistory, saveHistory, type ChatMessage } from './history'
-import type { Language } from '../types'
+import type { Subject } from '../types'
 import { refExists, refLabel, splitRefs, takeTour, type Ref as ScreenRef, type RefContext, type TourStop, type ViewSummary } from './refs'
 
 const PASSCODE_KEY = 'chat-passcode'
@@ -13,7 +13,8 @@ function loadPasscode() {
   }
 }
 
-const SUGGESTIONS: Record<Language, string[]> = {
+const SUGGESTIONS: Record<Subject, string[]> = {
+  sql: ['What is the difference between WHERE and HAVING?', 'When do I use LEFT JOIN instead of JOIN?', 'Give me a hint for this problem'],
   python: ['How do I write a for loop in Python?', 'How do dicts work?', 'Give me a hint for this problem'],
   javascript: ['How do I write a for loop in JavaScript?', 'When should I use a Map instead of an object?', 'Give me a hint for this problem'],
 }
@@ -30,7 +31,7 @@ export function Chat({
   onShowMe,
 }: {
   code: string
-  language: Language
+  language: Subject
   problem: string | null
   onInsert: (code: string) => void
   /** What the visualizer shows, sent along so Claude can name real steps and variables. */
@@ -106,7 +107,7 @@ export function Chat({
         {messages.length === 0 && (
           <div className="chat-empty">
             <p className="muted">
-              Ask how to write something in {language === 'python' ? 'Python' : 'JavaScript'}, or for a hint on the problem.
+              Ask how to write something in {language === 'python' ? 'Python' : language === 'sql' ? 'SQL' : 'JavaScript'}, or for a hint on the problem.
             </p>
             {SUGGESTIONS[language].map((s) => (
               <button key={s} className="suggestion" onClick={() => send(s)}>
@@ -176,7 +177,7 @@ export function Chat({
         <input
           ref={inputRef}
           className="syntax-input"
-          placeholder={language === 'python' ? 'e.g. how do I loop over a dict?' : 'e.g. how do I loop over a Map?'}
+          placeholder={language === 'python' ? 'e.g. how do I loop over a dict?' : language === 'sql' ? 'e.g. how do I find duplicates?' : 'e.g. how do I loop over a Map?'}
           value={input}
           onChange={(e) => setInput(e.target.value)}
         />

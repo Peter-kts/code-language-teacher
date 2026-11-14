@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type * as monaco from 'monaco-editor/editor/editor.api'
-import type { Language, Step } from '../types'
+import type { Step, Subject } from '../types'
 import { formatValue, typeLabel } from '../viz/format'
 import { cardFor } from './cards'
 import { builtinAt, nameAt, type Builtin } from './builtins'
 import { jsBuiltinAt } from './jsBuiltins'
+import { sqlKeywordAt } from '../sql/keywords'
+import { SQL_CARDS } from '../sql/cards'
 
 // A small pop-up for what's under the mouse in the editor: what a built-in like enumerate does,
 // or a variable's value at the step being shown.
@@ -51,8 +53,8 @@ export function CodeHover({
   stepNumber: number
   /** Every variable name the run ever had, so a name without a value yet can say so. */
   variables: Set<string>
-  /** Which language's built-ins and glossary to explain. */
-  language: Language
+  /** Which language's built-ins and glossary to explain. SQL explains its keywords and has no variables. */
+  language: Subject
   onOpenConcept: (id: string) => void
 }) {
   const [shown, setShown] = useState<Shown | null>(null)
@@ -92,8 +94,9 @@ export function CodeHover({
     }
     const targetAt = (line: string, column: number): { target: Target; start: number } | null => {
       const language = languageRef.current
-      const builtin = language === 'python' ? builtinAt(line, column) : jsBuiltinAt(line, column)
+      const builtin = language === 'python' ? builtinAt(line, column) : language === 'sql' ? sqlKeywordAt(line, column) : jsBuiltinAt(line, column)
       if (builtin) return { target: { kind: 'builtin', builtin: builtin.builtin }, start: builtin.start }
+      if (language === 'sql') return null
       const name = nameAt(line, column, language)
       if (name && !name.afterDot && variablesRef.current.has(name.name)) {
         return { target: { kind: 'var', name: name.name }, start: name.start }
@@ -246,10 +249,10 @@ function BuiltinView({
   onOpenConcept,
 }: {
   builtin: Builtin
-  language: Language
+  language: Subject
   onOpenConcept: (id: string) => void
 }) {
-  const card = builtin.card ? cardFor(language, builtin.card) : undefined
+  const card = !builtin.card ? undefined : language === 'sql' ? SQL_CARDS.find((c) => c.id === builtin.card) : cardFor(language, builtin.card)
   return (
     <>
       <code className="code-hover-head">{builtin.signature}</code>

@@ -15,7 +15,24 @@ const MODEL = 'claude-opus-5-5'
 const LANGUAGES = {
   python: { name: 'Python', fence: 'python', simple: 'plain lists, dicts and loops' },
   javascript: { name: 'modern JavaScript', fence: 'javascript', simple: 'plain arrays, objects, Maps and loops (no frameworks or libraries)' },
+  sql: { name: 'SQL', fence: 'sql', simple: '' },
 }
+
+// SQL has its own workspace: queries run in SQLite in the browser, with stages instead of traced steps.
+const sqlSystem = `You are the SQL helper inside a learning IDE. The learner is practicing SQL for job interviews: joins, GROUP BY and HAVING, subqueries, CTEs, window functions, NULL handling and the classic interview questions.
+
+Answer the way a patient tutor would at a whiteboard: one or two sentences, then a short query in a \`\`\`sql fenced block. The learner can insert it into their editor with one click. Queries run in SQLite (in the browser), so write SQLite-compatible SQL; when MySQL or Postgres would spell something differently (DATEDIFF, DATE_FORMAT, CONCAT, ILIKE), say so in a few words, since interviews usually use those.
+
+When they ask about the problem they are working on, give hints and explain ideas rather than the full answer, unless they explicitly ask for it. Their current query and the tables are attached to their latest message.
+
+You can point at things on their screen. Write [[line:N]] for a line of their query, [[step:N]] for a stage of the query (the stages are listed in the <editor> block, in the order SQL runs them), and [[glossary:ID]] for a glossary card. Each becomes a chip they can tap. Use only the line numbers, steps and glossary ids listed in the <editor> block.
+
+When showing where things are would explain it better than words alone (which stage drops a row, where a join loses a match), end with a tour: a \`\`\`tour block of two to six stops, one per line, each a reference and a short caption, like:
+\`\`\`tour
+line:3 | This LEFT JOIN keeps every customer
+step:2 | Here WHERE drops the rows with NULL
+\`\`\`
+Leave the tour out for quick syntax questions.`
 
 const system = (lang) => `You are the syntax helper inside a code-learning IDE. The learner is practicing ${lang.name} and LeetCode-style problems.
 
@@ -98,7 +115,7 @@ export async function handleChat(req, res) {
       output_config: { effort: 'low' },
       betas: ['server-side-fallback-2026-07-01'],
       fallbacks: 'default',
-      system: system(lang),
+      system: body.language === 'sql' ? sqlSystem : system(lang),
       messages,
     })
     res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-cache' })
@@ -140,6 +157,15 @@ function viewLines(view) {
   if (!view || typeof view !== 'object') return []
   const names = (list, max) => (Array.isArray(list) ? list.filter((v) => typeof v === 'string').slice(0, max).join(', ') : '')
   const steps = Number(view.steps) || 0
+  if (Array.isArray(view.stages)) {
+    return [
+      steps
+        ? `Query stages, in the order SQL runs them (step:N): ${names(view.stages, 30).split(', ').map((s, i) => `${i + 1}=${s}`).join(', ')}. Showing step ${Number(view.step) || steps}.`
+        : 'Query stages: none yet (the query has not run).',
+      `Tables: ${names(view.tables, 20) || '(none)'}`,
+      `Glossary ids: ${names(view.glossary, 200)}`,
+    ]
+  }
   return [
     steps
       ? `Visualizer: showing step ${Number(view.step) || steps} of ${steps}. Variables: ${names(view.vars, 60) || '(none)'}`

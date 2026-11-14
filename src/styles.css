@@ -874,3 +874,71 @@ button.ref-chip.ref-step:hover:not(:disabled) { color: var(--source); background
 .grid-table td.cursor { outline: 3px solid var(--cursor, var(--accent)); outline-offset: -3px; }
 .grid-table th.source { color: var(--source); }
 .grid-at { font-weight: 400; font-size: 0.75rem; }
+
+/* ---------- SQL workspace (src/sql) ---------- */
+.sql-viz { display: flex; flex-direction: column; gap: 1.4rem; }
+.sql-viz > .sql-section + .sql-section { border-top: 1px solid var(--line); padding-top: 1rem; }
+.sql-section > summary, .sql-h {
+  cursor: pointer; font-family: var(--font-mono); font-size: 0.7rem; font-weight: 400;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); margin: 0 0 0.55rem;
+}
+.sql-h { cursor: default; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.sql-h .badge { text-transform: none; letter-spacing: 0.02em; }
+.sql-section > summary .muted { margin-left: 0.3rem; }
+.sql-tables { display: flex; flex-wrap: wrap; gap: 0.9rem; align-items: flex-start; }
+.sql-table-wrap { max-width: 100%; overflow-x: auto; scrollbar-width: thin; }
+.sql-table { border-collapse: collapse; font-family: var(--font-mono); font-size: 0.78rem; }
+.sql-table caption { text-align: left; padding: 0 0 0.3rem; font-family: var(--font-display); font-size: 0.82rem; color: var(--text); white-space: nowrap; }
+.sql-table caption strong { font-weight: 400; }
+.sql-table caption .muted { font-size: 0.72rem; }
+.sql-table th, .sql-table td { padding: 0.22rem 0.6rem; border: 1px solid var(--line); text-align: left; white-space: nowrap; }
+.sql-table th { color: var(--accent); font-weight: 400; background: rgba(200, 180, 255, 0.06); }
+.sql-table td { color: var(--text); background: rgba(5, 4, 10, 0.35); transition: background 0.15s, opacity 0.15s; }
+.sql-table td.num { text-align: right; }
+.sql-null { color: var(--faint); font-style: italic; }
+.sql-empty-row td { color: var(--faint); font-style: italic; text-align: center; }
+/* GROUP BY: one color band per group. */
+.band-0 td { background: rgba(200, 180, 255, 0.14); }
+.band-1 td { background: rgba(126, 224, 184, 0.13); }
+.band-2 td { background: rgba(240, 167, 207, 0.14); }
+.band-3 td { background: rgba(255, 201, 120, 0.13); }
+.band-4 td { background: rgba(143, 180, 255, 0.14); }
+.band-5 td { background: rgba(255, 255, 255, 0.07); }
+.row-dropped td, .row-extra td { color: var(--error); text-decoration: line-through; text-decoration-color: rgba(255, 111, 145, 0.6); background: rgba(255, 111, 145, 0.08); }
+.row-kept td:last-child { color: var(--pass); }
+.row-missing td { color: var(--source); background: rgba(255, 201, 120, 0.1); }
+.sql-stages .controls { margin-bottom: 0.6rem; }
+.sql-stage-chips { list-style: none; margin: 0 0 0.6rem; padding: 0; display: flex; flex-wrap: wrap; gap: 0.3rem; counter-reset: stage; }
+.sql-stage-chips li { counter-increment: stage; display: flex; align-items: center; }
+.sql-stage-chips li + li::before { content: '→'; color: var(--faint); margin-right: 0.3rem; font-size: 0.75rem; }
+.sql-stage-chips .chip.done { color: var(--muted); }
+.sql-stage-explain { margin: 0 0 0.6rem; font-size: 0.88rem; color: var(--muted); line-height: 1.45; }
+.sql-stage-count { font-family: var(--font-mono); font-size: 0.75rem; color: var(--pass); margin-right: 0.3rem; white-space: nowrap; }
+.sql-changes { font-family: var(--font-mono); font-size: 0.75rem; margin: 0.5rem 0 0; }
+.sql-join-head { display: flex; gap: 0.8rem; align-items: flex-start; margin-bottom: 0.6rem; }
+.sql-join-head code { color: var(--pink); font-size: 0.82rem; }
+.sql-join-head p { margin: 0.25rem 0 0; font-size: 0.82rem; line-height: 1.4; }
+.venn { width: 56px; height: 36px; flex-shrink: 0; }
+.venn-fill { fill: rgba(200, 180, 255, 0.4); }
+.venn-line { fill: none; stroke: var(--accent); stroke-width: 1.2; }
+.sql-join-grid { position: relative; display: grid; grid-template-columns: auto minmax(40px, 90px) auto; align-items: start; justify-content: start; }
+.sql-join-lines { width: 100%; overflow: visible; }
+.join-line { fill: none; stroke: var(--accent); stroke-width: 1.4; opacity: 0.7; transition: opacity 0.15s, stroke 0.15s; }
+.join-line.lit { stroke: var(--pass); stroke-width: 2.2; opacity: 1; }
+.join-line.dim { opacity: 0.15; }
+.join-matched td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.join-kept td { background: rgba(255, 201, 120, 0.1); }
+.join-kept td:first-child { box-shadow: inset 3px 0 0 var(--source); }
+.join-dropped td { opacity: 0.45; text-decoration: line-through; text-decoration-color: rgba(255, 111, 145, 0.6); }
+.join-dropped td:first-child { box-shadow: inset 3px 0 0 var(--error); }
+.join-lit td { background: rgba(126, 224, 184, 0.16); }
+.sql-legend { font-size: 0.75rem; margin: 0.5rem 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.9rem; }
+.sql-legend > span { display: inline-flex; align-items: center; gap: 0.35rem; white-space: nowrap; }
+.dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 2px; }
+.dot.matched { background: var(--accent); }
+.dot.kept { background: var(--source); }
+.dot.dropped { background: var(--error); }
+.sql-answer pre {
+  margin: 0.4rem 0; font-size: 0.8rem; white-space: pre-wrap;
+  background: rgba(5, 4, 10, 0.6); border: 1px solid var(--line); padding: 0.55rem 0.65rem; border-radius: 6px; color: var(--text);
+}

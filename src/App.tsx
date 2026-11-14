@@ -30,6 +30,8 @@ import { loadTopBarHidden, saveTopBarHidden } from './layout/topBar'
 import { DEFAULT_FONT_SCALE, applyFontScale, editorFont, isLargest, isSmallest, loadFontScale, saveFontScale, stepFontScale } from './layout/fontSize'
 import { usePaneLayout, type LayoutMode } from './layout/usePaneLayout'
 import type { Language, RunRequest } from './types'
+import { SqlWorkspace, type SqlStatusReport } from './sql/SqlWorkspace'
+import { SQL_PLAYGROUND, SQL_PROBLEMS, SQL_TOPICS, starterFor } from './sql/problems'
 
 const STARTERS: Record<Language, string> = {
   python: `nums = [4, 8, 15, 16, 23, 42]
@@ -53,6 +55,22 @@ const LANGUAGES: { id: Language; label: string }[] = [
 ]
 
 const LANGUAGE_KEY = 'clt.language.v1'
+// SQL is a switch of its own, so Python or JavaScript stays picked underneath for when you come back.
+const SQL_KEY = 'clt.sql.v1'
+
+function savedSql(): boolean {
+  try {
+    return localStorage.getItem(SQL_KEY) === 'on'
+  } catch {
+    return false
+  }
+}
+
+/** Each SQL problem's starting query: the saved passing one, or its starter. */
+const sqlStartingCode = (solutions: Solutions): Record<string, string> => ({
+  [PLAYGROUND]: SQL_PLAYGROUND,
+  ...Object.fromEntries(SQL_PROBLEMS.map((p) => [p.id, solutions.sql[p.id]?.code ?? starterFor(p)])),
+})
 
 function savedLanguage(): Language {
   try {
@@ -98,7 +116,22 @@ const LAYOUT_OPTIONS: { mode: LayoutMode; label: string; Icon: () => ReactNode }
 export default function App() {
   const [mode, setMode] = useState<string>(PLAYGROUND)
   const [language, setLanguageState] = useState<Language>(savedLanguage)
+  const [sqlOn, setSqlOnState] = useState(savedSql)
+  const setSqlOn = (on: boolean) => {
+    setSqlOnState(on)
+    // The code editor goes away while SQL shows; a new one mounts on the way back.
+    if (on) {
+      editorRef.current = null
+      setMounted(null)
+    }
+    try {
+      localStorage.setItem(SQL_KEY, on ? 'on' : 'off')
+    } catch {
+      // not remembered, which is fine
+    }
+  }
   const setLanguage = (next: Language) => {
+    setSqlOn(false)
     setLanguageState(next)
     // Each concept track only exists in its own language.
     if (next !== language && CONCEPTS[language].some((p) => p.id === mode)) setMode(PLAYGROUND)
@@ -132,6 +165,11 @@ export default function App() {
     saveBackgroundMode(next)
   }
   const [codeByMode, setCodeByMode] = useState(() => startingCode(solutions))
+  // The SQL workspace (src/sql) keeps its own queries and problem, here so they survive switching languages.
+  const [sqlMode, setSqlMode] = useState<string>(PLAYGROUND)
+  const [sqlCode, setSqlCode] = useState(() => sqlStartingCode(solutions))
+  const [sqlStatus, setSqlStatus] = useState<SqlStatusReport>({ status: 'loading', error: false })
+  const sqlCommandsRef = useRef<Partial<Record<Command, () => void>>>({})
   const [caseIndex, setCaseIndex] = useState(0)
   const layout = usePaneLayout()
   const [sidePanel, setSidePanel] = useState<'chat' | 'history' | 'cards'>('chat')
@@ -165,7 +203,7 @@ export default function App() {
           tests: problem.speed ? [...problem.tests, problem.speed] : problem.tests,
           ...(problem.io && { io: problem.io }),
         }
-  const { status, trace, error, tests, ranFor } = useRunner(request, language)
+  const { status, trace, error, tests, ranFor } = useRunner(request, language, !sqlOn)
   // Right after switching problems, the last results are still the old problem's until the new run lands.
   const resultsFresh = problem !== undefined && (ranFor ?? '') === problem.functionName
   // trace.code is the exact source those tests ran, even if the editor has changed since. Both languages
@@ -237,6 +275,14 @@ export default function App() {
   useEffect(() => {
     commandsRef.current = commands
   })
+  // In SQL, the step keys walk the query's stages, and the workspace has its own editor and chat box.
+  const sqlOnRef = useRef(sqlOn)
+  sqlOnRef.current = sqlOn
+  const runCommand = useCallback((command: Command) => {
+    const sqlCommand = sqlOnRef.current ? sqlCommandsRef.current[command] : undefined
+    if (sqlCommand) sqlCommand()
+    else commandsRef.current[command]()
+  }, [])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -248,7 +294,7 @@ export default function App() {
       e.preventDefault()
       // Holding Space would flip between play and pause.
       if (e.repeat && command === 'playPause') return
-      commandsRef.current[command]()
+      runCommand(command)
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -341,6 +387,8 @@ export default function App() {
 
   const onMount: OnMount = (editor, m) => {
     editorRef.current = editor
+    // A new editor (after coming back from SQL) needs its own highlight collection.
+    decorations.current = null
     monacoRef.current = m
     setMounted({ editor, api: m })
     // The same shortcuts while typing. As editor actions they also show up in F1.
@@ -449,8 +497,20 @@ export default function App() {
     editor.focus()
   }
 
+  const shownStatus = sqlOn ? sqlStatus.status : status
+  const shownError = sqlOn ? sqlStatus.error : !!error
   const statusText =
-    status === 'loading' ? (language === 'python' ? 'Loading Python…' : 'Starting…') : status === 'running' ? 'Running…' : error ? 'Error' : 'Up to date'
+    shownStatus === 'loading'
+      ? sqlOn
+        ? 'Loading SQLite…'
+        : language === 'python'
+          ? 'Loading Python…'
+          : 'Starting…'
+      : shownStatus === 'running'
+        ? 'Running…'
+        : shownError
+          ? 'Error'
+          : 'Up to date'
 
   return (
     <div className={background === 'daily' ? 'app pixel-bg' : 'app'}>
@@ -464,7 +524,7 @@ export default function App() {
           // The bar is gone, so this small tab is the way back. It keeps the status light,
           // so "Loading…" or "Error" still shows while the bar is hidden.
           <button
-            className={`top-restore status-${error ? 'error' : status}`}
+            className={`top-restore status-${shownError ? 'error' : shownStatus}`}
             onClick={toggleTopBar}
             aria-label="Show the top bar"
             title={withShortcut(`Show the top bar · ${statusText}`, 'toggleTopBar')}
@@ -473,6 +533,39 @@ export default function App() {
           </button>
         ) : (
           <header className="top">
+            {sqlOn ? (
+              <nav className="tabs">
+                <button className={sqlMode === PLAYGROUND ? 'tab active' : 'tab'} onClick={() => setSqlMode(PLAYGROUND)}>
+                  Playground
+                </button>
+                <select
+                  className={sqlMode !== PLAYGROUND ? 'problem-select active' : 'problem-select'}
+                  value={sqlMode !== PLAYGROUND ? sqlMode : ''}
+                  onChange={(e) => setSqlMode(e.target.value)}
+                  aria-label="SQL problem"
+                >
+                  {sqlMode === PLAYGROUND && (
+                    <option value="" disabled>
+                      SQL problems ({SQL_PROBLEMS.length})
+                    </option>
+                  )}
+                  {SQL_TOPICS.map((t) => {
+                    const group = SQL_PROBLEMS.filter((p) => p.topic === t.id).sort(
+                      (a, b) => DIFFICULTIES.indexOf(a.difficulty) - DIFFICULTIES.indexOf(b.difficulty),
+                    )
+                    return (
+                      <optgroup key={t.id} label={t.label}>
+                        {group.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {`${solutions.sql[p.id] ? '✓ ' : ''}${p.title} · ${p.difficulty}`}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )
+                  })}
+                </select>
+              </nav>
+            ) : (
             <nav className="tabs">
               <button className={mode === PLAYGROUND ? 'tab active' : 'tab'} onClick={() => openProblem(PLAYGROUND)}>
                 Playground
@@ -525,19 +618,28 @@ export default function App() {
                 <ConceptOptions problems={CONCEPTS[language]} solved={solutions[language]} />
               </select>
             </nav>
+            )}
             <h1 className="wordmark">Code Language Teacher</h1>
             <div className="top-right">
               <div className="lang-switch" role="group" aria-label="Language">
                 {LANGUAGES.map((l) => (
                   <button
                     key={l.id}
-                    className={language === l.id ? 'tab active' : 'tab'}
-                    aria-pressed={language === l.id}
+                    className={!sqlOn && language === l.id ? 'tab active' : 'tab'}
+                    aria-pressed={!sqlOn && language === l.id}
                     onClick={() => setLanguage(l.id)}
                   >
                     {l.label}
                   </button>
                 ))}
+                <button
+                  className={sqlOn ? 'tab active' : 'tab'}
+                  aria-pressed={sqlOn}
+                  onClick={() => setSqlOn(true)}
+                  title="SQL: joins, GROUP BY, window functions and the classic interview questions"
+                >
+                  SQL
+                </button>
               </div>
               <div className="font-size" role="group" aria-label="Text size">
                 <button
@@ -602,10 +704,25 @@ export default function App() {
               >
                 <KeyboardIcon />
               </button>
-              <span className={`status status-${error ? 'error' : status}`}>{statusText}</span>
+              <span className={`status status-${shownError ? 'error' : shownStatus}`}>{statusText}</span>
             </div>
           </header>
         )}
+        {sqlOn ? (
+          <SqlWorkspace
+            layout={layout}
+            mode={sqlMode}
+            onOpenProblem={setSqlMode}
+            code={sqlCode[sqlMode]}
+            setCode={(next) => setSqlCode((c) => ({ ...c, [sqlMode]: next }))}
+            solutions={solutions.sql}
+            onSolved={(id, solved) => setSolutions((s) => saveSolution(s, 'sql', id, solved))}
+            fontScale={fontScale}
+            commandsRef={sqlCommandsRef}
+            runCommand={runCommand}
+            onStatus={setSqlStatus}
+          />
+        ) : (
         <main className={layout.panesClass} ref={layout.panesRef} style={layout.panesStyle}>
           <section className={`pane editor-pane${layout.paneClass(0)}`}>
             {problem && (
@@ -836,6 +953,7 @@ export default function App() {
             )}
           </section>
         </main>
+        )}
       </div>
       {flash && <PointerFlash key={flash.n} target={flash.ref} pointing={pointing} onDone={endFlash} />}
       {tour && (
