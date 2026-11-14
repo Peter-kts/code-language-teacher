@@ -8,7 +8,7 @@ import type { SqlRequest, SqlResponse } from './sql.worker'
 export type SqlStatus = 'loading' | 'running' | 'idle'
 
 /** One run's output, with the exact code it ran (the editor may be ahead of it). */
-export type SqlRun = RunOutput & { code: string }
+export type SqlRun = RunOutput & { code: string; /** Which tables and checks it ran against. */ dataKey: string }
 
 const DEBOUNCE_MS = 300
 // A recursive CTE without a stop can loop forever.
@@ -27,13 +27,10 @@ export function useSqlRunner(code: string, tables: SqlTable[], check: CheckSpec 
   // The latest output, and the latest one without an error (what the stages and tables keep showing).
   const [output, setOutput] = useState<SqlRun | null>(null)
   const [good, setGood] = useState<SqlRun | null>(null)
-  // A new problem or test case: the old results belong to other tables, so they go.
+  // Results from another problem or test case belong to other tables, so they're never handed out,
+  // not even for the one render between switching and the new run starting.
   const dataKey = JSON.stringify({ tables, check })
-  useEffect(() => {
-    setOutput(null)
-    setGood(null)
-  }, [dataKey])
-  const codeFor = useRef(new Map<number, string>())
+  const sent = useRef(new Map<number, { code: string; dataKey: string }>())
   const [failure, setFailure] = useState<string | null>(null)
   const workerRef = useRef<Worker | null>(null)
   const latest = useRef(0)
@@ -54,8 +51,8 @@ export function useSqlRunner(code: string, tables: SqlTable[], check: CheckSpec 
         return
       }
       setFailure(null)
-      const run = { ...msg.output, code: codeFor.current.get(msg.id) ?? '' }
-      codeFor.current.clear()
+      const run = { ...msg.output, code: '', dataKey: '', ...sent.current.get(msg.id) }
+      sent.current.clear()
       setOutput(run)
       if (!run.error) setGood(run)
     }
@@ -79,7 +76,7 @@ export function useSqlRunner(code: string, tables: SqlTable[], check: CheckSpec 
       const id = ++latest.current
       const req = JSON.parse(key) as Omit<SqlRequest, 'id'>
       if (statusRef.current !== 'loading') setStatus('running')
-      codeFor.current.set(id, req.code)
+      sent.current.set(id, { code: req.code, dataKey: JSON.stringify({ tables: req.tables, check: req.check }) })
       workerRef.current?.postMessage({ id, ...req } satisfies SqlRequest)
       window.clearTimeout(timer.current)
       timer.current = window.setTimeout(() => {
@@ -93,5 +90,6 @@ export function useSqlRunner(code: string, tables: SqlTable[], check: CheckSpec 
     return () => window.clearTimeout(handle)
   }, [key, enabled])
 
-  return { status, output, good, failure }
+  const current = (run: SqlRun | null) => (run?.dataKey === dataKey ? run : null)
+  return { status, output: current(output), good: current(good), failure }
 }

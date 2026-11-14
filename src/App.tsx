@@ -119,6 +119,11 @@ export default function App() {
   const [sqlOn, setSqlOnState] = useState(savedSql)
   const setSqlOn = (on: boolean) => {
     setSqlOnState(on)
+    // The code editor goes away while SQL shows; a new one mounts on the way back.
+    if (on) {
+      editorRef.current = null
+      setMounted(null)
+    }
     try {
       localStorage.setItem(SQL_KEY, on ? 'on' : 'off')
     } catch {

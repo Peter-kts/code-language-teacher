@@ -75,9 +75,11 @@ export function SqlWorkspace({
     [problem],
   )
   const { status, output, good, failure } = useSqlRunner(code, tables, check, true)
+  // A problem's starter is an unfinished SELECT on purpose: no red error before the learner has typed.
+  const untouched = !!problem && code.trim() === starterFor(problem).trim()
   // While the query is broken, keep showing the last one that ran.
   const shown: SqlRun | null = output?.error ? good : output
-  useEffect(() => onStatus({ status, error: !!(output?.error || failure) }), [status, output, failure])
+  useEffect(() => onStatus({ status, error: !!((output?.error && !untouched) || failure) }), [status, output, failure, untouched])
 
   // Code that passes every case is saved, like the other problems.
   const passedCode = problem && output && !output.error && output.cases?.length && output.cases.every((c) => c.passed) ? output.code : null
@@ -167,7 +169,7 @@ export function SqlWorkspace({
     if (!mounted) return
     const model = mounted.editor.getModel()
     if (!model) return
-    const err = output?.error
+    const err = untouched ? null : output?.error
     const line = err?.line && err.line <= model.getLineCount() ? err.line : null
     mounted.api.editor.setModelMarkers(
       model,
@@ -176,7 +178,7 @@ export function SqlWorkspace({
         ? [{ severity: mounted.api.MarkerSeverity.Error, message: err.message, startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: model.getLineMaxColumn(line) }]
         : [],
     )
-  }, [output, mounted])
+  }, [output, mounted, untouched])
 
   const insert = (snippet: string) => {
     const editor = editorRef.current
@@ -300,7 +302,7 @@ export function SqlWorkspace({
         <section className={`pane viz-pane${layout.paneClass(1)}`} ref={layout.vizRef}>
           <div className="viz-scroll sql-viz">
             {failure && <div className="error">{failure}</div>}
-            {output?.error && (
+            {output?.error && !untouched && (
               <div className="error">
                 {output.error.line ? `Line ${output.error.line}: ` : ''}
                 {output.error.message}
