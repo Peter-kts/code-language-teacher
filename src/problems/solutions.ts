@@ -1,4 +1,4 @@
-import type { Language } from '../types'
+import type { Subject } from '../types'
 
 export interface SavedSolution {
   code: string
@@ -6,12 +6,12 @@ export interface SavedSolution {
   savedAt: string
 }
 
-/** The last passing code for each problem, per language. */
-export type Solutions = Record<Language, Record<string, SavedSolution>>
+/** The last passing code for each problem, per language (SQL included). */
+export type Solutions = Record<Subject, Record<string, SavedSolution>>
 
 export const SOLUTIONS_KEY = 'clt.solutions.v1'
 
-const empty = (): Solutions => ({ python: {}, javascript: {} })
+const empty = (): Solutions => ({ python: {}, javascript: {}, sql: {} })
 
 /** The saved solutions, or none when there are none or storage is blocked. */
 export function loadSolutions(storage?: Pick<Storage, 'getItem'>): Solutions {
@@ -20,7 +20,7 @@ export function loadSolutions(storage?: Pick<Storage, 'getItem'>): Solutions {
     // Read localStorage inside the try: with storage blocked, merely touching it throws.
     const saved = JSON.parse((storage ?? globalThis.localStorage)?.getItem(SOLUTIONS_KEY) ?? 'null') as unknown
     if (!saved || typeof saved !== 'object') return out
-    for (const language of Object.keys(out) as Language[]) {
+    for (const language of Object.keys(out) as Subject[]) {
       const byProblem = (saved as Record<string, unknown>)[language]
       if (!byProblem || typeof byProblem !== 'object') continue
       for (const [id, s] of Object.entries(byProblem)) {
@@ -36,7 +36,7 @@ export function loadSolutions(storage?: Pick<Storage, 'getItem'>): Solutions {
 /** A copy of `solutions` with this one saved, also written to storage. */
 export function saveSolution(
   solutions: Solutions,
-  language: Language,
+  language: Subject,
   problemId: string,
   code: string,
   storage?: Pick<Storage, 'setItem'>,

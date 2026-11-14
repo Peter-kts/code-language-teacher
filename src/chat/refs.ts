@@ -112,4 +112,7 @@ export interface ViewSummary {
   steps: number
   vars: string[]
   glossary: string[]
+  /** SQL only: the query's stages in run order (step N is the Nth), and the tables on screen. */
+  stages?: string[]
+  tables?: string[]
 }

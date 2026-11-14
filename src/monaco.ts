@@ -1,4 +1,4 @@
-// Bundle Monaco locally (no CDN) with the core editor and Python and JavaScript highlighting.
+// Bundle Monaco locally (no CDN) with the core editor and Python, JavaScript and SQL highlighting.
 import * as monaco from 'monaco-editor/editor/editor.api'
 // The API above is the bare editor: without these, VS Code's standard shortcuts do nothing.
 import 'monaco-editor/features/codicon/register'
@@ -20,6 +20,7 @@ import 'monaco-editor/features/quickHelp/register'
 import 'monaco-editor/features/toggleTabFocusMode/register' // Ctrl+M: Tab moves focus out
 import 'monaco-editor/languages/definitions/python/register'
 import 'monaco-editor/languages/definitions/javascript/register'
+import 'monaco-editor/languages/definitions/sql/register'
 import EditorWorker from 'monaco-editor/editor/editor.worker?worker'
 import { loader } from '@monaco-editor/react'
 

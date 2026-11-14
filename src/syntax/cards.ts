@@ -1,4 +1,6 @@
 import type { Language } from '../types'
+import type { SqlQuestion } from '../sql/cards'
+import type { SqlTopic } from '../sql/problems'
 import { JS_CARDS } from './jsCards'
 
 // The glossary: terms with a short explanation and an example to insert, one set per language
@@ -18,9 +20,10 @@ export type Question = 'repeat' | 'decide' | 'remember' | 'find' | 'transform' |
 export interface SyntaxCard {
   id: string
   title: string
-  topic: Topic
+  /** SQL cards use SQL's own topics and questions (src/sql/cards.ts). */
+  topic: Topic | SqlTopic
   level: Level
-  questions: Question[]
+  questions: (Question | SqlQuestion)[]
   keywords: string[]
   explanation: string
   code: string
@@ -1034,6 +1037,15 @@ export const cardFor = (language: Language, id: string) => CARDS[language].find(
 
 export type GroupBy = 'topic' | 'level' | 'question'
 
+/** The groups a glossary sorts into: Python and JavaScript share these; SQL has its own. */
+export interface GroupLists {
+  topics: { id: string; label: string }[]
+  levels: { id: Level; label: string }[]
+  questions: { id: string; label: string }[]
+}
+
+export const CODE_GROUPS: GroupLists = { topics: TOPICS, levels: LEVELS, questions: QUESTIONS }
+
 export interface CardGroup {
   id: string
   label: string
@@ -1044,13 +1056,13 @@ export interface CardGroup {
  * Sort cards into groups: by topic, by learning path (in path order), or by question.
  * A card can sit under several questions. Empty groups are left out.
  */
-export function groupCards(cards: SyntaxCard[], by: GroupBy): CardGroup[] {
+export function groupCards(cards: SyntaxCard[], by: GroupBy, lists: GroupLists = CODE_GROUPS): CardGroup[] {
   const groups =
     by === 'topic'
-      ? TOPICS.map((t) => ({ id: t.id, label: t.label, cards: cards.filter((c) => c.topic === t.id) }))
+      ? lists.topics.map((t) => ({ id: t.id, label: t.label, cards: cards.filter((c) => c.topic === t.id) }))
       : by === 'level'
-        ? LEVELS.map((l) => ({ id: String(l.id), label: l.label, cards: cards.filter((c) => c.level === l.id) }))
-        : QUESTIONS.map((q) => ({ id: q.id, label: q.label, cards: cards.filter((c) => c.questions.includes(q.id)) }))
+        ? lists.levels.map((l) => ({ id: String(l.id), label: l.label, cards: cards.filter((c) => c.level === l.id) }))
+        : lists.questions.map((q) => ({ id: q.id, label: q.label, cards: cards.filter((c) => (c.questions as string[]).includes(q.id)) }))
   return groups.filter((g) => g.cards.length > 0)
 }
 

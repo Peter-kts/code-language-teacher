@@ -27,7 +27,7 @@ function spawnWorker(language: Language) {
  * Re-run shortly after each edit; keep the last trace that compiled.
  * Switching `language` starts that language's worker with a clean slate.
  */
-export function useRunner(request: RunRequest, language: Language) {
+export function useRunner(request: RunRequest, language: Language, enabled = true) {
   // Effects key off the serialized request so a new-but-equal object doesn't re-run.
   const requestKey = JSON.stringify(request)
   const [status, setStatusState] = useState<RunnerStatus>('loading')
@@ -69,20 +69,24 @@ export function useRunner(request: RunRequest, language: Language) {
     workerRef.current = worker
   }
 
+  // Off (the SQL workspace is showing): no worker at all, so Python doesn't load for nothing.
   useEffect(() => {
     setStatus('loading')
     setTrace(null)
     setError(null)
     setTests(null)
     setRanFor(null)
+    if (!enabled) return
     attach(spawnWorker(language), language)
     return () => {
       window.clearTimeout(timeoutRef.current)
       workerRef.current?.terminate()
+      workerRef.current = null
     }
-  }, [language])
+  }, [language, enabled])
 
   useEffect(() => {
+    if (!enabled) return
     const handle = window.setTimeout(() => {
       const id = ++latestId.current
       const req = JSON.parse(requestKey) as RunRequest
@@ -102,7 +106,7 @@ export function useRunner(request: RunRequest, language: Language) {
       }, RUN_TIMEOUT_MS)
     }, DEBOUNCE_MS)
     return () => window.clearTimeout(handle)
-  }, [requestKey, language])
+  }, [requestKey, language, enabled])
 
   return { status, trace, error, tests, ranFor }
 }

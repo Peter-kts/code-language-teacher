@@ -1,8 +1,18 @@
 import { useState } from 'react'
-import type { Language } from '../types'
+import type { Subject } from '../types'
 import { PROBLEMS } from '../problems/problems'
 import { CONCEPTS } from '../problems/concepts'
-import { CARDS, groupCards, searchCards, type GroupBy, type SyntaxCard } from './cards'
+import { SQL_PROBLEMS } from '../sql/problems'
+import { SQL_CARDS, SQL_LEVELS, SQL_QUESTIONS, SQL_TOPICS } from '../sql/cards'
+import { CARDS, CODE_GROUPS, groupCards, searchCards, type GroupBy, type GroupLists, type SyntaxCard } from './cards'
+
+const SQL_GROUPS: GroupLists = { topics: SQL_TOPICS, levels: SQL_LEVELS, questions: SQL_QUESTIONS }
+
+/** The problems that practice a glossary entry, as id and title. Each concept track only exists in its own language. */
+function practiceFor(language: Subject, id: string): { id: string; title: string }[] {
+  if (language === 'sql') return SQL_PROBLEMS.filter((p) => p.concepts.includes(id))
+  return [...PROBLEMS, ...CONCEPTS[language]].filter((p) => p.concepts[language].includes(id))
+}
 
 const GROUP_BYS: { id: GroupBy; label: string }[] = [
   { id: 'topic', label: 'Topic' },
@@ -29,13 +39,11 @@ function CardView({
   onOpenProblem,
 }: {
   card: SyntaxCard
-  language: Language
+  language: Subject
   onInsert: (code: string) => void
   onOpenProblem: (id: string) => void
 }) {
-  // Each concept track only exists in its own language.
-  const problems = [...PROBLEMS, ...CONCEPTS[language]]
-  const practice = problems.filter((p) => p.concepts[language].includes(card.id))
+  const practice = practiceFor(language, card.id)
   return (
     <div className="card">
       <div className="card-head">
@@ -65,7 +73,7 @@ export function SyntaxHelper({
   onFocus,
   onOpenProblem,
 }: {
-  language: Language
+  language: Subject
   onInsert: (code: string) => void
   /** Id of an entry to show on its own (opened from a problem's concept chip), or null for the full list. */
   focus: string | null
@@ -75,8 +83,8 @@ export function SyntaxHelper({
   const [query, setQuery] = useState('')
   const [groupBy, setGroupBy] = useState<GroupBy>(savedGroupBy)
   const searching = query.trim() !== ''
-  const cards = CARDS[language]
-  const groups = groupCards(searchCards(query, cards), groupBy)
+  const cards = language === 'sql' ? SQL_CARDS : CARDS[language]
+  const groups = groupCards(searchCards(query, cards), groupBy, language === 'sql' ? SQL_GROUPS : CODE_GROUPS)
 
   const pick = (by: GroupBy) => {
     setGroupBy(by)
@@ -105,7 +113,7 @@ export function SyntaxHelper({
     <div className="syntax">
       <input
         className="syntax-input"
-        placeholder="Search the glossary, e.g. how do I do a for loop?"
+        placeholder={`Search the glossary, e.g. ${language === 'sql' ? 'how do I join two tables?' : 'how do I do a for loop?'}`}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />

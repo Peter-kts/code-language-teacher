@@ -2,6 +2,9 @@
 
 export type Language = 'python' | 'javascript'
 
+/** What the editor holds: one of the traced languages, or SQL (its own workspace in src/sql). */
+export type Subject = Language | 'sql'
+
 /**
  * A traced value. JavaScript values also carry `t`, their type as JavaScript names it
  * (`number`, `Array`, `Map`, a class name, ...); Python values leave it out.

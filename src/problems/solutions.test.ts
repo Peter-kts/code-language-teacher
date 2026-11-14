@@ -32,9 +32,9 @@ describe('saved solutions', () => {
   it('ignores corrupt or malformed data', () => {
     const s = memoryStorage()
     s.setItem(SOLUTIONS_KEY, '{nope')
-    expect(loadSolutions(s)).toEqual({ python: {}, javascript: {} })
+    expect(loadSolutions(s)).toEqual({ python: {}, javascript: {}, sql: {} })
     s.setItem(SOLUTIONS_KEY, JSON.stringify({ python: { a: { code: 1 }, b: { code: 'ok', savedAt: 'x' } }, ruby: {} }))
-    expect(loadSolutions(s)).toEqual({ python: { b: { code: 'ok', savedAt: 'x' } }, javascript: {} })
+    expect(loadSolutions(s)).toEqual({ python: { b: { code: 'ok', savedAt: 'x' } }, javascript: {}, sql: {} })
   })
 
   it('survives a localStorage getter that throws', () => {
@@ -46,7 +46,7 @@ describe('saved solutions', () => {
       },
     })
     try {
-      expect(loadSolutions()).toEqual({ python: {}, javascript: {} })
+      expect(loadSolutions()).toEqual({ python: {}, javascript: {}, sql: {} })
       expect(saveSolution(loadSolutions(), 'python', 'p', 'x').python.p.code).toBe('x')
     } finally {
       if (desc) Object.defineProperty(globalThis, 'localStorage', desc)
