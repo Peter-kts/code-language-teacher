@@ -138,7 +138,7 @@ export function ProblemPanel({
             key={i}
             className={`case ${i === caseIndex ? 'active' : ''} ${tests ? (tests[i]?.passed ? 'pass' : 'fail') : ''}`}
             onClick={() => onSelectCase(i)}
-            title={`expected ${JSON.stringify(t.expected)}`}
+            title={`${t.name ? `${t.name}: ` : ''}expected ${JSON.stringify(t.expected)}`}
           >
             {tests ? (tests[i]?.passed ? '✓ ' : '✗ ') : ''}
             {i + 1}
@@ -170,6 +170,7 @@ export function ProblemPanel({
       {!concept && problem.complexity && allPassed && <ComplexityCheck complexity={problem.complexity} language={language} />}
       {call && (
         <div className="call">
+          {problem.tests[caseIndex]?.name && <span className="muted">Case {caseIndex + 1}, {problem.tests[caseIndex].name}: </span>}
           <code>{call}</code> returned <code>{result ? formatValue(result) : language === 'python' ? 'None' : 'undefined'}</code>
           {problem.io?.result && <span className="muted"> ({problem.io.result === 'tree' ? 'the tree, level by level' : 'the list, node by node'})</span>}
           {stale && <span className="muted"> (from the last version that compiled)</span>}
