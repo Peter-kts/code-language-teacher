@@ -547,15 +547,17 @@ button.console-at:hover { color: var(--accent); background: none; box-shadow: no
 }
 .top-restore:hover:not(:disabled) { background: var(--accent-soft); color: var(--text); border-color: var(--accent); }
 
-/* ---------- Layout switch (header): auto / side by side / stacked ---------- */
-/* Text size: A− / A+. The tooltip says the current size; 0 goes back to normal. */
-/* The A− / A+ size scales every rem, but the top bar is zoomed back to normal so its
-   row of switches keeps fitting. --font-scale is set by src/layout/fontSize.ts. */
+/* ---------- Text size (header): A− / A+ ---------- */
+/* The size scales every rem, but the top bar is zoomed back to normal so its row of
+   switches keeps fitting. --font-scale is set by src/layout/fontSize.ts. The buttons'
+   tooltips say the current size; the 0 key goes back to normal. */
 .top, .top-restore { zoom: calc(1 / var(--font-scale, 1)); }
 .font-size { display: flex; align-items: center; gap: 0.2rem; margin-right: 0.75rem; }
 .font-btn { display: inline-flex; align-items: center; justify-content: center; width: 1.8rem; height: 1.8rem; font-family: var(--font-display); font-size: 0.72rem; font-weight: 400; line-height: 1; }
 .font-btn-big { font-size: 0.92rem; }
 .font-btn span { font-size: 0.8em; margin-left: 0.05em; }
+
+/* ---------- Layout switch (header): auto / side by side / stacked ---------- */
 .layout-switch { display: flex; align-items: center; gap: 0.2rem; margin-right: 0.75rem; }
 .layout-switch .icon-btn { width: 1.8rem; height: 1.8rem; }
 .layout-switch .icon-btn.active { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
