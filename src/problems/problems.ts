@@ -1,4 +1,5 @@
 import type { Language, NodeIo } from '../types'
+import { EDGE_CASES } from './edgeCases'
 import { ADVANCED } from './sets/advanced'
 import { ALGORITHMS } from './sets/algorithms'
 import { GRAPHS } from './sets/graphs'
@@ -891,4 +892,7 @@ const FIRST: Problem[] = [
   },
 ]
 
-export const PROBLEMS: Problem[] = [...FIRST, ...PATTERNS, ...LINKED, ...GRAPHS, ...ADVANCED, ...ALGORITHMS]
+/** Every problem, with its edge cases (src/problems/edgeCases.ts) after its main cases. */
+export const PROBLEMS: Problem[] = [...FIRST, ...PATTERNS, ...LINKED, ...GRAPHS, ...ADVANCED, ...ALGORITHMS].map((p) =>
+  EDGE_CASES[p.id] ? { ...p, tests: [...p.tests, ...EDGE_CASES[p.id]] } : p,
+)

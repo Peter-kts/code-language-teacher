@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { CARDS } from '../syntax/cards'
 import { JS_CONCEPTS } from './concepts'
 import { PY_CONCEPTS } from './pyConcepts'
+import { EDGE_CASES } from './edgeCases'
 import { BIG_OS, PROBLEMS, say } from './problems'
 
 describe('problems', () => {
@@ -13,6 +14,20 @@ describe('problems', () => {
       expect(p.tests.length, p.id).toBeGreaterThan(0)
       expect(p.starters.python, p.id).toContain(`def ${p.functionName}(`)
       expect(p.starters.javascript, p.id).toContain(`function ${p.functionName}(`)
+    }
+  })
+
+  it('have at least three named edge cases each, and no repeated cases', () => {
+    const ids = new Set(PROBLEMS.map((p) => p.id))
+    for (const id of Object.keys(EDGE_CASES)) expect(ids.has(id), `edge cases for unknown problem ${id}`).toBe(true)
+    for (const p of PROBLEMS) {
+      const edges = EDGE_CASES[p.id] ?? []
+      expect(edges.length, p.id).toBeGreaterThanOrEqual(3)
+      expect(edges.every((c) => c.name), p.id).toBe(true)
+      expect(new Set(edges.map((c) => c.name)).size, `${p.id}: two edge cases share a name`).toBe(edges.length)
+      // The same input twice only makes the list longer.
+      const inputs = p.tests.map((c) => JSON.stringify(c.args))
+      expect(inputs.filter((a, i) => inputs.indexOf(a) !== i), `${p.id}: repeated inputs`).toEqual([])
     }
   })
 
