@@ -24,6 +24,7 @@ import { loadSolutions, saveSolution, type Solutions } from './problems/solution
 import { CONCEPTS } from './problems/concepts'
 import { commandFor, focusKind, withShortcut, type Command } from './shortcuts'
 import { ShortcutsDialog } from './ShortcutsDialog'
+import { stepAfterRerun } from './timeline'
 import { TapTip } from './TapTip'
 import { loadTopBarHidden, saveTopBarHidden } from './layout/topBar'
 import { usePaneLayout, type LayoutMode } from './layout/usePaneLayout'
@@ -241,11 +242,24 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  // A fresh trace shows the final state; Play walks through it from the top.
+  // Where the scrubber lands on a new trace (rules in src/timeline.ts). Re-runs after an edit keep your step;
+  // a new problem, test case or language starts at the final state. Play walks through from the top.
+  // The same for Python and JavaScript: both runners hand back a trace the same way.
+  const lastRun = useRef<{ context: string; index: number; length: number } | null>(null)
+  const runContext = `${language}|${mode}|${caseIndex}`
   useEffect(() => {
-    setStepIndex(Math.max(0, (trace?.steps.length ?? 1) - 1))
     setPlaying(false)
+    if (!trace) return
+    const length = trace.steps.length
+    const before = lastRun.current
+    const index = stepAfterRerun(before, length, before?.context === runContext)
+    lastRun.current = { context: runContext, index, length }
+    setStepIndex(index)
   }, [trace])
+  // Remember moves along the timeline, so the next re-run knows where you were.
+  useEffect(() => {
+    if (lastRun.current) lastRun.current.index = stepIndex
+  }, [stepIndex])
 
   useEffect(() => {
     if (!playing) return
