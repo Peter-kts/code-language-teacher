@@ -21,6 +21,8 @@ describe('commandFor', () => {
     expect(commandFor(press('?', { shiftKey: true }), 'other', 'win')).toBe('showShortcuts')
     expect(commandFor(press('f'), 'other', 'win')).toBe('toggleTopBar')
     expect(commandFor(press('f'), 'button', 'mac')).toBe('toggleTopBar')
+    expect(commandFor(press('t'), 'other', 'win')).toBe('toggleTheme')
+    expect(commandFor(press('t'), 'text', 'win')).toBeNull()
   })
 
   it('changes the text size with + - and 0, but not while typing or with Ctrl (browser zoom)', () => {

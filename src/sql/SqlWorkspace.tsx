@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type * as monaco from 'monaco-editor/editor/editor.api'
-import { EDITOR_THEME } from '../monaco'
+import { editorLook } from '../monaco'
+import type { Theme } from '../layout/theme'
 import { PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon, StepBackIcon, StepForwardIcon } from '../icons'
 import { CodeHover } from '../syntax/CodeHover'
 import { SyntaxHelper } from '../syntax/SyntaxHelper'
@@ -39,6 +40,7 @@ export function SqlWorkspace({
   solutions,
   onSolved,
   fontScale,
+  theme,
   commandsRef,
   runCommand,
   onStatus,
@@ -53,6 +55,8 @@ export function SqlWorkspace({
   solutions: Record<string, SavedSolution>
   onSolved: (problemId: string, code: string) => void
   fontScale: number
+  /** The app's color theme, for the editor's matching colors. */
+  theme: Theme
   /** Filled in here, so App's keyboard shortcuts step through stages instead of trace steps. */
   commandsRef: MutableRefObject<Partial<Record<Command, () => void>>>
   /** Runs one of App's commands (for the editor's own key bindings). */
@@ -162,6 +166,7 @@ export function SqlWorkspace({
     action('askClaude', 'Ask Claude', [KeyMod.CtrlCmd | KeyCode.KeyI])
     action('showShortcuts', 'Keyboard shortcuts')
     action('toggleTopBar', 'Hide / show the top bar')
+    action('toggleTheme', 'Galaxy / retro terminal theme')
   }
 
   // Squiggle the line SQLite complained about.
@@ -275,9 +280,10 @@ export function SqlWorkspace({
               value={code}
               onChange={(v) => setCode(v ?? '')}
               onMount={onMount}
-              theme={EDITOR_THEME}
+              theme={editorLook(theme).theme}
               options={{
                 ...editorFont(fontScale),
+                cursorStyle: editorLook(theme).cursorStyle,
                 fontFamily: "'JetBrains Mono', ui-monospace, Consolas, monospace",
                 padding: { top: 14 },
                 minimap: { enabled: false },
