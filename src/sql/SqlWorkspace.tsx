@@ -16,7 +16,7 @@ import type { SavedSolution } from '../problems/solutions'
 import { SQL_CARDS } from './cards'
 import type { CheckSpec, NamedResult } from './engine'
 import { caseTables, SQL_PLAYGROUND_TABLES, SQL_PROBLEMS, starterFor, type SqlProblem } from './problems'
-import { CompareView, JoinView, SqlTable, StageTable, TablesView, stageCount } from './SqlViews'
+import { CompareView, JoinView, SqlTable, StageTable, TablesView, pickedStage, stageCount } from './SqlViews'
 import { useSqlRunner, type SqlRun, type SqlStatus } from './useSqlRunner'
 
 // The SQL workspace: the same three panes as Python and JavaScript (editor, picture, side panel), but
@@ -94,16 +94,17 @@ export function SqlWorkspace({
   // ---------- Stages ----------
   const stages = shown?.stages ?? []
   // Which stage is showing, by its label, so it stays put while the query is edited. None picked: the last.
-  const [picked, setPicked] = useState<string | null>(null)
-  const found = picked === null ? -1 : stages.findIndex((s) => s.label === picked)
-  const stageIndex = found >= 0 ? found : stages.length - 1
+  // If that stage is gone after an edit (say you deleted the WHERE), stay at the same position, moving back
+  // only if the query now has fewer stages: the same rule the Python and JavaScript step scrubber follows.
+  const [picked, setPicked] = useState<{ label: string; index: number } | null>(null)
+  const stageIndex = pickedStage(picked, stages.map((s) => s.label))
   const stage = stages[stageIndex]
   const [playing, setPlaying] = useState(false)
   const goTo = (i: number) => {
     if (!stages.length) return
     const next = Math.max(0, Math.min(stages.length - 1, i))
     // The last stage stays "the last" as stages come and go.
-    setPicked(next === stages.length - 1 ? null : stages[next].label)
+    setPicked(next === stages.length - 1 ? null : { label: stages[next].label, index: next })
   }
   useEffect(() => {
     if (!playing) return
@@ -193,9 +194,10 @@ export function SqlWorkspace({
     editor.focus()
   }
 
-  const shownTables: NamedResult[] = problem
-    ? tables.map((t) => ({ name: t.name, columns: columnNames(t.columns), rows: t.rows }))
-    : (shown?.tables ?? tables.map((t) => ({ name: t.name, columns: columnNames(t.columns), rows: t.rows })))
+  // A problem shows its tables as they were before your statement; the playground, as they are after it.
+  // Both come from the run when there is one, since only those carry rowids for the coloring.
+  const inputTables = () => tables.map((t) => ({ name: t.name, columns: columnNames(t.columns), rows: t.rows }))
+  const shownTables: NamedResult[] = (problem ? shown?.before : shown?.tables) ?? inputTables()
 
   const refContext: RefContext = useMemo(
     () => ({ lineCount: code.split('\n').length, stepCount: stages.length, vars: new Set(), glossary: glossaryIds }),
@@ -386,7 +388,6 @@ export function SqlWorkspace({
               {!stages.length && shown?.result && <SqlTable result={shown.result} caption={<strong>Result</strong>} />}
               {!problem && shown && <ChangeNotes run={shown} />}
             </div>
-            {shown?.join && <JoinView join={shown.join} />}
             {problem && shown?.expected && (
               <CompareView
                 got={shown.result}
@@ -395,7 +396,14 @@ export function SqlWorkspace({
                 title={problem.checkTable ? `The ${problem.checkTable} table after your statement` : `Case ${shownCase + 1}: your result and the expected one`}
               />
             )}
-            <TablesView tables={shownTables} title={problem ? (problem.checkTable ? 'Tables before your statement' : 'Tables') : 'Tables'} />
+            <TablesView
+              tables={shownTables}
+              title={problem ? (problem.checkTable ? 'Tables before your statement' : 'Tables') : 'Tables'}
+              effects={untouched ? null : shown?.effects}
+              stage={stage?.id ?? null}
+              when={problem ? 'before' : 'after'}
+            />
+            {shown?.join && <JoinView join={shown.join} />}
           </div>
         </section>
         <div {...layout.columnDivider(1)} />

@@ -953,6 +953,39 @@ button.ref-chip.ref-step:hover:not(:disabled) { color: var(--source); background
 .dot.matched { background: var(--accent); }
 .dot.kept { background: var(--source); }
 .dot.dropped { background: var(--error); }
+/* What the query touches, drawn on the original tables (src/sql/effects.ts): green columns end up in the
+   result, amber ones are only read (the same roles as everywhere else: green changed/out, amber read from).
+   Rows still in play get a green edge; dropped rows fade, with a note saying which step dropped them. */
+.sql-table th.col-shown { color: var(--pass); background: rgb(var(--pass-rgb) / 0.16); box-shadow: inset 0 -2px 0 var(--pass); }
+.sql-table th.col-used { color: var(--source); background: rgb(var(--source-rgb) / 0.14); box-shadow: inset 0 -2px 0 var(--source); }
+.sql-table td.col-shown { background: rgb(var(--pass-rgb) / 0.08); }
+.sql-table td.col-used { background: rgb(var(--source-rgb) / 0.07); }
+.sql-table th.col-set { color: var(--pass); background: rgb(var(--pass-rgb) / 0.16); box-shadow: inset 0 -2px 0 var(--pass); }
+.row-in td:first-child, .row-changed td:first-child, .row-added td:first-child { box-shadow: inset 3px 0 0 var(--pass); }
+.row-out td { opacity: 0.38; }
+.sql-table .row-out td.sql-note { opacity: 1; color: var(--muted); }
+.row-changed td.col-set, .row-added td { background: rgb(var(--pass-rgb) / 0.2); color: var(--pass); }
+.row-will-change td:first-child { box-shadow: inset 3px 0 0 var(--source); }
+.row-will-change td.col-set { background: rgb(var(--source-rgb) / 0.18); color: var(--source); }
+.row-will-go td:not(.sql-note), .row-gone td:not(.sql-note) { text-decoration: line-through; text-decoration-color: rgb(var(--error-rgb) / 0.7); }
+.row-will-go td:first-child, .row-gone td:first-child { box-shadow: inset 3px 0 0 var(--error); }
+.row-gone td, .row-will-go td { color: var(--error); background: rgb(var(--error-rgb) / 0.07); }
+.sql-table .row-will-go td.sql-note, .sql-table .row-gone td.sql-note { color: var(--error); }
+.sql-table .row-changed td.sql-note, .sql-table .row-added td.sql-note { color: var(--pass); }
+.sql-table .row-will-change td.sql-note { color: var(--source); }
+.sql-table th.sql-note-col { background: transparent; border-color: transparent; }
+.sql-table td.sql-note { background: transparent; border-color: transparent; font-size: 0.7rem; color: var(--faint); padding-left: 0.4rem; }
+.sql-role {
+  font-family: var(--font-mono); font-size: 0.66rem; letter-spacing: 0.04em; padding: 0.05rem 0.4rem;
+  border-radius: 999px; border: 1px solid var(--line-strong); color: var(--muted); vertical-align: 1px;
+}
+.sql-role.from, .sql-role.target { border-color: rgb(var(--pass-rgb) / 0.5); color: var(--pass); }
+.sql-role.read { border-color: rgb(var(--source-rgb) / 0.5); color: var(--source); }
+.sql-untouched { opacity: 0.45; transition: opacity 0.2s; }
+.sql-untouched:hover, .sql-untouched:focus-within { opacity: 1; }
+.dot.col-shown { background: var(--pass); }
+.dot.col-used { background: var(--source); }
+.dot.faded { background: var(--faint); }
 .sql-answer pre {
   margin: 0.4rem 0; font-size: 0.8rem; white-space: pre-wrap;
   background: rgb(var(--bg-rgb) / 0.6); border: 1px solid var(--line); padding: 0.55rem 0.65rem; border-radius: 6px; color: var(--text);

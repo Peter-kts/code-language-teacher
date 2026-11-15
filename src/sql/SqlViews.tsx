@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { Cell, Comparison, JoinPicture, NamedResult, ResultSet, StageResult } from './engine'
-import type { JoinKind } from './stages'
+import type { JoinKind, StageId } from './stages'
+import { DROP_STEPS, type DropStep, type Effects, type TableEffect } from './effects'
 
 // The drawings of the SQL workspace: tables, the query's stages, the join picture and your result next to
 // the expected one. All plain React and SVG, fed by what sql.worker.ts sends back.
@@ -19,10 +20,19 @@ export function SqlTable({
   onRowHover,
   rowRef,
   empty = 'no rows',
+  colClass,
+  rowTag,
+  ghostRows,
 }: {
   result: ResultSet
   caption?: ReactNode
   rowClass?: (i: number, row: Cell[]) => string | undefined
+  /** A class for every cell of a column (counted after any hidden first column). */
+  colClass?: (j: number) => string | undefined
+  /** A short note at the end of a row, like "dropped by WHERE". When given, the table gets a notes column. */
+  rowTag?: (i: number) => ReactNode
+  /** Rows that are gone (deleted), drawn crossed out after the real ones, with their note. */
+  ghostRows?: { row: Cell[]; tag: ReactNode }[]
   /** Leave out a helper column (the group number of the GROUP BY stage). */
   hideFirst?: boolean
   onRowHover?: (i: number | null) => void
@@ -30,6 +40,13 @@ export function SqlTable({
   empty?: string
 }) {
   const from = hideFirst ? 1 : 0
+  const notes = !!rowTag || !!ghostRows?.length
+  const cells = (row: Cell[]) =>
+    row.slice(from).map((v, j) => (
+      <td key={j} className={[typeof v === 'number' ? 'num' : '', colClass?.(j) ?? ''].filter(Boolean).join(' ') || undefined}>
+        <CellView value={v} />
+      </td>
+    ))
   return (
     <div className="sql-table-wrap">
       <table className="sql-table">
@@ -37,8 +54,11 @@ export function SqlTable({
         <thead>
           <tr>
             {result.columns.slice(from).map((c, i) => (
-              <th key={i}>{c}</th>
+              <th key={i} className={colClass?.(i)}>
+                {c}
+              </th>
             ))}
+            {notes && <th className="sql-note-col" aria-label="What happened to the row" />}
           </tr>
         </thead>
         <tbody>
@@ -50,16 +70,19 @@ export function SqlTable({
               onMouseEnter={onRowHover && (() => onRowHover(i))}
               onMouseLeave={onRowHover && (() => onRowHover(null))}
             >
-              {row.slice(from).map((v, j) => (
-                <td key={j} className={typeof v === 'number' ? 'num' : undefined}>
-                  <CellView value={v} />
-                </td>
-              ))}
+              {cells(row)}
+              {notes && <td className="sql-note">{rowTag?.(i)}</td>}
             </tr>
           ))}
-          {result.rows.length === 0 && (
+          {ghostRows?.map((g, i) => (
+            <tr key={`ghost-${i}`} className="row-gone">
+              {cells(g.row)}
+              <td className="sql-note">{g.tag}</td>
+            </tr>
+          ))}
+          {result.rows.length === 0 && !ghostRows?.length && (
             <tr className="sql-empty-row">
-              <td colSpan={Math.max(1, result.columns.length - from)}>{empty}</td>
+              <td colSpan={Math.max(1, result.columns.length - from + (notes ? 1 : 0))}>{empty}</td>
             </tr>
           )}
         </tbody>
@@ -68,28 +91,211 @@ export function SqlTable({
   )
 }
 
-/** The input tables, side by side. */
-export function TablesView({ tables, title }: { tables: NamedResult[]; title: string }) {
+/** The input tables, side by side, colored by what the query touches when effects are given. */
+export function TablesView({
+  tables,
+  title,
+  effects,
+  stage,
+  when = 'after',
+}: {
+  tables: NamedResult[]
+  title: string
+  effects?: Effects | null
+  /** The stage on screen: rows drop out of the tables as the stages that drop them are reached. */
+  stage?: StageId | null
+  /** 'after': these are the tables after the statement ran (the playground). 'before': before it (a problem that changes data). */
+  when?: 'before' | 'after'
+}) {
+  const find = (name: string) => effects?.tables.find((e) => e.table.toLowerCase() === name.toLowerCase())
+  const looks = tables.map((t) => tableLook(t, find(t.name), effects ?? null, stage ?? null, when))
+  const seen = new Set(looks.flatMap((l) => l.legend))
+  // Tables the statement uses come first, so the colored ones are in view.
+  const order = tables.map((_, i) => i).sort((a, b) => Number(!looks[a].effect) - Number(!looks[b].effect))
   return (
     <details className="sql-section" open>
       <summary>
         {title} <span className="muted">{tables.length}</span>
       </summary>
       <div className="sql-tables">
-        {tables.map((t) => (
-          <SqlTable
-            key={t.name}
-            result={t}
-            caption={
-              <>
-                <strong>{t.name}</strong> <span className="muted">{t.rows.length} rows</span>
-              </>
-            }
-          />
-        ))}
+        {order.map((i) => {
+          const t = tables[i]
+          const look = looks[i]
+          return (
+            <div key={t.name} className={effects && !look.effect ? 'sql-untouched' : undefined}>
+              <SqlTable
+                result={t}
+                caption={
+                  <>
+                    <strong>{t.name}</strong> {look.badge && <span className={`sql-role ${look.badge.className}`}>{look.badge.text}</span>}{' '}
+                    <span className="muted">{look.count}</span>
+                  </>
+                }
+                colClass={look.colClass}
+                rowClass={look.rowClass}
+                rowTag={look.rowTag}
+                ghostRows={look.ghostRows}
+              />
+            </div>
+          )
+        })}
       </div>
+      {effects && seen.size > 0 && (
+        <p className="sql-legend muted">
+          {LEGEND.filter((l) => seen.has(l.key)).map((l) => (
+            <span key={l.key}>
+              <i className={`dot ${l.dot}`} /> {l.text}
+            </span>
+          ))}
+        </p>
+      )}
     </details>
   )
+}
+
+type LegendKey = 'shown' | 'set' | 'used' | 'in' | 'out' | 'changed' | 'added' | 'gone' | 'will-change' | 'will-go'
+const LEGEND: { key: LegendKey; dot: string; text: string }[] = [
+  { key: 'shown', dot: 'col-shown', text: 'column SELECT shows (or counts) in the result' },
+  { key: 'set', dot: 'col-shown', text: 'column the statement writes' },
+  { key: 'used', dot: 'col-used', text: 'column used to join, filter, group or sort' },
+  { key: 'in', dot: 'matched', text: 'row still in play' },
+  { key: 'out', dot: 'faded', text: 'row dropped (the note says by what)' },
+  { key: 'changed', dot: 'matched', text: 'row the UPDATE changed' },
+  { key: 'added', dot: 'matched', text: 'row the INSERT added' },
+  { key: 'gone', dot: 'dropped', text: 'row the DELETE removed' },
+  { key: 'will-change', dot: 'kept', text: 'row your statement will change' },
+  { key: 'will-go', dot: 'dropped', text: 'row your statement will delete' },
+]
+
+/** A cell as short text, for notes like "salary 7500 → 8000". */
+const show = (v: Cell) => (v === null ? 'NULL' : typeof v === 'number' ? String(Number.isInteger(v) ? v : Number(v.toFixed(6))) : `'${v}'`)
+
+const DROP_NOTE: Record<DropStep, string> = {
+  join: 'no JOIN match',
+  where: 'dropped by WHERE',
+  having: 'group dropped by HAVING',
+  limit: 'cut by LIMIT',
+}
+
+/** Which row-dropping steps have run by the time a stage is on screen. */
+export function stepsReached(stage: StageId | null): DropStep[] {
+  switch (stage) {
+    case 'with':
+      return []
+    case 'from':
+      return ['join']
+    case 'where':
+    case 'group':
+      return ['join', 'where']
+    case 'having':
+    case 'select':
+    case 'order':
+      return ['join', 'where', 'having']
+    default:
+      return DROP_STEPS
+  }
+}
+
+/** Why a row is out at this stage, or null when it is still in play. */
+export function dropReason(rowid: number, keep: TableEffect['keep'], reached: DropStep[]): DropStep | null {
+  for (const step of reached) {
+    const kept = keep?.[step]
+    if (kept && !kept.includes(rowid)) return step
+  }
+  return null
+}
+
+interface TableLook {
+  effect: TableEffect | undefined
+  badge: { text: string; className: string } | null
+  count: string
+  legend: LegendKey[]
+  colClass?: (j: number) => string | undefined
+  rowClass?: (i: number) => string | undefined
+  rowTag?: (i: number) => ReactNode
+  ghostRows?: { row: Cell[]; tag: ReactNode }[]
+}
+
+function tableLook(t: NamedResult, e: TableEffect | undefined, effects: Effects | null, stage: StageId | null, when: 'before' | 'after'): TableLook {
+  const rowsWord = (k: number) => `${k} row${k === 1 ? '' : 's'}`
+  const plain: TableLook = { effect: e, badge: effects ? { text: 'not used', className: 'none' } : null, count: rowsWord(t.rows.length), legend: [] }
+  if (!effects || !e) return plain
+  const shown = new Set(e.shown)
+  const used = new Set(e.used)
+  const legend = new Set<LegendKey>()
+  const colClass = (j: number) => {
+    const c = t.columns[j]
+    if (shown.has(c)) return 'col-shown'
+    if (used.has(c)) return 'col-used'
+    return undefined
+  }
+  if (e.shown.some((c) => t.columns.includes(c))) legend.add(e.role === 'target' ? 'set' : 'shown')
+  if (e.used.some((c) => t.columns.includes(c) && !shown.has(c))) legend.add('used')
+  const ids = t.rowids
+  const look: TableLook = { ...plain, colClass, legend: [] }
+
+  if (e.role === 'read') {
+    look.badge = { text: effects.kind === 'query' ? 'read inside' : 'read', className: 'read' }
+  } else if (e.role === 'from') {
+    look.badge = { text: e.aliases.some((a) => a !== e.table) ? `FROM as ${e.aliases.filter((a) => a !== e.table).join(', ')}` : 'FROM', className: 'from' }
+    if (ids && e.keep) {
+      const reached = stepsReached(stage)
+      const reasons = ids.map((id) => dropReason(id, e.keep, reached))
+      const kept = reasons.filter((r) => r === null).length
+      look.rowClass = (i) => (reasons[i] ? 'row-out' : 'row-in')
+      look.rowTag = (i) => (reasons[i] ? `✗ ${DROP_NOTE[reasons[i]!]}` : null)
+      look.count = kept < ids.length ? `${kept} of ${rowsWord(ids.length)} in play` : `all ${rowsWord(ids.length)} in play`
+      if (kept) legend.add('in')
+      if (kept < ids.length) legend.add('out')
+    }
+  } else {
+    // The table an INSERT, UPDATE or DELETE changes.
+    const hit = new Set(e.hit ?? [])
+    const added = new Set(e.added ?? [])
+    look.badge = { text: effects.kind.toUpperCase(), className: 'target' }
+    if (ids && effects.kind === 'update' && e.hit) {
+      const n = ids.filter((id) => hit.has(id)).length
+      if (when === 'after') {
+        look.rowClass = (i) => (hit.has(ids[i]) ? 'row-changed' : undefined)
+        // Which values changed, old → new, from the rows as they were before the UPDATE.
+        const before = new Map((e.old ?? []).map((r) => [Number(r[0]), r.slice(1)]))
+        look.rowTag = (i) => {
+          if (!hit.has(ids[i])) return null
+          const was = before.get(ids[i])
+          const diffs = was ? t.columns.flatMap((c, j) => (was[j] !== t.rows[i][j] ? [`${c} ${show(was[j])} → ${show(t.rows[i][j])}`] : [])) : []
+          return diffs.length ? `✓ ${diffs.join(', ')}` : '✓ set (same value)'
+        }
+        look.count = `${n} of ${rowsWord(ids.length)} changed`
+        if (n) legend.add('changed')
+      } else {
+        look.rowClass = (i) => (hit.has(ids[i]) ? 'row-will-change' : undefined)
+        look.rowTag = (i) => (hit.has(ids[i]) ? 'will change' : null)
+        look.count = `${n} of ${rowsWord(ids.length)} will change`
+        if (n) legend.add('will-change')
+      }
+      // Only the changed rows' set columns are news; the others stay plain.
+      look.colClass = (j) => (shown.has(t.columns[j]) ? 'col-set' : colClass(j))
+    } else if (ids && effects.kind === 'delete' && e.hit) {
+      if (when === 'after') {
+        look.ghostRows = (e.removed ?? []).map((row) => ({ row: row.slice(1), tag: '✗ deleted' }))
+        look.count = `${rowsWord(ids.length)} left, ${e.removed?.length ?? 0} deleted`
+        if (e.removed?.length) legend.add('gone')
+      } else {
+        look.rowClass = (i) => (hit.has(ids[i]) ? 'row-will-go' : undefined)
+        look.rowTag = (i) => (hit.has(ids[i]) ? '✗ will be deleted' : null)
+        const n = ids.filter((id) => hit.has(id)).length
+        look.count = `${n} of ${rowsWord(ids.length)} will be deleted`
+        if (n) legend.add('will-go')
+      }
+    } else if (ids && effects.kind === 'insert' && when === 'after') {
+      look.rowClass = (i) => (added.has(ids[i]) ? 'row-added' : undefined)
+      look.rowTag = (i) => (added.has(ids[i]) ? '+ new' : null)
+      look.count = `${rowsWord(ids.length)}, ${added.size} new`
+      if (added.size) legend.add('added')
+    }
+  }
+  look.legend = [...legend]
+  return look
 }
 
 // ---------- Stages ----------
@@ -105,6 +311,19 @@ export function StageTable({ stage }: { stage: StageResult }) {
     return <SqlTable result={stage.result} rowClass={(_, row) => (row[last] === 'dropped' ? 'row-dropped' : 'row-kept')} />
   }
   return <SqlTable result={stage.result} />
+}
+
+/**
+ * Which stage to show: the one you picked, found by its name so it stays put while the query changes
+ * around it. If no stage has that name any more, the same position, clamped to the new last stage.
+ * Nothing picked means the last stage, which is where a run starts.
+ */
+export function pickedStage(picked: { label: string; index: number } | null, labels: string[]): number {
+  const last = labels.length - 1
+  if (!picked) return last
+  // Same name at the same place first (two UNION parts can share a name), then anywhere.
+  const found = labels[picked.index] === picked.label ? picked.index : labels.indexOf(picked.label)
+  return found >= 0 ? found : Math.max(0, Math.min(picked.index, last))
 }
 
 /** How the row count changed from the stage before, in words. */
