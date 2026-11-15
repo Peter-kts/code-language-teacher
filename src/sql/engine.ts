@@ -1,4 +1,5 @@
 import type { Database, SqlJsStatic } from 'sql.js'
+import { queryEffects, watchChange, type Effects } from './effects'
 import { buildStages, findJoin, joinQueries, quoteName, type JoinShape, type Stage } from './stages'
 import { isQuery, lineOf, splitStatements } from './tokens'
 
@@ -22,6 +23,8 @@ export interface ResultSet {
 
 export interface NamedResult extends ResultSet {
   name: string
+  /** Each row's rowid (SQLite's hidden row number), so what a query touched can be found again. */
+  rowids?: number[]
 }
 
 export interface SqlError {
@@ -66,6 +69,10 @@ export interface RunOutput {
   join: JoinPicture | null
   /** Every table in the database after the script ran. */
   tables: NamedResult[]
+  /** Every table before the script ran (only when checking a problem). */
+  before: NamedResult[] | null
+  /** What the last statement touched: tables, columns and rows, for the tables pane to color. */
+  effects: Effects | null
   /** The reference answer's result on the same data, when checking a problem. */
   expected: ResultSet | null
   comparison: Comparison | null
@@ -111,19 +118,34 @@ export function runOne(db: Database, sql: string, maxRows = MAX_ROWS): ResultSet
 }
 
 /** Runs a whole script, statement by statement, stopping at the first error. */
-export function runScript(db: Database, code: string) {
+export function runScript(db: Database, code: string, withEffects = false) {
   const statements: RunOutput['statements'] = []
   let last: { text: string; result: ResultSet } | null = null
-  for (const s of splitStatements(code)) {
+  let effects: Effects | null = null
+  const all = splitStatements(code)
+  for (const [n, s] of all.entries()) {
     try {
+      // For the last statement, note what it is about to change (UPDATE and DELETE rows vanish or alter).
+      const watch = withEffects && n === all.length - 1 && !isQuery(s.text) ? safely(() => watchChange(db, s.text)) : null
       const result = runOne(db, s.text)
+      if (watch) effects = safely(watch)
+      else if (withEffects && n === all.length - 1 && result) effects = safely(() => queryEffects(db, s.text))
       statements.push({ line: lineOf(code, s.start), result, changes: result ? 0 : db.getRowsModified() })
       if (result) last = { text: s.text, result }
     } catch (err) {
-      return { statements, last, error: errorAt(code, s.start, s.text, err) }
+      return { statements, last, effects: null, error: errorAt(code, s.start, s.text, err) }
     }
   }
-  return { statements, last, error: null as SqlError | null }
+  return { statements, last, effects, error: null as SqlError | null }
+}
+
+/** Effects are extra: if working them out fails, the run still shows, just without the coloring. */
+function safely<T>(f: () => T | null): T | null {
+  try {
+    return f()
+  } catch {
+    return null
+  }
 }
 
 /** SQLite's message, with the line it points at when it says near "x". */
@@ -145,7 +167,17 @@ function friendly(message: string): string {
 
 export function allTables(db: Database): NamedResult[] {
   const names = runOne(db, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY rowid")
-  return (names?.rows ?? []).map(([name]) => ({ name: String(name), ...runOne(db, `SELECT * FROM ${quoteName(String(name))}`, STAGE_ROWS)! }))
+  return (names?.rows ?? []).map(([name]) => {
+    const table = quoteName(String(name))
+    try {
+      // Ordered by rowid, which is also the order SELECT * gives for an ordinary table.
+      const r = runOne(db, `SELECT rowid AS __rowid, * FROM ${table} ORDER BY rowid`, STAGE_ROWS)!
+      return { name: String(name), columns: r.columns.slice(1), rows: r.rows.map((row) => row.slice(1)), rowids: r.rows.map((row) => Number(row[0])) }
+    } catch {
+      // A WITHOUT ROWID table has no rowid.
+      return { name: String(name), ...runOne(db, `SELECT * FROM ${table}`, STAGE_ROWS)! }
+    }
+  })
 }
 
 /** The result a check looks at: the last query's rows, or the named table after a DELETE/UPDATE problem. */
@@ -197,7 +229,8 @@ export function joinFor(db: Database, query: string): JoinPicture | null {
 export function runAll(SQL: SqlJsStatic, code: string, tables: SqlTable[], check?: CheckSpec): RunOutput {
   const db = createDb(SQL, tables)
   try {
-    const run = runScript(db, code)
+    const before = check ? allTables(db) : null
+    const run = runScript(db, code, true)
     const lastStatement = splitStatements(code).at(-1)
     const showSteps = !run.error && !check?.checkTable && lastStatement && isQuery(lastStatement.text)
     const out: RunOutput = {
@@ -207,6 +240,8 @@ export function runAll(SQL: SqlJsStatic, code: string, tables: SqlTable[], check
       stages: [],
       join: showSteps ? joinFor(db, lastStatement.text) : null,
       tables: allTables(db),
+      before,
+      effects: run.effects,
       expected: null,
       comparison: null,
       cases: null,
