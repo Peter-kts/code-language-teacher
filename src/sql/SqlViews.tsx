@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { Cell, Comparison, JoinPicture, NamedResult, ResultSet, StageResult } from './engine'
 import type { JoinKind, StageId } from './stages'
 import { DROP_STEPS, type DropStep, type Effects, type TableEffect } from './effects'
+import { rowKey, type ChatMarks, type TableMark } from '../chat/marks'
 
 // The drawings of the SQL workspace: tables, the query's stages, the join picture and your result next to
 // the expected one. All plain React and SVG, fed by what sql.worker.ts sends back.
@@ -21,10 +22,13 @@ export function SqlTable({
   rowRef,
   empty = 'no rows',
   colClass,
+  cellClass,
   rowTag,
   ghostRows,
 }: {
   result: ResultSet
+  /** A class for one cell, by row and column (counted after any hidden first column). */
+  cellClass?: (i: number, j: number) => string | undefined
   caption?: ReactNode
   rowClass?: (i: number, row: Cell[]) => string | undefined
   /** A class for every cell of a column (counted after any hidden first column). */
@@ -41,9 +45,9 @@ export function SqlTable({
 }) {
   const from = hideFirst ? 1 : 0
   const notes = !!rowTag || !!ghostRows?.length
-  const cells = (row: Cell[]) =>
+  const cells = (row: Cell[], i?: number) =>
     row.slice(from).map((v, j) => (
-      <td key={j} className={[typeof v === 'number' ? 'num' : '', colClass?.(j) ?? ''].filter(Boolean).join(' ') || undefined}>
+      <td key={j} className={[typeof v === 'number' ? 'num' : '', colClass?.(j) ?? '', (i !== undefined && cellClass?.(i, j)) || ''].filter(Boolean).join(' ') || undefined}>
         <CellView value={v} />
       </td>
     ))
@@ -70,7 +74,7 @@ export function SqlTable({
               onMouseEnter={onRowHover && (() => onRowHover(i))}
               onMouseLeave={onRowHover && (() => onRowHover(null))}
             >
-              {cells(row)}
+              {cells(row, i)}
               {notes && <td className="sql-note">{rowTag?.(i)}</td>}
             </tr>
           ))}
@@ -98,9 +102,15 @@ export function TablesView({
   effects,
   stage,
   when = 'after',
+  chatMarks,
+  edited,
 }: {
   tables: NamedResult[]
   title: string
+  /** What the chat just changed in the data: new rows green, changed cells amber. */
+  chatMarks?: ChatMarks | null
+  /** The data was changed by the chat: a note, with a button to put the original data back. */
+  edited?: { note: string; onReset: () => void } | null
   effects?: Effects | null
   /** The stage on screen: rows drop out of the tables as the stages that drop them are reached. */
   stage?: StageId | null
@@ -117,10 +127,20 @@ export function TablesView({
       <summary>
         {title} <span className="muted">{tables.length}</span>
       </summary>
+      {edited && (
+        <p className="sql-edited">
+          {edited.note}{' '}
+          <button className="chip" onClick={edited.onReset}>
+            Put the original data back
+          </button>
+        </p>
+      )}
       <div className="sql-tables">
         {order.map((i) => {
           const t = tables[i]
           const look = looks[i]
+          const mark = chatMarks?.tables.get(t.name.toLowerCase())
+          const chat = mark && chatRows(t, mark)
           return (
             <div key={t.name} className={effects && !look.effect ? 'sql-untouched' : undefined}>
               <SqlTable
@@ -128,11 +148,16 @@ export function TablesView({
                 caption={
                   <>
                     <strong>{t.name}</strong> {look.badge && <span className={`sql-role ${look.badge.className}`}>{look.badge.text}</span>}{' '}
-                    <span className="muted">{look.count}</span>
+                    {mark && <span className="sql-role by-chat">{mark.created ? 'new from chat' : 'chat changed'}</span>}{' '}
+                    <span className="muted">
+                      {look.count}
+                      {mark?.removed ? `, ${mark.removed} removed by chat` : ''}
+                    </span>
                   </>
                 }
                 colClass={look.colClass}
-                rowClass={look.rowClass}
+                cellClass={chat?.cellClass}
+                rowClass={chat ? (r) => [look.rowClass?.(r), chat.rowClass(r)].filter(Boolean).join(' ') || undefined : look.rowClass}
                 rowTag={look.rowTag}
                 ghostRows={look.ghostRows}
               />
@@ -151,6 +176,15 @@ export function TablesView({
       )}
     </details>
   )
+}
+
+/** Classes for the rows and cells the chat added or changed, found by their values. */
+function chatRows(t: NamedResult, mark: TableMark) {
+  const keys = t.rows.map(rowKey)
+  return {
+    rowClass: (i: number) => (mark.added.has(keys[i]) ? 'chat-added' : mark.updated.has(keys[i]) ? 'chat-updated' : undefined),
+    cellClass: (i: number, j: number) => (mark.updated.get(keys[i])?.includes(j) ? 'chat-cell' : undefined),
+  }
 }
 
 type LegendKey = 'shown' | 'set' | 'used' | 'in' | 'out' | 'changed' | 'added' | 'gone' | 'will-change' | 'will-go'

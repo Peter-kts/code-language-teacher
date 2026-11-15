@@ -7,6 +7,9 @@ import { PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon, StepBackIcon, StepF
 import { CodeHover } from '../syntax/CodeHover'
 import { SyntaxHelper } from '../syntax/SyntaxHelper'
 import { Chat } from '../chat/Chat'
+import type { ChatMarks } from '../chat/marks'
+import { useEditMarks } from '../chat/useEditMarks'
+import { loadEditedData, saveEditedData } from './editedData'
 import { PointerFlash, PointerTour, type Pointing } from '../chat/PointerTour'
 import type { Ref, RefContext, TourStop, ViewSummary } from '../chat/refs'
 import { withShortcut, type Command } from '../shortcuts'
@@ -14,7 +17,7 @@ import { editorFont } from '../layout/fontSize'
 import type { usePaneLayout } from '../layout/usePaneLayout'
 import type { SavedSolution } from '../problems/solutions'
 import { SQL_CARDS } from './cards'
-import type { CheckSpec, NamedResult } from './engine'
+import type { CheckSpec, NamedResult, SqlTable as TableData } from './engine'
 import { caseTables, SQL_PLAYGROUND_TABLES, SQL_PROBLEMS, starterFor, type SqlProblem } from './problems'
 import { CompareView, JoinView, SqlTable, StageTable, TablesView, pickedStage, stageCount } from './SqlViews'
 import { useSqlRunner, type SqlRun, type SqlStatus } from './useSqlRunner'
@@ -67,7 +70,22 @@ export function SqlWorkspace({
   const [caseIndex, setCaseIndex] = useState(0)
   useEffect(() => setCaseIndex(0), [mode])
   const shownCase = problem ? Math.min(caseIndex, problem.cases.length - 1) : 0
-  const tables = useMemo(() => (problem ? caseTables(problem, shownCase) : SQL_PLAYGROUND_TABLES), [problem, shownCase])
+  const originalTables = useMemo(() => (problem ? caseTables(problem, shownCase) : SQL_PLAYGROUND_TABLES), [problem, shownCase])
+  // The chat can change the data a query runs on (the playground's, or one test case's, to explore with).
+  // The tests always keep their own data.
+  const dataKey = problem ? `${problem.id}#${shownCase}` : 'playground'
+  const [editedData, setEditedData] = useState(loadEditedData)
+  const tables = editedData[dataKey] ?? originalTables
+  const setTables = (next: TableData[] | null) =>
+    setEditedData((all) => {
+      const { [dataKey]: _old, ...rest } = all
+      const out = next && JSON.stringify(next) !== JSON.stringify(originalTables) ? { ...rest, [dataKey]: next } : rest
+      saveEditedData(out)
+      return out
+    })
+  // What the chat just changed, lit up until the next change (or switching problem or case).
+  const [chatMarks, setChatMarks] = useState<ChatMarks | null>(null)
+  useEffect(() => setChatMarks(null), [dataKey])
   const check: CheckSpec | undefined = useMemo(
     () =>
       problem && {
@@ -185,6 +203,8 @@ export function SqlWorkspace({
         : [],
     )
   }, [output, mounted, untouched])
+
+  useEditMarks(mounted?.editor ?? null, mounted?.api ?? null, code, chatMarks)
 
   const insert = (snippet: string) => {
     const editor = editorRef.current
@@ -402,6 +422,20 @@ export function SqlWorkspace({
               effects={untouched ? null : shown?.effects}
               stage={stage?.id ?? null}
               when={problem ? 'before' : 'after'}
+              chatMarks={chatMarks}
+              edited={
+                editedData[dataKey]
+                  ? {
+                      note: problem
+                        ? `The chat changed the data for case ${shownCase + 1}, to explore with. The tests still use their own data.`
+                        : `The chat changed this data${chatMarks?.dropped.length ? ` (deleted ${chatMarks.dropped.join(', ')})` : ''}.`,
+                      onReset: () => {
+                        setTables(null)
+                        setChatMarks(null)
+                      },
+                    }
+                  : null
+              }
             />
             {shown?.join && <JoinView join={shown.join} />}
           </div>
@@ -418,7 +452,12 @@ export function SqlWorkspace({
           </div>
           <div hidden={sidePanel !== 'chat'} className="side-body">
             <Chat
-              code={code}
+              playground={{ code, tables }}
+              onPlaygroundChange={(next, marks) => {
+                setCode(next.code)
+                if (next.tables) setTables(next.tables)
+                setChatMarks(marks)
+              }}
               language="sql"
               problem={chatProblem}
               onInsert={insert}

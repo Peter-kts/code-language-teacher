@@ -2,8 +2,21 @@ import { useEffect, useRef, useState, type Ref } from 'react'
 import { loadHistory, saveHistory, type ChatMessage } from './history'
 import type { Subject } from '../types'
 import { refExists, refLabel, splitRefs, takeTour, type Ref as ScreenRef, type RefContext, type TourStop, type ViewSummary } from './refs'
+import { applyTool, MAX_ROWS, PlaygroundEditError, type PlaygroundState } from '../../server/playground.mjs'
+import { chatMarks, type ChatMarks } from './marks'
+import { takeEdits } from './stream'
 
 const PASSCODE_KEY = 'chat-passcode'
+
+/** Two screens are the same when their code and tables match exactly. */
+const sameScreen = (a: PlaygroundState, b: PlaygroundState) =>
+  a.code === b.code && JSON.stringify(a.tables ?? null) === JSON.stringify(b.tables ?? null)
+
+/** What the server sees of earlier answers: their words, plus a note of what they changed on screen. */
+function forServer(m: ChatMessage): { role: ChatMessage['role']; content: string } {
+  const note = m.edits?.length ? `[Changed on their screen: ${m.edits.join('; ')}${m.undone ? '. They undid these changes.' : ''}]` : ''
+  return { role: m.role, content: [m.content, note].filter(Boolean).join('\n\n') || '(no reply)' }
+}
 
 function loadPasscode() {
   try {
@@ -20,7 +33,6 @@ const SUGGESTIONS: Record<Subject, string[]> = {
 }
 
 export function Chat({
-  code,
   language,
   problem,
   onInsert,
@@ -29,8 +41,13 @@ export function Chat({
   refContext,
   onPoint,
   onShowMe,
+  playground,
+  onPlaygroundChange,
 }: {
-  code: string
+  /** What Claude may read and change: the editor's code and, in SQL, the tables the query runs on. */
+  playground: PlaygroundState
+  /** Claude changed the screen (or the learner pressed Undo, with no marks): show it. */
+  onPlaygroundChange: (next: PlaygroundState, marks: ChatMarks | null) => void
   language: Subject
   problem: string | null
   onInsert: (code: string) => void
@@ -52,6 +69,12 @@ export function Chat({
   const [needsPasscode, setNeedsPasscode] = useState(false)
   const [passcodeInput, setPasscodeInput] = useState('')
   const endRef = useRef<HTMLDivElement>(null)
+  // The latest screen, for the reply's changes (which land long after send() started) and for Undo.
+  const screenRef = useRef(playground)
+  screenRef.current = playground
+  // What each answer's Undo puts back: the screen before it, if the screen is still as it left it.
+  // Kept in memory only: after a reload the changes are listed but can't be undone from here.
+  const undos = useRef(new Map<number, { before: PlaygroundState; after: PlaygroundState }>())
 
   // Braces matter: newer browsers return a Promise from scrollIntoView, and React
   // would treat a returned value as the effect's cleanup function.
@@ -72,12 +95,24 @@ export function Chat({
     setInput('')
     setBusy(true)
     const append = (chunk: string) =>
-      setMessages((ms) => [...ms.slice(0, -1), { role: 'assistant', content: ms[ms.length - 1].content + chunk }])
+      setMessages((ms) => [...ms.slice(0, -1), { ...ms[ms.length - 1], content: ms[ms.length - 1].content + chunk }])
+    // The screen this question was asked about; Claude's changes are applied to it in order.
+    const before = screenRef.current
+    let screen = before
+    const summaries: string[] = []
+    const editId = Date.now()
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-chat-passcode': encodeURIComponent(passcode) },
-        body: JSON.stringify({ messages: history, code, language, problem, view }),
+        body: JSON.stringify({
+          messages: history.map(forServer),
+          code: before.code,
+          language,
+          problem,
+          view,
+          playground: before.tables && { tables: before.tables.map((t) => ({ ...t, rows: t.rows.slice(0, MAX_ROWS) })) },
+        }),
       })
       if (res.status === 401) {
         setNeedsPasscode(true)
@@ -89,16 +124,42 @@ export function Chat({
       if (!res.body) throw new Error(`HTTP ${res.status}`)
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
+      let buffer = ''
       for (;;) {
         const { done, value } = await reader.read()
         if (done) break
-        append(decoder.decode(value, { stream: true }))
+        const { text, edits, rest } = takeEdits(buffer + decoder.decode(value, { stream: true }))
+        buffer = rest
+        if (text) append(text)
+        for (const edit of edits) {
+          try {
+            const applied = applyTool(screen, edit.name, edit.input)
+            screen = applied.state
+            summaries.push(applied.summary)
+          } catch (err) {
+            // The server already checked it against the same screen, so this is rare (say, the learner
+            // switched problems mid-answer); skip it rather than half-apply.
+            if (!(err instanceof PlaygroundEditError)) throw err
+            continue
+          }
+          onPlaygroundChange(screen, chatMarks(before, screen))
+          setMessages((ms) => [...ms.slice(0, -1), { ...ms[ms.length - 1], edits: [...summaries], editId }])
+        }
       }
     } catch (err) {
       append(`Couldn't reach the chat server (${String(err)}).`)
     } finally {
+      if (summaries.length) undos.current.set(editId, { before, after: screen })
       setBusy(false)
     }
+  }
+
+  const undo = (m: ChatMessage) => {
+    const saved = m.editId !== undefined ? undos.current.get(m.editId) : undefined
+    if (!saved || !sameScreen(screenRef.current, saved.after)) return
+    onPlaygroundChange(saved.before, null)
+    undos.current.delete(m.editId!)
+    setMessages((ms) => ms.map((x) => (x.editId === m.editId ? { ...x, undone: true } : x)))
   }
 
   return (
@@ -119,14 +180,27 @@ export function Chat({
         {messages.map((m, i) => (
           <div key={i} className={`msg msg-${m.role}`}>
             {m.role === 'assistant' ? (
-              <AssistantText
-                text={m.content}
-                onInsert={onInsert}
-                pending={busy && i === messages.length - 1}
-                refContext={refContext}
-                onPoint={onPoint}
-                onShowMe={onShowMe}
-              />
+              <>
+                <AssistantText
+                  text={m.content}
+                  onInsert={onInsert}
+                  pending={busy && i === messages.length - 1 && !m.edits?.length}
+                  refContext={refContext}
+                  onPoint={onPoint}
+                  onShowMe={onShowMe}
+                />
+                {m.edits?.length ? (
+                  <EditCard
+                    message={m}
+                    pending={busy && i === messages.length - 1}
+                    undoable={(() => {
+                      const saved = m.editId !== undefined ? undos.current.get(m.editId) : undefined
+                      return !saved ? 'gone' : sameScreen(playground, saved.after) ? 'yes' : 'changed'
+                    })()}
+                    onUndo={() => undo(m)}
+                  />
+                ) : null}
+              </>
             ) : (
               m.content
             )}
@@ -185,6 +259,40 @@ export function Chat({
           Ask
         </button>
       </form>
+    </div>
+  )
+}
+
+/** What an answer changed on screen, with one button to put it all back. */
+function EditCard({
+  message,
+  pending,
+  undoable,
+  onUndo,
+}: {
+  message: ChatMessage
+  pending: boolean
+  /** yes: Undo works. changed: the screen has changed since. gone: from before a reload, or another chat. */
+  undoable: 'yes' | 'changed' | 'gone'
+  onUndo: () => void
+}) {
+  return (
+    <div className={`chat-edits${message.undone ? ' undone' : ''}`}>
+      <span className="chat-edits-title">{message.undone ? 'Undone:' : 'Changed on your screen:'}</span>
+      <ul>
+        {message.edits!.map((e, i) => (
+          <li key={i}>{e}</li>
+        ))}
+      </ul>
+      {!pending && !message.undone && undoable !== 'gone' && (
+        <button
+          onClick={onUndo}
+          disabled={undoable !== 'yes'}
+          title={undoable === 'yes' ? 'Put everything back as it was before this answer' : "You've changed things since, so this can't be undone in one click (Ctrl+Z still works in the editor)"}
+        >
+          Undo
+        </button>
+      )}
     </div>
   )
 }

@@ -115,4 +115,10 @@ export interface ViewSummary {
   /** SQL only: the query's stages in run order (step N is the Nth), and the tables on screen. */
   stages?: string[]
   tables?: string[]
+  /** Python and JavaScript: each variable's value at the step on screen, as text. */
+  values?: Record<string, string>
+  /** Python and JavaScript: what has printed up to the step on screen. */
+  output?: string
+  /** Python and JavaScript problems: the call being traced, like `twoSum([2, 7], 9)`. */
+  input?: string
 }
