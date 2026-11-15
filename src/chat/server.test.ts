@@ -95,7 +95,17 @@ describe('chat server tools', () => {
     expect(takeEdits(out).text).toBe('Finished.')
     expect(requests).toHaveLength(3)
     expect(requests[2].tool_choice).toEqual({ type: 'none' })
-    expect(requests[0].tools.map((t: any) => t.name)).toEqual(['edit_code', 'write_code'])
+    expect(requests[0].tools.map((t: any) => t.name)).toEqual(['edit_code', 'write_code', 'set_data', 'remove_data'])
+  })
+
+  it('gives Python data in a block the browser can rebuild', async () => {
+    script.push(
+      { text: '', stop: 'tool_use', tools: [{ id: 't1', name: 'set_data', input: { name: 'orders', value: [{ id: 1 }] } }] },
+      { text: 'Try summing the totals.', stop: 'end_turn' },
+    )
+    const out = await ask({ messages: [{ role: 'user', content: 'give me orders' }], language: 'python', code: 'print(1)\n' })
+    expect(takeEdits(out).edits).toEqual([{ name: 'set_data', input: { name: 'orders', value: [{ id: 1 }] } }])
+    expect(requests[1].messages.at(-1).content[0].content).toMatch(/^Done: Gave you orders \(1 item\)/)
   })
 
   it('shows Claude the values and output at the step on screen', async () => {

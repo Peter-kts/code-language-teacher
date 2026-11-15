@@ -11,7 +11,7 @@
 
 /** @typedef {string | number | null} Cell */
 /** @typedef {{ name: string, columns: string, rows: Cell[][] }} SqlTable */
-/** @typedef {{ code: string, tables?: SqlTable[] }} PlaygroundState */
+/** @typedef {{ code: string, tables?: SqlTable[], language?: 'python' | 'javascript' }} PlaygroundState */
 
 export const MAX_ROWS = 200
 const MAX_CODE = 20000
@@ -63,7 +63,32 @@ export function playgroundTools(subject) {
       },
     },
   ]
-  if (subject !== 'sql') return code
+  if (subject !== 'sql') {
+    const lang = subject === 'python' ? 'Python' : 'JavaScript'
+    return [
+      ...code,
+      {
+        name: 'set_data',
+        description: `Give the learner data to practice on: puts \`name = value\` (as a ${lang} literal) in the marked data block at the top of their code, creating the block if needed, or replaces the variable if it is already there. value is any JSON value: a list of records, a nested dict, a matrix, a string... (JSON can't hold ${subject === 'python' ? 'tuples or sets' : 'Maps or Sets'}; write those with edit_code if you need them). Keep it small enough to read: up to about 30 items.`,
+        input_schema: {
+          type: 'object',
+          properties: { name: { type: 'string' }, value: {} },
+          required: ['name', 'value'],
+          additionalProperties: false,
+        },
+      },
+      {
+        name: 'remove_data',
+        description: 'Take a variable out of the data block at the top of their code (the block goes when it is empty).',
+        input_schema: {
+          type: 'object',
+          properties: { name: { type: 'string' } },
+          required: ['name'],
+          additionalProperties: false,
+        },
+      },
+    ]
+  }
   const cell = { type: ['string', 'number', 'null'] }
   const row = { type: 'array', items: cell }
   return [
@@ -146,6 +171,30 @@ export function applyTool(state, name, input) {
       if (typeof input.code !== 'string') fail('code must be a string.')
       const code = checkedCode(input.code)
       return { state: { ...state, code }, summary: codeSummary(state.code, code) }
+    }
+    case 'set_data':
+    case 'remove_data': {
+      const language = state.language
+      if (language !== 'python' && language !== 'javascript') fail('Data blocks are for Python and JavaScript; in SQL, change the tables.')
+      const varName = String(input.name ?? '')
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(varName)) fail(`"${varName}" is not a usable variable name.`)
+      const block = readDataBlock(state.code, language)
+      const at = block.entries.findIndex((e) => e.name === varName)
+      if (name === 'remove_data') {
+        if (at < 0) fail(`There is no ${varName} in the data block.`)
+        const entries = block.entries.filter((_, i) => i !== at)
+        return { state: { ...state, code: checkedCode(writeDataBlock(state.code, language, entries)) }, summary: `Took ${varName} out of the data` }
+      }
+      if (!('value' in input)) fail('value is missing.')
+      const literal = formatLiteral(input.value, language)
+      if (literal.length > 8000) fail('That data is too big to read: keep it to about 30 items.')
+      const text = `${language === 'python' ? '' : 'const '}${varName} = ${literal}`
+      const entries = at < 0 ? [...block.entries, { name: varName, text }] : block.entries.map((e, i) => (i === at ? { name: varName, text } : e))
+      const size = Array.isArray(input.value) ? ` (${plural(input.value.length, 'item')})` : ''
+      return {
+        state: { ...state, code: checkedCode(writeDataBlock(state.code, language, entries)) },
+        summary: at < 0 ? `Gave you ${varName}${size} in the data block` : `Changed ${varName}${size} in the data block`,
+      }
     }
     case 'set_table': {
       const tables = sqlTables(state)
@@ -327,6 +376,92 @@ export function changedLines(before, after) {
   return out
 }
 
+// ---------- The data block: data the chat gave the learner, at the top of their code ----------
+
+const DATA_START = 'Data from the chat'
+const DATA_END = 'End of data'
+const comment = (language) => (language === 'python' ? '#' : '//')
+const marker = (language, text) => `${comment(language)} ---- ${text} ----`
+const ENTRY = /^(?:const |let |var )?([A-Za-z_$][\w$]*)\s*=/
+
+/**
+ * Finds the data block: its first and last line (0-based, -1 when there is none) and its variables, each
+ * with all of its lines. Lines the learner added inside it stay with the variable above them.
+ * @param {string} code
+ * @param {'python' | 'javascript'} language
+ */
+export function readDataBlock(code, language) {
+  const lines = code.split('\n')
+  const start = lines.findIndex((l) => l.trim() === marker(language, DATA_START))
+  const end = start < 0 ? -1 : lines.findIndex((l, i) => i > start && l.trim() === marker(language, DATA_END))
+  /** @type {{ name: string, text: string }[]} */
+  const entries = []
+  if (start >= 0 && end > start) {
+    for (const line of lines.slice(start + 1, end)) {
+      const m = ENTRY.exec(line)
+      if (m) entries.push({ name: m[1], text: line })
+      else if (entries.length) entries[entries.length - 1].text += `\n${line}`
+    }
+    for (const e of entries) e.text = e.text.replace(/\n+$/, '')
+  }
+  return { start, end: end > start ? end : -1, entries }
+}
+
+/** The code with its data block rewritten to hold these variables (and no block when there are none). */
+export function writeDataBlock(code, language, entries) {
+  const lines = code.split('\n')
+  const { start, end } = readDataBlock(code, language)
+  let rest = start >= 0 && end > start ? [...lines.slice(0, start), ...lines.slice(end + 1)] : lines
+  // The blank line that separated the block from the code goes with it.
+  if (start >= 0 && end > start && rest[start] === '') rest = [...rest.slice(0, start), ...rest.slice(start + 1)]
+  if (!entries.length) return rest.join('\n')
+  const block = [marker(language, DATA_START), ...entries.map((e) => e.text), marker(language, DATA_END), '']
+  const at = start >= 0 && end > start ? start : 0
+  return [...rest.slice(0, at), ...block, ...rest.slice(at)].join('\n')
+}
+
+/** Just the data block's text, or null when the code has none (for saving it across reloads). */
+export function dataBlockText(code, language) {
+  const { start, end } = readDataBlock(code, language)
+  return start >= 0 && end > start ? code.split('\n').slice(start, end + 1).join('\n') : null
+}
+
+/**
+ * A JSON value written as a Python or JavaScript literal, on one line when it fits and spread over
+ * several lines (one item per line) when it doesn't, so a list of records reads like a table.
+ * @param {unknown} value
+ * @param {'python' | 'javascript'} language
+ */
+export function formatLiteral(value, language, indent = '', width = 100) {
+  const py = language === 'python'
+  const scalar = (v) => {
+    if (v === null || v === undefined) return py ? 'None' : 'null'
+    if (typeof v === 'boolean') return py ? (v ? 'True' : 'False') : String(v)
+    if (typeof v === 'number') return Number.isFinite(v) ? String(v) : py ? 'None' : 'null'
+    // Python writes 'text', or "text" when it holds a ' and no " (as Python's own repr does).
+    if (typeof v === 'string' && py) {
+      const q = v.includes("'") && !v.includes('"') ? '"' : "'"
+      return q + v.replace(/\\/g, '\\\\').replace(new RegExp(q, 'g'), `\\${q}`).replace(/\n/g, '\\n').replace(/\t/g, '\\t') + q
+    }
+    if (typeof v === 'string') return JSON.stringify(v)
+    return null
+  }
+  const key = (k) => (py ? scalar(k) : /^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k))
+  const oneLine = (v) => {
+    const s = scalar(v)
+    if (s !== null) return s
+    if (Array.isArray(v)) return `[${v.map(oneLine).join(', ')}]`
+    const pairs = Object.entries(v).map(([k, x]) => `${key(k)}: ${oneLine(x)}`)
+    return py ? `{${pairs.join(', ')}}` : pairs.length ? `{ ${pairs.join(', ')} }` : '{}'
+  }
+  const flat = oneLine(value)
+  if (scalar(value) !== null || indent.length + flat.length <= width) return flat
+  const inner = `${indent}    `
+  if (Array.isArray(value)) return `[\n${value.map((v) => inner + formatLiteral(v, language, inner, width)).join(',\n')},\n${indent}]`
+  const pairs = Object.entries(value).map(([k, v]) => `${inner}${key(k)}: ${formatLiteral(v, language, inner + ' '.repeat(key(k).length + 2), width).trimStart()}`)
+  return `{\n${pairs.join(',\n')},\n${indent}}`
+}
+
 /** A cell as Claude reads it: NULL, a number, or 'text'. */
 const cellText = (v) => (v === null ? 'NULL' : typeof v === 'number' ? String(v) : `'${String(v).replace(/'/g, "''")}'`)
 
@@ -361,8 +496,10 @@ export function describeTables(tables, maxRows = 40, maxChars = 12000) {
  * break the server.
  * @returns {PlaygroundState | null}
  */
-export function readPlayground(raw, code) {
+export function readPlayground(raw, code, language) {
+  /** @type {PlaygroundState} */
   const state = { code: String(code ?? '').slice(0, MAX_CODE) }
+  if (language === 'python' || language === 'javascript') state.language = language
   if (!raw || typeof raw !== 'object' || !Array.isArray(raw.tables)) return state
   const tables = []
   for (const t of raw.tables.slice(0, 20)) {

@@ -10,6 +10,8 @@ export interface PlaygroundState {
   code: string
   /** Only in the SQL workspace: the tables the query runs on. */
   tables?: SqlTable[]
+  /** Python and JavaScript: which language the data block is written in. */
+  language?: 'python' | 'javascript'
 }
 
 export const MAX_ROWS: number
@@ -19,4 +21,8 @@ export function applyTool(state: PlaygroundState, name: string, input: unknown):
 export function columnNames(columns: string): string[]
 export function changedLines(before: string, after: string): number[]
 export function describeTables(tables: SqlTable[], maxRows?: number, maxChars?: number): string
-export function readPlayground(raw: unknown, code: unknown): PlaygroundState
+export function readPlayground(raw: unknown, code: unknown, language?: unknown): PlaygroundState
+export function readDataBlock(code: string, language: 'python' | 'javascript'): { start: number; end: number; entries: { name: string; text: string }[] }
+export function writeDataBlock(code: string, language: 'python' | 'javascript', entries: { name: string; text: string }[]): string
+export function dataBlockText(code: string, language: 'python' | 'javascript'): string | null
+export function formatLiteral(value: unknown, language: 'python' | 'javascript', indent?: string, width?: number): string

@@ -18,6 +18,7 @@ import { CodeHover } from './syntax/CodeHover'
 import { Chat } from './chat/Chat'
 import type { ChatMarks } from './chat/marks'
 import { useEditMarks } from './chat/useEditMarks'
+import { loadSavedData, saveData, withSavedData } from './chat/savedData'
 import { PointerFlash, PointerTour, type Pointing } from './chat/PointerTour'
 import type { Ref, RefContext, TourStop, ViewSummary } from './chat/refs'
 import { CARDS } from './syntax/cards'
@@ -100,17 +101,20 @@ const starterCode = (): Record<Language, Record<string, string>> => ({
 })
 
 /** The starters, with each solved problem opening on its saved solution instead. */
+const PLAYGROUND = 'playground'
+
 const startingCode = (solutions: Solutions) => {
   const code = starterCode()
+  // Data the chat gave you in the playground comes back after a reload.
+  const saved = loadSavedData()
   for (const language of Object.keys(code) as Language[]) {
     for (const [id, s] of Object.entries(solutions[language])) if (id in code[language]) code[language][id] = s.code
+    code[language][PLAYGROUND] = withSavedData(code[language][PLAYGROUND], language, saved)
   }
   return code
 }
 
 const PLAY_MS = 700
-
-const PLAYGROUND = 'playground'
 
 const LAYOUT_OPTIONS: { mode: LayoutMode; label: string; Icon: () => ReactNode }[] = [
   { mode: 'auto', label: 'Layout: auto (stacked when the screen is taller than wide)', Icon: AutoLayoutIcon },
@@ -206,6 +210,9 @@ export default function App() {
     setCaseIndex(0)
   }
   const code = codeByMode[language][mode]
+  // Keep the playground's data block (what the chat gave you) for the next visit.
+  const playgroundCode = codeByMode[language][PLAYGROUND]
+  useEffect(() => saveData(language, playgroundCode), [language, playgroundCode])
   const setCode = (next: string) => setCodeByMode((c) => ({ ...c, [language]: { ...c[language], [mode]: next } }))
   // Concept problems run their code as a whole, examples and all; their tests are separate.
   const request: RunRequest = !problem
@@ -966,7 +973,7 @@ export default function App() {
             {/* Keep the chat mounted so switching tabs doesn't lose the conversation. */}
             <div hidden={sidePanel !== 'chat'} className="side-body">
               <Chat
-                playground={{ code }}
+                playground={{ code, language }}
                 onPlaygroundChange={(next, marks) => {
                   setCode(next.code)
                   setChatMarks(marks)

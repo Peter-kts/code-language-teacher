@@ -18,7 +18,7 @@ const MAX_TOOL_ROUNDS = 3
 export const EDIT_MARK = '\x1e'
 
 /** What the tools let Claude do, said once for every language. */
-const editing = (sql) => `You can also change what is on their screen with tools: edit_code and write_code change ${sql ? 'the query in their editor, and set_table, edit_rows and drop_table change the tables the query runs on' : 'the code in their editor'}. Use them only when the learner asks you to change, fix, add or try something on their screen (like ${sql ? '"add a customer with no orders", "make one salary NULL", "fix my query"' : '"fix my loop", "put that in my editor", "try it with an empty list"'}). For a hint or an explanation, leave their screen alone. After changing something, say in a sentence or two what you changed and what to look for: the changes light up on their screen and one click undoes them, so don't repeat the changed code in a fenced block.`
+const editing = (sql) => `You can also change what is on their screen with tools: edit_code and write_code change ${sql ? 'the query in their editor, and set_table, edit_rows and drop_table change the tables the query runs on' : 'the code in their editor, and set_data and remove_data put practice data (a list of orders as dicts, a nested dict of users, a grid...) in a marked data block at the top of their code'}. Use them only when the learner asks you to change, fix, add or try something on their screen (like ${sql ? '"add a customer with no orders", "make one salary NULL", "fix my query"' : '"fix my loop", "put that in my editor", "try it with an empty list"'}). ${sql ? '' : 'When they ask for data to work with, use set_data and then suggest one or two small things to try with it. '}For a hint or an explanation, leave their screen alone. After changing something, say in a sentence or two what you changed and what to look for: the changes light up on their screen and one click undoes them, so don't repeat the changed code in a fenced block.`
 
 // The language the learner has picked in the editor, as its name and its code fence tag.
 const LANGUAGES = {
@@ -111,7 +111,7 @@ export async function handleChat(req, res) {
   const lang = Object.hasOwn(LANGUAGES, body.language) ? LANGUAGES[body.language] : LANGUAGES.python
   const subject = Object.hasOwn(LANGUAGES, body.language) ? body.language : 'python'
   // The screen as it is now: Claude's tool calls are checked and applied against this copy.
-  let screen = readPlayground(body.playground, body.code)
+  let screen = readPlayground(body.playground, body.code, subject)
   const context = [
     body.problem ? `Problem: ${body.problem}` : 'Mode: free playground',
     `Current code (numbered for [[line:N]]; the numbers are not part of the code):\n\`\`\`${lang.fence}\n${numbered(screen.code)}\n\`\`\``,

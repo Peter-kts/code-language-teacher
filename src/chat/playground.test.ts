@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { applyTool, changedLines, columnNames, describeTables, playgroundTools, readPlayground, type PlaygroundState } from '../../server/playground.mjs'
+import { applyTool, changedLines, columnNames, describeTables, formatLiteral, playgroundTools, readDataBlock, readPlayground, type PlaygroundState } from '../../server/playground.mjs'
+import { loadSavedData, saveData, withSavedData } from './savedData'
 import { chatMarks } from './marks'
 import { takeEdits } from './stream'
 
@@ -35,7 +36,7 @@ describe('applyTool: code', () => {
     expect(applyTool({ code: '' }, 'write_code', { code: 'print(1)\n' })).toEqual({ state: { code: 'print(1)\n' }, summary: 'Wrote new code' })
   })
   it('has no table tools outside SQL', () => {
-    expect(playgroundTools('python').map((t) => t.name)).toEqual(['edit_code', 'write_code'])
+    expect(playgroundTools('python').map((t) => t.name)).toEqual(['edit_code', 'write_code', 'set_data', 'remove_data'])
     expect(playgroundTools('sql').map((t) => t.name)).toEqual(['edit_code', 'write_code', 'set_table', 'edit_rows', 'drop_table'])
     expect(() => applyTool({ code: '' }, 'set_table', { name: 't', columns: 'a', rows: [] })).toThrow(/only the code/)
   })
@@ -120,5 +121,62 @@ describe('chatMarks', () => {
     expect(marks.tables.get('x')!.created).toBe(true)
     expect(marks.dropped).toEqual(['depts'])
     expect(marks.lines).toEqual([1, 2])
+  })
+})
+
+describe('data block', () => {
+  const orders = [
+    { id: 1, customer: 'Ana', total: 25.5, paid: true, note: null },
+    { id: 2, customer: "O'Neil", total: 9, paid: false, note: 'gift' },
+  ]
+  it('writes Python and JavaScript literals, one item per line when long', () => {
+    expect(formatLiteral({ a: [1, null, true], 'b c': 'x' }, 'python')).toBe("{'a': [1, None, True], 'b c': 'x'}")
+    expect(formatLiteral({ a: [1, null, true], 'b c': 'x' }, 'javascript')).toBe('{ a: [1, null, true], "b c": "x" }')
+    expect(formatLiteral("it's", 'python')).toBe('"it\'s"')
+    expect(formatLiteral(orders, 'python', '', 90).split('\n')).toEqual([
+      '[',
+      "    {'id': 1, 'customer': 'Ana', 'total': 25.5, 'paid': True, 'note': None},",
+      "    {'id': 2, 'customer': \"O'Neil\", 'total': 9, 'paid': False, 'note': 'gift'},",
+      ']',
+    ])
+  })
+  it('puts data in a marked block at the top, replaces it and takes it out again', () => {
+    let state: PlaygroundState = { code: 'total = 0\nprint(total)\n', language: 'python' }
+    const added = applyTool(state, 'set_data', { name: 'orders', value: orders })
+    expect(added.summary).toBe('Gave you orders (2 items) in the data block')
+    state = added.state
+    expect(state.code.split('\n')[0]).toBe('# ---- Data from the chat ----')
+    expect(state.code).toContain("orders = [\n    {'id': 1")
+    expect(state.code.endsWith('# ---- End of data ----\n\ntotal = 0\nprint(total)\n')).toBe(true)
+    state = applyTool(state, 'set_data', { name: 'users', value: { ana: 30 } }).state
+    const changed = applyTool(state, 'set_data', { name: 'orders', value: [] })
+    expect(changed.summary).toBe('Changed orders (0 items) in the data block')
+    expect(readDataBlock(changed.state.code, 'python').entries.map((e) => e.text)).toEqual(['orders = []', "users = {'ana': 30}"])
+    let gone = applyTool(changed.state, 'remove_data', { name: 'orders' }).state
+    gone = applyTool(gone, 'remove_data', { name: 'users' }).state
+    expect(gone.code).toBe('total = 0\nprint(total)\n')
+    expect(() => applyTool(gone, 'remove_data', { name: 'users' })).toThrow(/no users/)
+  })
+  it('uses const in JavaScript, and refuses data blocks in SQL', () => {
+    const js = applyTool({ code: 'console.log(1)\n', language: 'javascript' }, 'set_data', { name: 'grid', value: [[1, 0], [0, 1]] }).state
+    expect(js.code).toBe('// ---- Data from the chat ----\nconst grid = [[1, 0], [0, 1]]\n// ---- End of data ----\n\nconsole.log(1)\n')
+    expect(() => applyTool({ code: '', tables: [] }, 'set_data', { name: 'x', value: 1 })).toThrow(/change the tables/)
+    expect(playgroundTools('javascript').map((t) => t.name)).toContain('set_data')
+    expect(playgroundTools('sql').map((t) => t.name)).not.toContain('set_data')
+  })
+  it('keeps lines the learner added inside the block with the variable above them', () => {
+    const code = '# ---- Data from the chat ----\nnums = [\n  1,\n]\n# my note\n# ---- End of data ----\nprint(nums)'
+    expect(readDataBlock(code, 'python').entries).toEqual([{ name: 'nums', text: 'nums = [\n  1,\n]\n# my note' }])
+  })
+  it('saves the block across reloads and puts it back on top of the starter', () => {
+    const store = new Map<string, string>()
+    const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) }
+    const code = applyTool({ code: 'print(1)\n', language: 'python' }, 'set_data', { name: 'xs', value: [1, 2] }).state.code
+    saveData('python', code, storage)
+    const saved = loadSavedData(storage)
+    expect(withSavedData('print(1)\n', 'python', saved)).toBe(code)
+    expect(withSavedData(code, 'python', saved)).toBe(code)
+    saveData('python', 'print(1)\n', storage)
+    expect(loadSavedData(storage)).toEqual({})
   })
 })
