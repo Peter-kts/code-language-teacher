@@ -6,6 +6,7 @@ describe('theme choice', () => {
     expect(loadTheme({ getItem: () => null })).toBe('galaxy')
     expect(loadTheme({ getItem: (k) => (k === THEME_KEY ? 'terminal' : null) })).toBe('terminal')
     expect(loadTheme({ getItem: (k) => (k === THEME_KEY ? 'mono' : null) })).toBe('mono')
+    expect(loadTheme({ getItem: (k) => (k === THEME_KEY ? 'focus' : null) })).toBe('focus')
     // Anything else (an old or garbled value) falls back to the default.
     expect(loadTheme({ getItem: (k) => (k === THEME_KEY ? 'neon' : null) })).toBe('galaxy')
   })
@@ -35,14 +36,18 @@ describe('theme choice', () => {
     applyTheme('mono', root)
     expect(root.dataset.theme).toBe('mono')
     expect(root.dataset.retro).toBe('')
+    applyTheme('focus', root)
+    expect(root.dataset.theme).toBe('focus')
+    expect(root.dataset.retro).toBeUndefined()
     applyTheme('galaxy', root)
     expect(root.dataset.theme).toBeUndefined()
     expect(root.dataset.retro).toBeUndefined()
   })
 
-  it('steps galaxy, green, black and white, then back to galaxy', () => {
+  it('steps galaxy, green, black and white, focus, then back to galaxy', () => {
     expect(nextTheme('galaxy')).toBe('terminal')
     expect(nextTheme('terminal')).toBe('mono')
-    expect(nextTheme('mono')).toBe('galaxy')
+    expect(nextTheme('mono')).toBe('focus')
+    expect(nextTheme('focus')).toBe('galaxy')
   })
 })

@@ -19,6 +19,7 @@ import { PointerFlash, PointerTour, type Pointing } from './chat/PointerTour'
 import type { Ref, RefContext, TourStop, ViewSummary } from './chat/refs'
 import { CARDS } from './syntax/cards'
 import { CONCEPT_GROUPS, DIFFICULTIES, PROBLEM_TOPICS, PROBLEMS, type Problem } from './problems/problems'
+import { progressFor } from './problems/progress'
 import { ProblemPanel } from './problems/ProblemPanel'
 import { loadSolutions, saveSolution, type Solutions } from './problems/solutions'
 import { CONCEPTS } from './problems/concepts'
@@ -168,6 +169,11 @@ export default function App() {
     saveTheme(next)
   }
   useLayoutEffect(() => applyTheme(theme), [theme])
+  // Solved problems in the current language, for the focus theme's progress meter.
+  const progress = useMemo(
+    () => (sqlOn ? progressFor(solutions, 'sql', SQL_PROBLEMS) : progressFor(solutions, language, [...PROBLEMS, ...CONCEPTS[language]])),
+    [sqlOn, solutions, language],
+  )
   const toggleBackground = () => {
     const next = background === 'daily' ? 'galaxy' : 'daily'
     setBackground(next)
@@ -419,7 +425,7 @@ export default function App() {
     action('askClaude', 'Ask Claude', [KeyMod.CtrlCmd | KeyCode.KeyI])
     action('showShortcuts', 'Keyboard shortcuts')
     action('toggleTopBar', 'Hide / show the top bar')
-    action('toggleTheme', 'Next theme (galaxy, green terminal, black and white)')
+    action('toggleTheme', 'Next theme (galaxy, green terminal, black and white, focus)')
     // No keys inside the editor (+ and - are for typing), but they show up in F1.
     action('fontBigger', 'Bigger text')
     action('fontSmaller', 'Smaller text')
@@ -525,7 +531,8 @@ export default function App() {
 
   return (
     <div className={background === 'daily' ? 'app pixel-bg' : 'app'}>
-      <Background mode={background} scene={todaysScene} />
+      {/* The focus theme drops the moving picture: motion at the edge of sight pulls the eyes away. */}
+      {theme !== 'focus' && <Background mode={background} scene={todaysScene} />}
       <span className="tick tl" aria-hidden="true" />
       <span className="tick tr" aria-hidden="true" />
       <span className="tick bl" aria-hidden="true" />
@@ -690,8 +697,11 @@ export default function App() {
                 className={background === 'daily' ? 'icon-btn bg-btn active' : 'icon-btn bg-btn'}
                 aria-pressed={background === 'daily'}
                 aria-label="Daily pixel background"
+                disabled={theme === 'focus'}
                 title={
-                  background === 'daily'
+                  theme === 'focus'
+                    ? 'The focus theme hides the background, so nothing moves at the edge of the screen.'
+                    : background === 'daily'
                     ? `Background: ${todaysScene.title}, a new pixel scene each day. Click for the galaxy.`
                     : "Background: the galaxy. Click for today's pixel scene."
                 }
@@ -723,6 +733,7 @@ export default function App() {
               >
                 <KeyboardIcon />
               </button>
+              {theme === 'focus' && <ProgressMeter {...progress} subject={sqlOn ? 'SQL' : language === 'python' ? 'Python' : 'JavaScript'} />}
               <span className={`status status-${shownError ? 'error' : shownStatus}`}>{statusText}</span>
             </div>
           </header>
@@ -1016,5 +1027,24 @@ function ConceptOptions({ problems, solved }: { problems: Problem[]; solved: Rec
         )
       })}
     </>
+  )
+}
+
+/**
+ * The focus theme's meter: solved problems in this language, as a bar that fills toward the end.
+ * The fill is keyed by the count, so it remounts and plays a short glow each time a problem is newly
+ * solved: a small reward tied to real progress (styles.css, "Focus theme").
+ */
+function ProgressMeter({ solved, total, subject }: { solved: number; total: number; subject: string }) {
+  const pct = total ? Math.round((solved / total) * 100) : 0
+  return (
+    <span className="progress-meter" role="img" aria-label={`${solved} of ${total} ${subject} problems solved`} title={`${solved} of ${total} ${subject} problems solved`}>
+      <span className="progress-track">
+        <span key={solved} className="progress-fill" style={{ width: `${pct}%` }} />
+      </span>
+      <span className="progress-count">
+        {solved}/{total}
+      </span>
+    </span>
   )
 }
