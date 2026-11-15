@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type * as monaco from 'monaco-editor/editor/editor.api'
 import { editorLook } from '../monaco'
-import type { Theme } from '../layout/theme'
+import type { Look } from '../layout/design'
 import { PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon, StepBackIcon, StepForwardIcon } from '../icons'
 import { CodeHover } from '../syntax/CodeHover'
 import { SyntaxHelper } from '../syntax/SyntaxHelper'
@@ -58,8 +58,8 @@ export function SqlWorkspace({
   solutions: Record<string, SavedSolution>
   onSolved: (problemId: string, code: string) => void
   fontScale: number
-  /** The app's color theme, for the editor's matching colors. */
-  theme: Theme
+  /** The app's look (a theme, or the paper design), for the editor's matching colors. */
+  theme: Look
   /** Filled in here, so App's keyboard shortcuts step through stages instead of trace steps. */
   commandsRef: MutableRefObject<Partial<Record<Command, () => void>>>
   /** Runs one of App's commands (for the editor's own key bindings). */
@@ -186,6 +186,7 @@ export function SqlWorkspace({
     action('showShortcuts', 'Keyboard shortcuts')
     action('toggleTopBar', 'Hide / show the top bar')
     action('toggleTheme', 'Next theme (galaxy, green terminal, black and white, focus)')
+    action('toggleDesign', 'Paper design on / off')
   }
 
   // Squiggle the line SQLite complained about.
@@ -306,7 +307,7 @@ export function SqlWorkspace({
               options={{
                 ...editorFont(fontScale),
                 cursorStyle: editorLook(theme).cursorStyle,
-                fontFamily: "'JetBrains Mono', ui-monospace, Consolas, monospace",
+                fontFamily: editorLook(theme).fontFamily,
                 padding: { top: 14 },
                 minimap: { enabled: false },
                 scrollBeyondLastLine: false,

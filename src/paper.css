@@ -1,0 +1,626 @@
+/* ==========================================================================
+   Paper design (src/layout/design.ts): the app as a printed page.
+
+   Turned on by data-design="paper" on <html>. Every rule in this file sits under that attribute,
+   so with it off nothing here applies and styles.css is left exactly as it was.
+
+   What makes it its own look, instead of another recoloring of the glass one:
+
+   - Light, not dark. Cream paper and near-black ink, like a manual or a workbook.
+   - Flat color, used the way a two- or three-color print job uses it: solid blocks, no gradients,
+     no glows, no blur, no see-through glass. Where the classic look says "this changed" with a
+     glow, this one fills the thing in, the way you would with a highlighter pen.
+   - Square corners and solid ink rules. The panes meet edge to edge with a 2px line between them;
+     there is no floating rounded frame.
+   - Three typefaces with a job each: Big Shoulders (a tall, heavy poster face) for labels and
+     headings, IBM Plex Serif for anything you read as a sentence, IBM Plex Mono for code and for
+     anything you press.
+   - Big blocks of black to give the page a shape: the masthead across the top and the console at
+     the bottom of the middle column.
+   - Things you act on lift off the page with a hard, un-blurred shadow, and press back down when
+     clicked. A changed value lifts the same way, so the eye catches it.
+
+   The colors keep their meanings from styles.css: green = changed, amber = read from, red = error,
+   and ultramarine for "live": the line that just ran and what you can press.
+
+   How it is built: like the themes, it starts by giving the color tokens new values, so most of
+   styles.css follows on its own. Text colors (--pass, --source, ...) are the dark printing-ink
+   versions, each at least 4.5 times darker than the paper (the WCAG rule for readable text). The
+   bright versions used for filling things in are --pass-hi and --source-hi, which always carry
+   black text. The masthead and console are black, so they re-assign the same tokens to light
+   values inside themselves: a CSS variable set on an element applies to everything inside it.
+
+   The file uses CSS nesting: a rule written inside the big block below only applies under
+   :root[data-design="paper"], without repeating that on every line.
+   ========================================================================== */
+
+/* Plain buttons. :where() adds nothing to the selector's weight, so this replaces the classic
+   pill look but still loses to any class (tabs, links, chips), exactly as the classic rule does. */
+:where(:root[data-design="paper"]) button {
+  font-family: var(--font-mono); font-size: 0.78rem; font-weight: 500;
+  padding: 0.3rem 0.7rem;
+  border: 1.5px solid var(--ink); border-radius: 0;
+  background: var(--paper-lite); color: var(--ink);
+  transition: background 0.08s, color 0.08s, transform 0.08s, box-shadow 0.08s;
+}
+
+:root[data-design="paper"] {
+  color-scheme: light;
+  /* The page itself. These three names never change inside the black blocks. */
+  --ink: #15120e;
+  --paper: #f4ecd9;
+  --paper-lite: #fcf8ee;
+  --paper-deep: #e8dec5;
+  /* Bright fills, always with black text on top. */
+  --pass-hi: #4fdc9a;
+  --source-hi: #ffc21a;
+
+  --bg: var(--paper);
+  --bg-rgb: 244 236 217;
+  --panel-rgb: 252 248 238;
+  --line-rgb: 21 18 14;
+  --accent-rgb: 28 63 220;
+  --pass-rgb: 38 196 126;
+  --source-rgb: 255 190 20;
+  --error-rgb: 214 48 24;
+  --pink-rgb: 198 29 121;
+  --blue-rgb: 109 47 192;
+  --panel: var(--paper);
+  --panel-solid: var(--paper-lite);
+  --editor-glass: var(--paper-lite);
+  --text: var(--ink);
+  --muted: #4c453a;
+  --faint: #6b6253;
+  --line: rgb(var(--line-rgb) / 0.28);
+  --line-strong: var(--ink);
+  --box: var(--paper-lite);
+  --accent: #1c3fdc;
+  --accent-soft: rgb(var(--accent-rgb) / 0.13);
+  --pink: #b0186b;
+  --pass: #0a6b3d;
+  --source: #8f5200;
+  --error: #b82610;
+  --fail: #b82610;
+  --blue: #6d2fc0;
+  --cyan: #00727e;
+  --widget-border: var(--ink);
+  --font-display: 'IBM Plex Serif', Georgia, 'Times New Roman', serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --font-label: 'Big Shoulders Text', 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif;
+  --font-poster: 'Big Shoulders Display', 'Big Shoulders Text', 'Arial Narrow', Impact, sans-serif;
+  /* A hard shadow: the same shape moved down and right, with no blur. */
+  --lift: 3px 3px 0 var(--ink);
+  font-weight: 400;
+  -webkit-font-smoothing: auto;
+
+  & ::selection { background: var(--accent); color: var(--paper-lite); }
+  & :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  strong { font-weight: 600; }
+
+  /* ---------- The page: edge to edge, no frame ---------- */
+  .app { padding: 0; }
+  .frame { border: 0; border-radius: 0; }
+  .tick { display: none; }
+
+  /* ---------- Masthead: a black band, with the name stacked like a logo ---------- */
+  .top, .top-restore {
+    --text: var(--paper);
+    --muted: #d5ccb8;
+    --faint: #a89e8a;
+    --line: rgb(244 236 217 / 0.28);
+    --line-strong: rgb(244 236 217 / 0.6);
+    --accent: var(--paper);
+    --accent-soft: rgb(244 236 217 / 0.16);
+    --pass: var(--pass-hi);
+    --error: #ff7a5c;
+    --bg: var(--ink);
+    color: var(--text);
+  }
+  .top {
+    background: var(--ink); border-bottom: 0;
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+  .wordmark {
+    order: -1; margin: 0; padding: 0.55rem 1.2rem 0.6rem 1rem;
+    font-family: var(--font-poster); font-size: 1.5rem; font-weight: 900; line-height: 0.86;
+    letter-spacing: 0.015em; text-transform: uppercase; color: var(--paper);
+    overflow: visible; text-overflow: clip;
+  }
+  @media (min-width: 901px) {
+    /* The pickers in the middle never shrink below their own width, so nothing slides under
+       the switches on the right. */
+    .top { grid-template-columns: auto minmax(min-content, 1fr) max-content; }
+    /* One word per line: CODE / LANGUAGE / TEACHER. */
+    .wordmark { width: min-content; white-space: normal; border-right: 2px solid var(--line-strong); }
+    .top .tabs { padding-left: 1.1rem; }
+  }
+  /* Tabs: the one you are on is a solid block with the colors swapped. */
+  .tab, .problem-select {
+    font-family: var(--font-label); font-size: 0.98rem; font-weight: 700; letter-spacing: 0.07em;
+    color: var(--muted); transition: none;
+  }
+  .tab { padding: 0.12rem 0.45rem; }
+  .tab::before { content: none; }
+  .tab::after, .tab.active::after { display: none; }
+  .tab:hover:not(:disabled) { color: var(--text); background: transparent; box-shadow: inset 0 -3px 0 var(--text); }
+  .tab.active, .tab.active:hover:not(:disabled) { color: var(--bg); background: var(--text); box-shadow: none; font-weight: 800; }
+  .tabs, .side-tabs { gap: 0.3rem 0.5rem; }
+  .lang-switch { gap: 0.3rem; margin-right: 1rem; }
+  .problem-select { padding: 0.12rem 0.2rem 0.12rem 0.45rem; max-width: 13rem; }
+  .problem-select:hover { color: var(--text); }
+  .problem-select.active { color: var(--text); box-shadow: inset 0 -3px 0 var(--text); }
+  .problem-select option, .problem-select optgroup {
+    background: var(--paper-lite); color: var(--ink);
+    font-family: var(--font-mono); font-weight: 400;
+  }
+  .side-tabs { margin: 0 -1.1rem 0.9rem; padding: 0 1.1rem 0.6rem; border-bottom: 2px solid var(--ink); }
+
+  /* The small square switches on the right of the masthead. */
+  .top .icon-btn, .top-restore {
+    border: 1.5px solid var(--line-strong); border-radius: 0; background: transparent; color: var(--text);
+  }
+  .top .icon-btn:hover:not(:disabled), .top-restore:hover:not(:disabled),
+  .top .icon-btn.active, .top .layout-switch .icon-btn.active {
+    background: var(--paper); color: var(--ink); border-color: var(--paper);
+  }
+  .top .icon-btn:disabled, .top .icon-btn.active:disabled { opacity: 0.32; background: transparent; color: var(--text); border-color: var(--line-strong); }
+  .font-btn { font-family: var(--font-display); font-weight: 600; }
+  .status {
+    font-family: var(--font-label); font-size: 0.9rem; font-weight: 700; letter-spacing: 0.09em;
+    color: var(--text); border-left: 2px solid var(--line-strong); white-space: nowrap;
+  }
+  .status::before, :where(.top-restore)::before { width: 9px; height: 9px; border-radius: 0; box-shadow: none; background: var(--pass); }
+  .status-loading::before, .status-running::before { background: var(--source-hi); box-shadow: none; }
+  .status-error { color: var(--error); }
+  .status-error::before { background: var(--error); box-shadow: none; }
+  .top-restore { background: var(--ink); border-top: 0; -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+  /* Problems solved: a row of ticks filling in, like marks on a ruler. */
+  .progress-meter { font-family: var(--font-mono); font-weight: 500; color: var(--text); }
+  .progress-track { width: 5rem; height: 12px; border-radius: 0; border: 1.5px solid var(--line-strong); background: transparent; }
+  .progress-fill {
+    border-radius: 0;
+    background: repeating-linear-gradient(90deg, var(--pass-hi) 0 4px, transparent 4px 6px);
+    animation: paper-fill 0.5s steps(8) both;
+  }
+
+  /* Just above the stacked header everything on the bar sits a little closer together. */
+  @media (min-width: 901px) and (max-width: 1160px) {
+    .problem-select { max-width: 10rem; }
+    .top .tabs { padding-left: 0.7rem; padding-right: 0.5rem; }
+    .lang-switch, .font-size, .layout-switch, .keys-btn { margin-right: 0.4rem; }
+    .status { padding: 0 0.7rem; }
+  }
+
+  /* ---------- Panes: flat paper, ruled off from each other ---------- */
+  .pane, .app.pixel-bg .pane, .app.pixel-bg .top {
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+  .pane { background: var(--paper); scrollbar-color: rgb(var(--line-rgb) / 0.45) transparent; }
+  .editor-pane { background: var(--paper-lite); }
+  .viz-scroll, .console-body, .hist-list, .shortcuts { scrollbar-color: rgb(var(--line-rgb) / 0.45) transparent; }
+  /* The visualizer is drawn on squared paper. "local" makes the squares scroll with the drawings. */
+  .viz-scroll {
+    background-color: var(--paper);
+    background-image:
+      linear-gradient(to right, rgb(var(--line-rgb) / 0.065) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(var(--line-rgb) / 0.065) 1px, transparent 1px);
+    background-size: 1.25rem 1.25rem;
+    background-attachment: local;
+  }
+
+  /* Dividers: a 2px ink rule, with a solid block to grab. */
+  .divider { background-color: var(--ink); }
+  .divider-col { padding: 0 2.5px; }
+  .divider-row { padding: 2.5px 0; }
+  /* The rule above the console is solid, so it joins the console's black block. */
+  .viz-pane > .divider-row { background-clip: border-box; }
+  .viz-pane > .divider-row::after { background: var(--paper); }
+  .viz-pane > .divider-row:hover::after, .viz-pane > .divider-row:focus-visible::after { background: var(--paper-lite); }
+  .divider::after { border-radius: 0; background: var(--ink); }
+  .divider-col::after { left: 0; width: 7px; height: 40px; }
+  .divider-row::after { top: 0; height: 7px; width: 40px; }
+  .divider:hover, .divider:focus-visible { background-color: var(--accent); }
+  .divider:hover::after, .divider:focus-visible::after { background: var(--accent); }
+  .divider-closed::after { background: var(--accent); box-shadow: none; }
+
+  /* ---------- Controls ---------- */
+  /* Hovering swaps a button's colors (ink block, paper letters). That rule is the classic one in
+     styles.css, left alone on purpose: repeating it here would outweigh the exceptions written
+     there for buttons that are really links (console line numbers, chat pointers). */
+  button:active:not(:disabled) { transform: translate(1px, 1px); }
+  .controls { gap: 0.4rem; }
+  .icon-btn { width: 2.1rem; height: 2.1rem; padding: 0; color: var(--ink); border: 2px solid var(--ink); background: var(--paper-lite); }
+  .icon-btn:hover:not(:disabled) { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .top .icon-btn, .layout-switch .icon-btn, .keys-btn, .bg-btn, .theme-btn, .design-btn, .hide-top-btn, .font-btn { width: 1.8rem; height: 1.8rem; }
+  /* Play is the one loud button: a blue block that sits up off the page and presses down. */
+  .play-btn, .play-btn:hover:not(:disabled) {
+    width: 2.9rem; height: 2.9rem;
+    color: var(--paper-lite); background: var(--accent); border: 2px solid var(--ink);
+    box-shadow: var(--lift);
+  }
+  .play-btn { margin: 0 0.25rem 0 0.1rem; }
+  .play-btn:hover:not(:disabled) { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ink); }
+  .play-btn:active:not(:disabled) { transform: translate(3px, 3px); box-shadow: 0 0 0 var(--ink); }
+  .play-btn:disabled { background: var(--paper-deep); color: var(--faint); border-color: var(--faint); box-shadow: none; }
+  .step-count { font-size: 0.8rem; font-weight: 600; letter-spacing: 0; color: var(--ink); }
+
+  /* Step scrubber: a boxed track that fills with blue, and a solid block to drag. */
+  .scrubber::-webkit-slider-runnable-track {
+    height: 8px; border-radius: 0; border: 2px solid var(--ink); box-sizing: content-box;
+    background: linear-gradient(to right, var(--accent) var(--pct), var(--paper-lite) var(--pct));
+  }
+  .scrubber::-webkit-slider-thumb,
+  .scrubber:hover::-webkit-slider-thumb,
+  .scrubber:focus-visible::-webkit-slider-thumb {
+    width: 12px; height: 24px; margin-top: -8px; border-radius: 0;
+    background: var(--ink); box-shadow: none; transition: none;
+  }
+  .scrubber:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .scrubber::-moz-range-track { box-sizing: border-box; height: 12px; border-radius: 0; border: 2px solid var(--ink); background: var(--paper-lite); }
+  .scrubber::-moz-range-progress { box-sizing: border-box; height: 12px; border-radius: 0; border: 2px solid var(--ink); background: var(--accent); }
+  .scrubber::-moz-range-thumb,
+  .scrubber:hover::-moz-range-thumb,
+  .scrubber:focus-visible::-moz-range-thumb {
+    width: 12px; height: 24px; border-radius: 0; border: 0;
+    background: var(--ink); box-shadow: none;
+  }
+  .scrubber:focus-visible::-moz-range-thumb { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .muted { color: var(--muted); }
+  .error {
+    border: 2px solid var(--error); border-left-width: 8px; border-radius: 0;
+    background: rgb(var(--error-rgb) / 0.09); font-weight: 500;
+  }
+
+  /* ---------- Small labels: poster type instead of spaced-out tiny capitals ---------- */
+  .viz-frame, .output-title, .dict-table th, .decision-kind, .answer-label, .closure-label, .hist-new,
+  .problem-head .muted, .cases .muted, .concepts .muted, .speed .muted, .big-o-row .muted, .constraints-title,
+  .sql-section > summary, .sql-h {
+    font-family: var(--font-label); font-size: 0.86rem; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .viz-frame, .output-title, .sql-section > summary, .sql-h { font-size: 0.95rem; color: var(--text); }
+  .output-title::before { content: none; }
+  .sql-h .badge { font-size: 0.72rem; }
+
+  /* ---------- Visualizer ---------- */
+  .list-name { font-weight: 600; font-size: 1rem; }
+  /* A list is drawn the way a textbook draws an array: cells sharing their walls. */
+  .list-grid { gap: 0; }
+  .list-grid > .box:not(:first-child) { margin-left: -2px; }
+  .box {
+    border: 2px solid var(--ink); border-radius: 0; background: var(--paper-lite);
+    font-size: 1.02rem; font-weight: 500;
+    transition: transform 0.12s var(--ease), box-shadow 0.12s var(--ease), background 0.12s;
+  }
+  .box[style] { z-index: 1; }
+  /* Changed: filled in green and lifted off the page. Read: filled in amber, left lying flat. */
+  .box.changed { z-index: 3; border-color: var(--ink); background: var(--pass-hi); color: var(--ink); font-weight: 600; transform: translate(-2px, -2px); box-shadow: 4px 4px 0 var(--ink); }
+  .box.source { z-index: 2; border: 2px solid var(--ink); background: var(--source-hi); color: var(--ink); font-weight: 600; box-shadow: none; }
+  .box-ghost { background: transparent; border: 2px dashed var(--line); }
+  .box-gap { border: 0; background: transparent; color: var(--faint); }
+  .index { font-size: 0.72rem; font-weight: 500; color: var(--faint); }
+  .pointer { font-weight: 600; }
+
+  /* A variable is an index card: its name on a strip across the top, its value below. */
+  .var-cards { gap: 1.8rem 0.8rem; padding-top: 1.5rem; }
+  /* Badges sit on the card's top edge like index tabs, clear of the name strip. */
+  .var-deltas:not(.inline):not(.on-box) { bottom: calc(100% - 2px); left: -2px; right: -2px; }
+  .var-card {
+    padding: 0; border: 2px solid var(--ink); border-radius: 0; background: var(--paper-lite);
+    transition: transform 0.12s var(--ease), box-shadow 0.12s var(--ease);
+  }
+  .var-name {
+    padding: 0.14rem 0.6rem 0.12rem; border-bottom: 2px solid var(--ink); background: var(--paper-deep);
+    font-size: 0.74rem; font-weight: 600; letter-spacing: 0.02em;
+  }
+  .var-value, .var-card > :not(.var-name):not(.var-deltas):not(.var-pulse) { padding: 0.1rem 0.6rem 0.2rem; }
+  .var-value { font-size: 1.4rem; font-weight: 600; }
+  .var-card.changed { border-color: var(--ink); transform: translate(-2px, -2px); box-shadow: 4px 4px 0 var(--ink); }
+  .var-card.changed .var-name { background: var(--pass-hi); color: var(--ink); }
+  .var-card.source { border-color: var(--ink); box-shadow: none; }
+  .var-card.source .var-name { background: var(--source-hi); color: var(--ink); }
+  .var-pulse { inset: -2px; border: 3px solid var(--source-hi); }
+  .var-new { color: var(--pass); }
+
+  /* Change badges: stickers. Bright fill, black letters, black edge. */
+  .var-delta {
+    padding: 0.04rem 0.4rem; border: 1.5px solid var(--ink); border-radius: 0;
+    background: var(--pass-hi); color: var(--ink); font-size: 0.74rem; font-weight: 600;
+    box-shadow: 2px 2px 0 var(--ink);
+  }
+  .var-delta.down { background: var(--pink); color: var(--paper-lite); box-shadow: 2px 2px 0 var(--ink); }
+  .var-delta.new { background: var(--blue); color: var(--paper-lite); box-shadow: 2px 2px 0 var(--ink); }
+  .var-delta.set { background: var(--accent); color: var(--paper-lite); box-shadow: 2px 2px 0 var(--ink); }
+  .var-delta.gave { background: var(--source-hi); color: var(--ink); box-shadow: 2px 2px 0 var(--ink); }
+  .var-deltas { gap: 5px; }
+  .var-deltas.inline { gap: 6px; }
+  .sum-part.read { border-radius: 0; background: var(--source-hi); color: var(--ink); outline: 1px solid var(--ink); }
+  .var-from { opacity: 0.85; }
+
+  /* The console: a black block at the foot of the column, like a strip of terminal printout. */
+  .console {
+    --text: var(--paper);
+    --muted: #d5ccb8;
+    --faint: #a89e8a;
+    --accent: #a9bbff;
+    --pass: var(--pass-hi);
+    --pass-rgb: 79 220 154;
+    --error: #ff8266;
+    --error-rgb: 255 130 102;
+    --bg: var(--ink);
+    background: var(--ink); color: var(--text);
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+  .console-body { scrollbar-color: rgb(244 236 217 / 0.4) transparent; }
+  .console-row { border-radius: 0; }
+  .console-row.fresh { background: rgb(var(--pass-rgb) / 0.18); box-shadow: inset 4px 0 0 var(--pass); }
+  .console-row.traceback { background: rgb(var(--error-rgb) / 0.14); }
+  .console-later { color: var(--faint); }
+
+  /* In the code: the line that just ran, and highlighter over the names it changed and read. */
+  .current-line { background: rgb(var(--accent-rgb) / 0.11); box-shadow: inset 5px 0 0 var(--accent); }
+  .code-target { color: var(--ink) !important; background: var(--pass-hi); border-radius: 0; box-shadow: 0 0 0 1px var(--pass-hi); font-weight: 600; }
+  .code-source { color: var(--ink) !important; background: var(--source-hi); border-radius: 0; box-shadow: 0 0 0 1px var(--source-hi); font-weight: 600; }
+
+  .dict-table { font-size: 0.92rem; }
+  .dict-table td { border: 1.5px solid var(--ink); background: var(--paper-lite); }
+  .dict-table tr.changed td { background: var(--pass-hi); border-color: var(--ink); font-weight: 600; }
+  .dict-table tr.source td { background: var(--source-hi); border-color: var(--ink); color: var(--ink); font-weight: 600; }
+  .dict-table td.badge-cell, .dict-table tr.changed td.badge-cell, .dict-table tr.source td.badge-cell { border: 0; background: transparent; padding: 0 0 0 0.6rem; }
+
+  /* ---------- Problem ---------- */
+  .problem {
+    border-bottom: 2px solid var(--ink); background: var(--paper);
+    font-size: 0.95rem; line-height: 1.5; color: var(--muted);
+    scrollbar-color: rgb(var(--line-rgb) / 0.45) transparent;
+  }
+  .problem code, .msg code, .card p code, .sql-stage-explain code {
+    font-size: 0.88em; padding: 0.02em 0.25em; background: rgb(var(--line-rgb) / 0.08);
+  }
+  .problem-head { gap: 0.4rem 0.8rem; align-items: center; }
+  .problem-head strong {
+    font-family: var(--font-poster); font-size: 1.7rem; font-weight: 900; line-height: 1;
+    letter-spacing: 0.01em; text-transform: uppercase;
+  }
+  /* Test results are rubber stamps: a heavy box, a little crooked. */
+  .badge {
+    font-family: var(--font-label); font-size: 0.86rem; font-weight: 800; letter-spacing: 0.09em;
+    padding: 0.06rem 0.5rem; border: 2px solid var(--error); border-radius: 0; color: var(--error);
+    transform: rotate(-1.5deg);
+  }
+  .badge.pass { border-color: var(--pass); color: var(--pass); background: rgb(var(--pass-rgb) / 0.2); animation: paper-stamp 0.32s cubic-bezier(0.2, 1.4, 0.4, 1) both; }
+  .case { padding: 0.1rem 0.55rem; font-weight: 600; }
+  .case.pass { color: var(--pass); border-color: var(--pass); }
+  .case.fail { color: var(--error); border-color: var(--error); }
+  .case.active { background: var(--ink); color: var(--paper-lite); border-color: var(--ink); box-shadow: none; }
+  .case.active.pass { background: var(--pass); border-color: var(--pass); }
+  .case.active.fail { background: var(--error); border-color: var(--error); }
+  .case:hover:not(:disabled) { color: var(--paper-lite); background: var(--ink); border-color: var(--ink); }
+  .hint { color: var(--ink); padding-left: 0.7rem; border-left: 4px solid var(--ink); font-style: italic; }
+  .hint .muted { font-style: normal; font-family: var(--font-label); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+  .explain { color: var(--ink); }
+  .fail-text { color: var(--error); }
+  .constraints-title { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+  .constraints-title:hover { color: var(--accent); background: none; }
+  .big-o { border: 2px solid var(--ink); border-radius: 0; background: var(--paper-lite); }
+  .big-o-row .chip.pass { border-color: var(--ink); background: var(--pass-hi); color: var(--ink); }
+  .big-o-row .chip.fail { border-color: var(--ink); background: var(--source-hi); color: var(--ink); }
+  .guess textarea { border: 2px solid var(--ink); border-radius: 0; background: var(--paper-lite); }
+  .guess-result { font-weight: 600; }
+  .check-list { font-family: var(--font-mono); font-size: 0.8rem; }
+
+  /* Chips: small square buttons. The chosen one is solid black. */
+  .chip { font-size: 0.74rem; padding: 0.12rem 0.55rem; border-radius: 0; }
+  .chip.active { background: var(--ink); color: var(--paper-lite); border-color: var(--ink); box-shadow: none; }
+  .loop-chip { border: 1.5px solid var(--ink); border-radius: 0; background: var(--paper-lite); color: var(--ink); font-weight: 500; }
+  .remembered { border-radius: 0; border: 1.5px solid var(--accent); background: var(--paper-lite); }
+  .shared-chip { border-radius: 0; border-width: 1.5px; background: var(--paper-lite); }
+
+  /* ---------- Side panel: history as a ledger ---------- */
+  .hist-list { gap: 0; padding: 0; }
+  .hist-row { padding: 0.5rem 0.5rem 0.55rem; border: 0; border-bottom: 1.5px solid var(--line); border-radius: 0; background: transparent; }
+  .hist-row.current { border-color: var(--line); background: rgb(var(--pass-rgb) / 0.26); box-shadow: inset 6px 0 0 var(--pass); padding-left: 0.85rem; }
+  .hist-row.later { opacity: 0.5; }
+  .hist-head, .hist-source { font-family: var(--font-mono); }
+  .hist-name { font-weight: 600; }
+  .hist-after { font-weight: 600; }
+  .hist-delta { border-radius: 0; background: var(--pass-hi); color: var(--ink); font-weight: 600; }
+  .hist-source { color: var(--muted); }
+  .hist-src-name { font-weight: 600; }
+
+  /* ---------- Side panel: chat and glossary ---------- */
+  .syntax-input {
+    font-family: var(--font-display); font-size: 0.95rem;
+    border: 2px solid var(--ink); border-radius: 0; background: var(--paper-lite); transition: none;
+  }
+  .syntax-input:focus { border-color: var(--ink); box-shadow: 4px 4px 0 var(--accent); }
+  .card-group > summary { font-family: var(--font-label); font-size: 1.05rem; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; }
+  .card-group > summary .muted { font-family: var(--font-mono); font-size: 0.74rem; font-weight: 400; letter-spacing: 0; }
+  /* A glossary entry is ruled off above, like an entry in a reference book, not boxed. */
+  .card { padding: 0.6rem 0 0.3rem; border: 0; border-top: 3px solid var(--ink); border-radius: 0; background: transparent; }
+  .card-head strong { font-weight: 600; font-size: 1.02rem; }
+  .card p { font-size: 0.92rem; line-height: 1.5; }
+  .card pre, .chat-code pre, .code-hover pre, .sql-answer pre {
+    border: 1.5px solid var(--ink); border-left-width: 6px; border-radius: 0; background: var(--paper-lite);
+  }
+  .msg { font-size: 0.95rem; line-height: 1.55; }
+  .msg-user {
+    padding: 0.45rem 0.8rem; border: 0; border-radius: 0;
+    background: var(--ink); color: var(--paper);
+  }
+  .msg-user ::selection { background: var(--paper); color: var(--ink); }
+  .suggestion { font-size: 0.78rem; }
+  .suggestion::before { content: '→ '; }
+  .chat-edits { border: 2px solid var(--ink); border-left: 8px solid var(--pass); border-radius: 0; background: rgb(var(--pass-rgb) / 0.16); }
+  .chat-edits.undone { border-color: var(--line); background: none; }
+  .ref-chip { border-radius: 0; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+  .show-me { color: var(--paper-lite); background: var(--accent); border-color: var(--ink); box-shadow: var(--lift); }
+  .show-me:hover:not(:disabled), .tour-next:hover:not(:disabled) { background: var(--ink); color: var(--paper-lite); }
+
+  /* ---------- Pop-ups: paper notes with a hard shadow ---------- */
+  .code-hover, .tap-tip, .tour-bubble {
+    border: 2px solid var(--ink); border-radius: 0; background: var(--paper-lite);
+    box-shadow: 5px 5px 0 var(--ink);
+  }
+  .code-hover-head { color: var(--accent); font-weight: 600; }
+  .tour-ring { border: 3px solid var(--accent); border-radius: 0; box-shadow: 0 0 0 9999px rgb(var(--line-rgb) / 0.35); }
+  .tour-ring.flash { box-shadow: 0 0 0 4px rgb(var(--accent-rgb) / 0.3); }
+  .tour-hand { fill: var(--paper-lite); stroke: var(--ink); stroke-width: 1.6; filter: drop-shadow(2px 2px 0 var(--ink)); }
+  .tour-next { color: var(--paper-lite); background: var(--accent); border-color: var(--ink); }
+
+  /* ---------- Keyboard shortcuts sheet ---------- */
+  .shortcuts { border: 2px solid var(--ink); border-radius: 0; background: var(--paper); box-shadow: 10px 10px 0 var(--ink); }
+  .shortcuts::backdrop { background: rgb(var(--line-rgb) / 0.55); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .shortcuts-head { border-bottom: 2px solid var(--ink); }
+  .shortcuts-head h2 { font-family: var(--font-poster); font-size: 1.7rem; font-weight: 900; letter-spacing: 0.02em; color: var(--ink); }
+  .shortcuts-head h2::before { content: none; }
+  .shortcuts h3 { font-family: var(--font-label); font-size: 1.05rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+  .shortcuts .muted { color: var(--muted); }
+  .shortcut-row dt { font-size: 0.9rem; color: var(--ink); }
+  kbd { border: 1.5px solid var(--ink); border-bottom-width: 3px; border-radius: 2px; background: var(--paper-lite); font-weight: 500; }
+
+  /* ---------- Linked lists, trees, graphs, grids ---------- */
+  .node rect, .node circle:not(.node-dot) { fill: var(--paper-lite); stroke: var(--ink); stroke-width: 2; }
+  .node.changed rect, .node.changed circle:not(.node-dot) { fill: var(--pass-hi); stroke: var(--ink); stroke-width: 2.5; filter: none; }
+  .node.source circle, .node.source rect { fill: var(--source-hi); stroke: var(--ink); stroke-width: 2.5; }
+  .node.visited circle { fill: rgb(var(--accent-rgb) / 0.22); }
+  .node.changed.visited circle { fill: var(--pass-hi); }
+  .node.waiting circle { stroke: var(--pink); stroke-dasharray: 5 3; }
+  .heap-top circle { stroke: var(--accent); stroke-width: 3; }
+  .node rect { rx: 0; ry: 0; }
+  .nodes marker path[fill="var(--muted)"] { fill: var(--ink); }
+  .node-split { stroke: var(--ink); }
+  .node-dot { fill: var(--ink); }
+  .node-val { fill: var(--ink); font-weight: 600; }
+  .node-edge, .node-edge line, .node-edge path { stroke: var(--ink); stroke-width: 1.75; }
+  .node-edge.changed, .node-edge.changed line { stroke: var(--pass); stroke-width: 3; }
+  .grid-table td { border: 1.5px solid var(--ink); background: var(--paper-lite); font-weight: 500; }
+  .grid-table td.changed { border-color: var(--ink); background: var(--pass-hi); color: var(--ink); font-weight: 600; box-shadow: none; }
+  .grid-table td.source { border-color: var(--ink); background: var(--source-hi); color: var(--ink); font-weight: 600; box-shadow: none; }
+  .legend-dot { border: 1.5px solid var(--ink); }
+  .bar rect { fill: rgb(var(--accent-rgb) / 0.16); stroke: var(--ink); stroke-width: 1.5; }
+  .bar.overlap rect { stroke: var(--pink); stroke-width: 2; }
+  .bar.changed rect { fill: var(--pass-hi); stroke: var(--ink); }
+  .bar.source rect { fill: var(--source-hi); stroke: var(--ink); stroke-width: 2; }
+
+  /* ---------- Loop passes, call stack, decisions, answers ---------- */
+  .stack-row { border: 1.5px solid var(--ink); border-radius: 0; background: var(--paper-lite); color: var(--ink); margin-top: -1.5px; }
+  .call-stack ol { gap: 0; }
+  .stack-row:not(:disabled):hover { background: var(--ink); color: var(--paper-lite); border-color: var(--ink); }
+  .stack-row:not(:disabled):hover .stack-line { color: inherit; }
+  .stack-row.current { background: rgb(var(--pass-rgb) / 0.4); color: var(--ink); border-color: var(--ink); box-shadow: inset 6px 0 0 var(--pass); font-weight: 600; }
+  .stack-row.selected { background: var(--accent); color: var(--paper-lite); border-color: var(--ink); }
+  .stack-row.selected .stack-line { color: inherit; }
+  .viewing-note { border-left: 5px solid var(--accent); background: var(--accent-soft); color: var(--ink); }
+  .link-btn, .link-btn:hover:not(:disabled) { background: none; color: var(--accent); border: 0; font: inherit; font-weight: 600; }
+  .decision { border: 2px solid var(--ink); border-radius: 0; background: var(--paper-lite); font-size: 0.88rem; }
+  .decision.yes { box-shadow: inset 6px 0 0 var(--pass); padding-left: 1rem; }
+  .decision.no { box-shadow: inset 6px 0 0 var(--pink); padding-left: 1rem; }
+  .decision b { font-family: var(--font-label); font-size: 1rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+  .returned-chip { border: 2px solid var(--ink); border-radius: 0; background: rgb(var(--pass-rgb) / 0.3); color: var(--ink); }
+  .returned-chip b { color: var(--ink); font-weight: 600; }
+  .answer-card { border: 2px solid var(--ink); border-radius: 0; background: var(--paper-lite); }
+  .answer-card.pass { border-color: var(--ink); box-shadow: 5px 5px 0 var(--pass); }
+  .answer-card.fail { border-color: var(--ink); box-shadow: 5px 5px 0 var(--source-hi); }
+  .answer-value { font-size: 1.1rem; font-weight: 600; }
+  .answer-expected { font-weight: 500; }
+  .draw-as { color: var(--muted); }
+  .draw-as select { border: 1.5px solid var(--ink); border-radius: 0; background: var(--paper-lite); color: var(--ink); padding: 0.05rem 0.2rem; }
+
+  /* ---------- SQL ---------- */
+  .sql-viz > .sql-section + .sql-section { border-top: 2px solid var(--ink); }
+  .sql-table { font-size: 0.8rem; }
+  .sql-table caption { font-family: var(--font-mono); font-size: 0.9rem; }
+  .sql-table caption strong { font-weight: 600; }
+  .sql-table caption .muted { font-family: var(--font-display); font-size: 0.8rem; }
+  .sql-table th, .sql-table td { border: 1px solid rgb(var(--line-rgb) / 0.4); }
+  /* Column headings are a black bar; the columns the query uses take over with their role color. */
+  .sql-table th { color: var(--paper); background: var(--ink); border-color: var(--ink); font-weight: 600; box-shadow: none; }
+  .sql-table td { background: var(--paper-lite); }
+  .sql-table th.col-shown, .sql-table th.col-set { color: var(--ink); background: var(--pass-hi); box-shadow: none; }
+  .sql-table th.col-used { color: var(--ink); background: var(--source-hi); box-shadow: none; }
+  .sql-table td.col-shown { background: rgb(var(--pass-rgb) / 0.16); }
+  .sql-table td.col-used { background: rgb(var(--source-rgb) / 0.2); }
+  .sql-table th.sql-note-col { background: transparent; border-color: transparent; }
+  .sql-table td.sql-note { background: transparent; border-color: transparent; color: var(--faint); }
+  .band-0 td { background: rgb(var(--accent-rgb) / 0.15); }
+  .band-1 td { background: rgb(var(--pass-rgb) / 0.3); }
+  .band-2 td { background: rgb(var(--pink-rgb) / 0.15); }
+  .band-3 td { background: rgb(var(--source-rgb) / 0.36); }
+  .band-4 td { background: rgb(var(--blue-rgb) / 0.16); }
+  .band-5 td { background: rgb(var(--line-rgb) / 0.09); }
+  .row-dropped td, .row-extra td { background: rgb(var(--error-rgb) / 0.1); }
+  .row-kept td:last-child { font-weight: 600; }
+  .row-missing td { background: rgb(var(--source-rgb) / 0.3); }
+  .row-in td:first-child, .row-changed td:first-child, .row-added td:first-child { box-shadow: inset 5px 0 0 var(--pass); }
+  .row-out td { opacity: 0.42; }
+  .row-changed td.col-set, .row-added td { background: var(--pass-hi); color: var(--ink); font-weight: 600; }
+  .row-will-change td:first-child { box-shadow: inset 5px 0 0 var(--source); }
+  .row-will-change td.col-set { background: var(--source-hi); color: var(--ink); font-weight: 600; }
+  .row-will-go td:first-child, .row-gone td:first-child { box-shadow: inset 5px 0 0 var(--error); }
+  .row-gone td, .row-will-go td { background: rgb(var(--error-rgb) / 0.1); }
+  .join-matched td:first-child { box-shadow: inset 5px 0 0 var(--accent); }
+  .join-kept td { background: rgb(var(--source-rgb) / 0.3); }
+  .join-kept td:first-child { box-shadow: inset 5px 0 0 var(--source); }
+  .join-dropped td:first-child { box-shadow: inset 5px 0 0 var(--error); }
+  .join-lit td { background: rgb(var(--pass-rgb) / 0.4); }
+  .join-line { stroke-width: 1.75; opacity: 0.85; }
+  .join-line.lit { stroke-width: 3; }
+  .venn-fill { fill: rgb(var(--accent-rgb) / 0.55); }
+  .venn-line { stroke: var(--ink); stroke-width: 1.5; }
+  .sql-role { border: 1.5px solid var(--ink); border-radius: 0; color: var(--ink); background: var(--paper-lite); font-weight: 500; }
+  .sql-role.from, .sql-role.target, .sql-role.by-chat { border-color: var(--ink); color: var(--ink); background: var(--pass-hi); }
+  .sql-role.read { border-color: var(--ink); color: var(--ink); background: var(--source-hi); }
+  .dot { border-radius: 0; outline: 1px solid var(--ink); }
+  .dot.col-shown { background: var(--pass-hi); }
+  .dot.col-used, .dot.kept { background: var(--source-hi); }
+  .sql-stage-chips li + li::before { color: var(--ink); font-weight: 600; }
+  .sql-stage-chips .chip.done:not(:hover) { color: var(--ink); background: var(--paper-deep); }
+  .sql-stage-explain { font-size: 0.95rem; line-height: 1.5; color: var(--ink); }
+  .sql-stage-count { font-weight: 600; }
+  .sql-join-head code { font-weight: 600; }
+  .sql-table tr.chat-added td { background: var(--pass-hi); color: var(--ink); }
+  .sql-table tr.chat-updated td.chat-cell { background: var(--source-hi); color: var(--ink); }
+
+  /* ---------- Phones and touch ---------- */
+  /* Tablets and phones: name, then the problem pickers, then the switches, each on its own row.
+     The switches are wider here than in the classic look (bigger labels, plus the progress
+     ticks), so they don't share a row with the pickers until there is desktop room. */
+  @media (max-width: 900px) {
+    .app { padding: 0; }
+    .top { grid-template-columns: minmax(0, 1fr); }
+    .wordmark { padding: 0.6rem 0.8rem 0; font-size: 1.45rem; letter-spacing: 0.02em; }
+    .top .tabs { padding: 0.45rem 0.8rem 0.5rem; }
+    .top-right { grid-row: 3; justify-content: flex-start; padding: 0 0.6rem 0.55rem; row-gap: 0.4rem; }
+    .lang-switch { margin-left: 0.2rem; }
+    .status { padding: 0 0.8rem; border-left: 0; }
+    .side-tabs { margin: 0 -1.1rem 0.7rem; }
+    .problem-head strong { font-size: 1.4rem; }
+  }
+  @media (pointer: coarse) {
+    .icon-btn, .top .icon-btn, .layout-switch .icon-btn, .font-btn, .keys-btn, .bg-btn, .theme-btn, .design-btn, .hide-top-btn { width: 2.6rem; height: 2.6rem; }
+    .play-btn, .play-btn:hover:not(:disabled) { width: 3rem; height: 3rem; }
+    .tab, .problem-select { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+    /* The touch dividers are taller (styles.css), so the 2px rule is re-centered in them. */
+    .divider-row { padding: 6.5px 0; }
+    .divider-col::after { width: 11px; left: -2px; height: 52px; }
+    .divider-row::after { height: 11px; top: 2px; width: 52px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .badge.pass, .progress-fill { animation: none; }
+    .box, .var-card, button { transition: none; }
+  }
+}
+
+/* The design switch itself, in both looks. */
+.design-btn { align-self: center; margin-right: 0.3rem; width: 1.8rem; height: 1.8rem; }
+@media (pointer: coarse) { .design-btn { width: 2.6rem; height: 2.6rem; } }
+
+/* A passing stamp comes down big and lands a little crooked. */
+@keyframes paper-stamp {
+  from { transform: rotate(-9deg) scale(1.7); opacity: 0; }
+  to { transform: rotate(-1.5deg) scale(1); opacity: 1; }
+}
+/* The progress ticks fill in one step at a time instead of sliding. */
+@keyframes paper-fill { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }

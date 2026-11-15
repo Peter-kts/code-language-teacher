@@ -23,6 +23,10 @@ describe('commandFor', () => {
     expect(commandFor(press('f'), 'button', 'mac')).toBe('toggleTopBar')
     expect(commandFor(press('t'), 'other', 'win')).toBe('toggleTheme')
     expect(commandFor(press('t'), 'text', 'win')).toBeNull()
+    expect(commandFor(press('d'), 'other', 'win')).toBe('toggleDesign')
+    expect(commandFor(press('d'), 'text', 'win')).toBeNull()
+    // Ctrl+D stays the editor's and the browser's.
+    expect(commandFor(press('d', { ctrlKey: true }), 'other', 'win')).toBeNull()
   })
 
   it('changes the text size with + - and 0, but not while typing or with Ctrl (browser zoom)', () => {
