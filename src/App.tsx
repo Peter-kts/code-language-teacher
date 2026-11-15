@@ -2,10 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { flushSync } from 'react-dom'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type * as monaco from 'monaco-editor/editor/editor.api'
-import { editorLook } from './monaco'
+import { editorLook, remeasureEditorFonts } from './monaco'
 import { Background, useTodaysScene } from './backgrounds/Background'
 import { loadBackgroundMode, saveBackgroundMode, type BackgroundMode } from './backgrounds/scenes'
-import { AutoLayoutIcon, CollapseIcon, ColumnsIcon, ExpandIcon, KeyboardIcon, PauseIcon, PictureIcon, PlayIcon, TerminalIcon, RowsIcon, SkipBackIcon, SkipForwardIcon, StepBackIcon, StepForwardIcon } from './icons'
+import { AutoLayoutIcon, CollapseIcon, ColumnsIcon, ExpandIcon, KeyboardIcon, PauseIcon, PaperIcon, PictureIcon, PlayIcon, TerminalIcon, RowsIcon, SkipBackIcon, SkipForwardIcon, StepBackIcon, StepForwardIcon } from './icons'
 import { useRunner } from './runner/useRunner'
 import { Visualizer } from './viz/Visualizer'
 import { findNames, previousInFrame, stepRoles } from './viz/changes'
@@ -32,7 +32,8 @@ import { ShortcutsDialog } from './ShortcutsDialog'
 import { stepAfterRerun } from './timeline'
 import { TapTip } from './TapTip'
 import { loadTopBarHidden, saveTopBarHidden } from './layout/topBar'
-import { THEME_NAMES, applyTheme, loadTheme, nextTheme, saveTheme, type Theme } from './layout/theme'
+import { DEFAULT_THEME, THEME_NAMES, applyTheme, loadTheme, nextTheme, saveTheme, type Theme } from './layout/theme'
+import { applyDesign, loadDesign, lookOf, otherDesign, saveDesign, type Design } from './layout/design'
 import { DEFAULT_FONT_SCALE, applyFontScale, editorFont, isLargest, isSmallest, loadFontScale, saveFontScale, stepFontScale } from './layout/fontSize'
 import { usePaneLayout, type LayoutMode } from './layout/usePaneLayout'
 import type { Language, RunRequest } from './types'
@@ -168,14 +169,42 @@ export default function App() {
   }
   // Before paint, so a saved size never flashes at normal first.
   useLayoutEffect(() => applyFontScale(fontScale), [fontScale])
+  // Design (src/layout/design.ts): the classic look with its themes, or the paper look, which
+  // brings its own colors. The theme is kept while paper is on and comes back when it goes off.
+  const [design, setDesign] = useState<Design>(loadDesign)
+  const paper = design === 'paper'
+  const toggleDesign = () => {
+    const next = otherDesign(design)
+    setDesign(next)
+    saveDesign(next)
+  }
   // Color theme (src/layout/theme.ts): the galaxy, the green-screen terminal, or the black and white one.
   const [theme, setTheme] = useState<Theme>(loadTheme)
   const toggleTheme = () => {
+    // The paper design has its own colors, so the T key waits until it is off.
+    if (design === 'paper') return
     const next = nextTheme(theme)
     setTheme(next)
     saveTheme(next)
   }
-  useLayoutEffect(() => applyTheme(theme), [theme])
+  // What the screen shows, for the editor's colors: paper, or else the theme.
+  const look = lookOf(design, theme)
+  useLayoutEffect(() => {
+    // Paper sits on the plain stylesheet, so no theme attributes are left on while it shows.
+    applyTheme(paper ? DEFAULT_THEME : theme)
+    applyDesign(design)
+  }, [theme, design, paper])
+  // The editor measured its letters in the other font; measure again once this look's font is in.
+  useEffect(() => {
+    let current = true
+    document.fonts
+      ?.load(`15px ${editorLook(look).fontFamily}`)
+      .then(() => current && remeasureEditorFonts())
+      .catch(() => {})
+    return () => {
+      current = false
+    }
+  }, [look])
   // Solved problems in the current language, for the focus theme's progress meter.
   const progress = useMemo(
     () => (sqlOn ? progressFor(solutions, 'sql', SQL_PROBLEMS) : progressFor(solutions, language, [...PROBLEMS, ...CONCEPTS[language]])),
@@ -291,6 +320,7 @@ export default function App() {
     },
     toggleTopBar,
     toggleTheme,
+    toggleDesign,
     fontBigger: () => changeFontScale(stepFontScale(fontScale, 1)),
     fontSmaller: () => changeFontScale(stepFontScale(fontScale, -1)),
     fontReset: () => changeFontScale(DEFAULT_FONT_SCALE),
@@ -436,6 +466,7 @@ export default function App() {
     action('showShortcuts', 'Keyboard shortcuts')
     action('toggleTopBar', 'Hide / show the top bar')
     action('toggleTheme', 'Next theme (galaxy, green terminal, black and white, focus)')
+    action('toggleDesign', 'Paper design on / off')
     // No keys inside the editor (+ and - are for typing), but they show up in F1.
     action('fontBigger', 'Bigger text')
     action('fontSmaller', 'Smaller text')
@@ -557,8 +588,9 @@ export default function App() {
 
   return (
     <div className={background === 'daily' ? 'app pixel-bg' : 'app'}>
-      {/* The focus theme drops the moving picture: motion at the edge of sight pulls the eyes away. */}
-      {theme !== 'focus' && <Background mode={background} scene={todaysScene} />}
+      {/* The focus theme drops the moving picture: motion at the edge of sight pulls the eyes away.
+          The paper design has no picture either: it is a printed page. */}
+      {look !== 'focus' && !paper && <Background mode={background} scene={todaysScene} />}
       <span className="tick tl" aria-hidden="true" />
       <span className="tick tr" aria-hidden="true" />
       <span className="tick bl" aria-hidden="true" />
@@ -723,9 +755,11 @@ export default function App() {
                 className={background === 'daily' ? 'icon-btn bg-btn active' : 'icon-btn bg-btn'}
                 aria-pressed={background === 'daily'}
                 aria-label="Daily pixel background"
-                disabled={theme === 'focus'}
+                disabled={look === 'focus' || paper}
                 title={
-                  theme === 'focus'
+                  paper
+                    ? 'The paper design is a printed page, so it has no background picture.'
+                    : theme === 'focus'
                     ? 'The focus theme hides the background, so nothing moves at the edge of the screen.'
                     : background === 'daily'
                     ? `Background: ${todaysScene.title}, a new pixel scene each day. Click for the galaxy.`
@@ -736,12 +770,31 @@ export default function App() {
                 <PictureIcon />
               </button>
               <button
-                className={theme !== 'galaxy' ? 'icon-btn theme-btn active' : 'icon-btn theme-btn'}
+                className={theme !== 'galaxy' && !paper ? 'icon-btn theme-btn active' : 'icon-btn theme-btn'}
+                disabled={paper}
                 aria-label={`Theme: ${THEME_NAMES[theme]}. Switch to the ${THEME_NAMES[nextTheme(theme)]} theme`}
-                title={withShortcut(`Theme: ${THEME_NAMES[theme]}. Click for the ${THEME_NAMES[nextTheme(theme)]}.`, 'toggleTheme')}
+                title={
+                  paper
+                    ? `The paper design has its own colors. Turn it off to get the ${THEME_NAMES[theme]} theme back.`
+                    : withShortcut(`Theme: ${THEME_NAMES[theme]}. Click for the ${THEME_NAMES[nextTheme(theme)]}.`, 'toggleTheme')
+                }
                 onClick={toggleTheme}
               >
                 <TerminalIcon />
+              </button>
+              <button
+                className={paper ? 'icon-btn design-btn active' : 'icon-btn design-btn'}
+                aria-pressed={paper}
+                aria-label="Paper design"
+                title={withShortcut(
+                  paper
+                    ? `Paper design: on. Click to go back to the classic look (${THEME_NAMES[theme]} theme).`
+                    : 'Paper design: off. Click for the print look: cream paper, black ink, flat colors.',
+                  'toggleDesign',
+                )}
+                onClick={toggleDesign}
+              >
+                <PaperIcon />
               </button>
               <button
                 className="icon-btn hide-top-btn"
@@ -759,7 +812,7 @@ export default function App() {
               >
                 <KeyboardIcon />
               </button>
-              {theme === 'focus' && <ProgressMeter {...progress} subject={sqlOn ? 'SQL' : language === 'python' ? 'Python' : 'JavaScript'} />}
+              {(look === 'focus' || paper) && <ProgressMeter {...progress} subject={sqlOn ? 'SQL' : language === 'python' ? 'Python' : 'JavaScript'} />}
               <span className={`status status-${shownError ? 'error' : shownStatus}`}>{statusText}</span>
             </div>
           </header>
@@ -774,7 +827,7 @@ export default function App() {
             solutions={solutions.sql}
             onSolved={(id, solved) => setSolutions((s) => saveSolution(s, 'sql', id, solved))}
             fontScale={fontScale}
-            theme={theme}
+            theme={look}
             commandsRef={sqlCommandsRef}
             runCommand={runCommand}
             onStatus={setSqlStatus}
@@ -809,11 +862,11 @@ export default function App() {
               value={code}
               onChange={(v) => setCode(v ?? '')}
               onMount={onMount}
-              theme={editorLook(theme).theme}
+              theme={editorLook(look).theme}
               options={{
                 ...editorFont(fontScale),
-                cursorStyle: editorLook(theme).cursorStyle,
-                fontFamily: "'JetBrains Mono', ui-monospace, Consolas, monospace",
+                cursorStyle: editorLook(look).cursorStyle,
+                fontFamily: editorLook(look).fontFamily,
                 padding: { top: 14 },
                 minimap: { enabled: false },
                 scrollBeyondLastLine: false,

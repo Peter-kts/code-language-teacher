@@ -23,7 +23,7 @@ import 'monaco-editor/languages/definitions/javascript/register'
 import 'monaco-editor/languages/definitions/sql/register'
 import EditorWorker from 'monaco-editor/editor/editor.worker?worker'
 import { loader } from '@monaco-editor/react'
-import type { Theme } from './layout/theme'
+import type { Look } from './layout/design'
 
 self.MonacoEnvironment = { getWorker: () => new EditorWorker() }
 loader.config({ monaco })
@@ -297,9 +297,100 @@ monaco.editor.defineTheme(FOCUS_EDITOR_THEME, {
   },
 })
 
-const EDITOR_THEMES: Record<Theme, string> = { galaxy: EDITOR_THEME, terminal: TERMINAL_EDITOR_THEME, mono: MONO_EDITOR_THEME, focus: FOCUS_EDITOR_THEME }
+// Paper design (src/layout/design.ts): black ink on cream paper, so this one starts from the light
+// base. Keywords in the ultramarine the design uses for "this is live", strings in magenta, numbers
+// in violet. Green and amber are left out on purpose: in the code they only ever mean "changed" and
+// "read". Every color is at least 4.5 times darker than the paper (the WCAG rule for readable text).
+export const PAPER_EDITOR_THEME = 'paper'
+monaco.editor.defineTheme(PAPER_EDITOR_THEME, {
+  base: 'vs',
+  inherit: true,
+  rules: [
+    { token: 'comment', foreground: '6d6455', fontStyle: 'italic' },
+    { token: 'keyword', foreground: '1c3fdc', fontStyle: 'bold' },
+    { token: 'string', foreground: 'b0186b' },
+    { token: 'number', foreground: '6d2fc0' },
+    { token: 'type', foreground: '00727e' },
+    { token: 'delimiter', foreground: '4c453a' },
+    { token: 'identifier', foreground: '15120e' },
+    { token: 'operator', foreground: '15120e' },
+    { token: 'predefined', foreground: 'b0186b' },
+  ],
+  colors: {
+    'editor.background': '#00000000',
+    'editor.foreground': '#15120e',
+    'editorGutter.background': '#00000000',
+    'editorLineNumber.foreground': '#a2988a',
+    'editorLineNumber.activeForeground': '#15120e',
+    'editorCursor.foreground': '#15120e',
+    'editor.selectionBackground': '#1c3fdc40',
+    'editor.inactiveSelectionBackground': '#1c3fdc24',
+    'editor.lineHighlightBackground': '#15120e0a',
+    'editor.lineHighlightBorder': '#00000000',
+    'editorIndentGuide.background1': '#15120e1a',
+    'editorIndentGuide.activeBackground1': '#15120e59',
+    'editorError.foreground': '#c22a14',
+    'editorBracketHighlight.foreground1': '#1c3fdc',
+    'editorBracketHighlight.foreground2': '#b0186b',
+    'editorBracketHighlight.foreground3': '#6d2fc0',
+    'editorBracketMatch.background': '#1c3fdc1f',
+    'editorBracketMatch.border': '#1c3fdc',
+    'editorWidget.background': '#fbf7ec',
+    'editorWidget.border': '#15120e',
+    'editorSuggestWidget.background': '#fbf7ec',
+    'editorSuggestWidget.border': '#15120e',
+    'editorSuggestWidget.selectedBackground': '#1c3fdc2e',
+    'editorHoverWidget.background': '#fbf7ec',
+    'editorHoverWidget.border': '#15120e',
+    'editorOverviewRuler.border': '#00000000',
+    // Find matches in magenta, so they don't read as the amber "read" highlight.
+    'editor.findMatchBackground': '#d6248366',
+    'editor.findMatchHighlightBackground': '#d6248333',
+    'editorOverviewRuler.findMatchForeground': '#d62483aa',
+    'editor.selectionHighlightBackground': '#1c3fdc1f',
+    'focusBorder': '#1c3fdc',
+    'input.background': '#ffffff',
+    'input.border': '#15120e',
+    'input.placeholderForeground': '#6d6455',
+    'inputOption.activeBorder': '#1c3fdc',
+    'inputOption.activeBackground': '#1c3fdc33',
+    'quickInput.background': '#fbf7ec',
+    'quickInputList.focusBackground': '#1c3fdc2e',
+    'list.hoverBackground': '#15120e0f',
+    'list.highlightForeground': '#1c3fdc',
+    'keybindingLabel.background': '#15120e0d',
+    'keybindingLabel.border': '#15120e',
+    'keybindingLabel.bottomBorder': '#15120e',
+    'keybindingLabel.foreground': '#15120e',
+    'widget.shadow': '#15120e40',
+    'scrollbarSlider.background': '#15120e26',
+    'scrollbarSlider.hoverBackground': '#15120e40',
+    'scrollbarSlider.activeBackground': '#15120e59',
+  },
+})
 
-/** The editor theme and cursor that go with an app theme: the terminals get a block cursor. */
-export function editorLook(theme: Theme) {
-  return { theme: EDITOR_THEMES[theme], cursorStyle: theme === 'terminal' || theme === 'mono' ? ('block' as const) : ('line' as const) }
+const EDITOR_THEMES: Record<Look, string> = {
+  galaxy: EDITOR_THEME,
+  terminal: TERMINAL_EDITOR_THEME,
+  mono: MONO_EDITOR_THEME,
+  focus: FOCUS_EDITOR_THEME,
+  paper: PAPER_EDITOR_THEME,
+}
+
+const CODE_FONT = "'JetBrains Mono', ui-monospace, Consolas, monospace"
+// The paper design sets code in IBM Plex Mono, which reads like a typewritten listing.
+const PAPER_CODE_FONT = "'IBM Plex Mono', ui-monospace, Consolas, monospace"
+
+/** The editor theme, cursor and font that go with a look: the terminals get a block cursor. */
+export function editorLook(look: Look) {
+  return {
+    theme: EDITOR_THEMES[look],
+    cursorStyle: look === 'terminal' || look === 'mono' ? ('block' as const) : ('line' as const),
+    fontFamily: look === 'paper' ? PAPER_CODE_FONT : CODE_FONT,
+  }
+}
+
+/** Monaco measures letter widths once per font; call this after a new font has loaded. */
+export function remeasureEditorFonts() {
+  monaco.editor.remeasureFonts()
 }

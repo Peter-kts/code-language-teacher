@@ -108,6 +108,13 @@ export const CollapseIcon = () => (
   </Icon>
 )
 
+// Design switch: a sheet of paper with a folded corner and two lines of print, for the paper look.
+export const PaperIcon = () => (
+  <Icon>
+    <path d="M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h4" />
+  </Icon>
+)
+
 // Theme switch: a little screen with a prompt (>_), for the retro terminal look.
 export const TerminalIcon = () => (
   <Icon>
