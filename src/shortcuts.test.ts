@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { combosFor, comboText, commandFor, SHORTCUT_SECTIONS, withShortcut, type KeyPress } from './shortcuts'
+import { comboKeys, combosFor, comboText, commandFor, SHORTCUT_SECTIONS, withShortcut, type KeyPress } from './shortcuts'
 
 const press = (key: string, mods: Partial<KeyPress> = {}, code = ''): KeyPress => ({
   key,
@@ -132,5 +132,13 @@ describe('shortcut labels', () => {
   it('adds the keys to a tooltip', () => {
     expect(withShortcut('Next step', 'nextStep', 'win')).toBe('Next step (Alt+. or →)')
     expect(withShortcut('Play', 'playPause', 'mac')).toBe('Play (⌘Enter or Space)')
+  })
+})
+
+describe('the + key in the cheat sheet', () => {
+  it('prints + as one key instead of two empty ones', () => {
+    expect(comboKeys('+', 'win')).toEqual(['+'])
+    expect(comboKeys('Mod++' as never, 'win')).toEqual(['Ctrl', '+'])
+    expect(comboKeys('Shift+Alt+.', 'win')).toEqual(['Shift', 'Alt', '.'])
   })
 })

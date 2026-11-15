@@ -173,7 +173,8 @@ const MAC_MODIFIER_ORDER = ['Ctrl', 'Shift', 'Alt', 'Mod']
 
 /** The keys of one combo as they should be printed, e.g. ['Ctrl', 'Enter'] or ['⌘', 'Enter']. */
 export function comboKeys(combo: Combo, platform: Platform = PLATFORM): string[] {
-  const parts = combo.split('+')
+  // A trailing + is the key itself (the Bigger text key), not a joiner.
+  const parts = combo.split(/\+(?!$)/)
   const key = parts.pop()!
   const order = platform === 'mac' ? MAC_MODIFIER_ORDER : MODIFIER_ORDER
   const mods = parts.sort((a, b) => order.indexOf(a) - order.indexOf(b))
