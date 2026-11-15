@@ -166,7 +166,7 @@ export function SqlWorkspace({
     action('askClaude', 'Ask Claude', [KeyMod.CtrlCmd | KeyCode.KeyI])
     action('showShortcuts', 'Keyboard shortcuts')
     action('toggleTopBar', 'Hide / show the top bar')
-    action('toggleTheme', 'Next theme (galaxy, green terminal, black and white)')
+    action('toggleTheme', 'Next theme (galaxy, green terminal, black and white, focus)')
   }
 
   // Squiggle the line SQLite complained about.
