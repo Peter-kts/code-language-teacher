@@ -165,9 +165,76 @@ monaco.editor.defineTheme(TERMINAL_EDITOR_THEME, {
   },
 })
 
-/** The editor theme and cursor that go with an app theme. */
+// Black and white terminal: white text on black, but syntax keeps its colors (green keywords,
+// amber strings, cyan numbers), like a plain terminal profile with a colorful editor in it.
+export const MONO_EDITOR_THEME = 'mono'
+monaco.editor.defineTheme(MONO_EDITOR_THEME, {
+  base: 'vs-dark',
+  inherit: true,
+  rules: [
+    { token: 'comment', foreground: '8c8c8c', fontStyle: 'italic' },
+    { token: 'keyword', foreground: 'ff79c6', fontStyle: 'bold' },
+    { token: 'string', foreground: 'ffb86c' },
+    { token: 'number', foreground: '8be9fd' },
+    { token: 'type', foreground: '50fa7b' },
+    { token: 'delimiter', foreground: 'b4b4b4' },
+    { token: 'identifier', foreground: 'ececec' },
+  ],
+  colors: {
+    'editor.background': '#00000000',
+    'editor.foreground': '#ececec',
+    'editorGutter.background': '#00000000',
+    'editorLineNumber.foreground': '#5a5a5a',
+    'editorLineNumber.activeForeground': '#ffffff',
+    'editorCursor.foreground': '#ffffff',
+    'editor.selectionBackground': '#ffffff38',
+    'editor.inactiveSelectionBackground': '#ffffff1f',
+    'editor.lineHighlightBackground': '#ffffff0a',
+    'editor.lineHighlightBorder': '#00000000',
+    'editorIndentGuide.background1': '#ffffff12',
+    'editorIndentGuide.activeBackground1': '#ffffff40',
+    'editorError.foreground': '#ff5555',
+    'editorBracketHighlight.foreground1': '#ffffff',
+    'editorBracketHighlight.foreground2': '#ffb86c',
+    'editorBracketHighlight.foreground3': '#8be9fd',
+    'editorBracketMatch.background': '#ffffff1f',
+    'editorBracketMatch.border': '#ffffff80',
+    'editorWidget.background': '#111111',
+    'editorWidget.border': '#555555',
+    'editorSuggestWidget.background': '#111111',
+    'editorSuggestWidget.border': '#555555',
+    'editorSuggestWidget.selectedBackground': '#ffffff26',
+    'editorHoverWidget.background': '#111111',
+    'editorHoverWidget.border': '#555555',
+    'editorOverviewRuler.border': '#00000000',
+    'editor.findMatchBackground': '#ff79c659',
+    'editor.findMatchHighlightBackground': '#ff79c626',
+    'editorOverviewRuler.findMatchForeground': '#ff79c699',
+    'editor.selectionHighlightBackground': '#ffffff1f',
+    'focusBorder': '#ffffff80',
+    'input.background': '#000000',
+    'input.border': '#555555',
+    'input.placeholderForeground': '#8c8c8c',
+    'inputOption.activeBorder': '#ffffff',
+    'inputOption.activeBackground': '#ffffff33',
+    'quickInput.background': '#111111',
+    'quickInputList.focusBackground': '#ffffff26',
+    'list.hoverBackground': '#ffffff0d',
+    'list.highlightForeground': '#ffffff',
+    'keybindingLabel.background': '#ffffff0d',
+    'keybindingLabel.border': '#555555',
+    'keybindingLabel.bottomBorder': '#555555',
+    'keybindingLabel.foreground': '#ececec',
+    'widget.shadow': '#000000aa',
+    'scrollbarSlider.background': '#ffffff1f',
+    'scrollbarSlider.hoverBackground': '#ffffff33',
+    'scrollbarSlider.activeBackground': '#ffffff4d',
+  },
+})
+
+const EDITOR_THEMES: Record<Theme, string> = { galaxy: EDITOR_THEME, terminal: TERMINAL_EDITOR_THEME, mono: MONO_EDITOR_THEME }
+
+/** The editor theme and cursor that go with an app theme: the terminals get a block cursor. */
 export function editorLook(theme: Theme) {
-  return theme === 'terminal'
-    ? { theme: TERMINAL_EDITOR_THEME, cursorStyle: 'block' as const }
-    : { theme: EDITOR_THEME, cursorStyle: 'line' as const }
+  return { theme: EDITOR_THEMES[theme], cursorStyle: theme === 'galaxy' ? ('line' as const) : ('block' as const) }
 }

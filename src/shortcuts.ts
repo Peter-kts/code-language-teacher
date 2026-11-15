@@ -78,7 +78,7 @@ export function commandFor(e: KeyPress, where: FocusKind, platform: Platform = P
   if (e.shiftKey) return null
   // F for "full", like a video player's full-screen key.
   if (isLetter(e, 'f')) return 'toggleTopBar'
-  // T for theme: the galaxy or the retro terminal.
+  // T for theme: galaxy, green terminal, black and white terminal, round again.
   if (isLetter(e, 't')) return 'toggleTheme'
   if (e.key === '0') return 'fontReset'
   // A focused slider already steps with the arrows, Home and End.
@@ -135,7 +135,7 @@ export const SHORTCUT_SECTIONS: { title: string; note?: string; rows: ShortcutRo
       { label: 'Back to the code', keys: ['Esc'] },
       { command: 'showShortcuts', label: 'This list', keys: ['?'] },
       { command: 'toggleTopBar', label: 'Hide / show the top bar', keys: ['F'] },
-      { command: 'toggleTheme', label: 'Galaxy / retro terminal theme', keys: ['T'] },
+      { command: 'toggleTheme', label: 'Next theme', keys: ['T'] },
       { command: 'fontBigger', label: 'Bigger text', keys: ['+'] },
       { command: 'fontSmaller', label: 'Smaller text', keys: ['-'] },
       { command: 'fontReset', label: 'Normal text size', keys: ['0'] },
