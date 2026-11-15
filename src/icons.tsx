@@ -107,3 +107,11 @@ export const CollapseIcon = () => (
     <path d="M19.5 10.5h-6v-6M4.5 13.5h6v6M13.5 10.5 20 4M10.5 13.5 4 20" />
   </Icon>
 )
+
+// Theme switch: a little screen with a prompt (>_), for the retro terminal look.
+export const TerminalIcon = () => (
+  <Icon>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="m7 10 3 2-3 2M12 15h5" />
+  </Icon>
+)

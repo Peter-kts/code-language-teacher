@@ -2,10 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { flushSync } from 'react-dom'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type * as monaco from 'monaco-editor/editor/editor.api'
-import { EDITOR_THEME } from './monaco'
+import { editorLook } from './monaco'
 import { Background, useTodaysScene } from './backgrounds/Background'
 import { loadBackgroundMode, saveBackgroundMode, type BackgroundMode } from './backgrounds/scenes'
-import { AutoLayoutIcon, CollapseIcon, ColumnsIcon, ExpandIcon, KeyboardIcon, PauseIcon, PictureIcon, PlayIcon, RowsIcon, SkipBackIcon, SkipForwardIcon, StepBackIcon, StepForwardIcon } from './icons'
+import { AutoLayoutIcon, CollapseIcon, ColumnsIcon, ExpandIcon, KeyboardIcon, PauseIcon, PictureIcon, PlayIcon, TerminalIcon, RowsIcon, SkipBackIcon, SkipForwardIcon, StepBackIcon, StepForwardIcon } from './icons'
 import { useRunner } from './runner/useRunner'
 import { Visualizer } from './viz/Visualizer'
 import { findNames, previousInFrame, stepRoles } from './viz/changes'
@@ -27,6 +27,7 @@ import { ShortcutsDialog } from './ShortcutsDialog'
 import { stepAfterRerun } from './timeline'
 import { TapTip } from './TapTip'
 import { loadTopBarHidden, saveTopBarHidden } from './layout/topBar'
+import { applyTheme, loadTheme, saveTheme, type Theme } from './layout/theme'
 import { DEFAULT_FONT_SCALE, applyFontScale, editorFont, isLargest, isSmallest, loadFontScale, saveFontScale, stepFontScale } from './layout/fontSize'
 import { usePaneLayout, type LayoutMode } from './layout/usePaneLayout'
 import type { Language, RunRequest } from './types'
@@ -159,6 +160,14 @@ export default function App() {
   }
   // Before paint, so a saved size never flashes at normal first.
   useLayoutEffect(() => applyFontScale(fontScale), [fontScale])
+  // Color theme (src/layout/theme.ts): the galaxy, or the retro green-screen terminal.
+  const [theme, setTheme] = useState<Theme>(loadTheme)
+  const toggleTheme = () => {
+    const next = theme === 'terminal' ? 'galaxy' : 'terminal'
+    setTheme(next)
+    saveTheme(next)
+  }
+  useLayoutEffect(() => applyTheme(theme), [theme])
   const toggleBackground = () => {
     const next = background === 'daily' ? 'galaxy' : 'daily'
     setBackground(next)
@@ -265,6 +274,7 @@ export default function App() {
       else dialog?.showModal()
     },
     toggleTopBar,
+    toggleTheme,
     fontBigger: () => changeFontScale(stepFontScale(fontScale, 1)),
     fontSmaller: () => changeFontScale(stepFontScale(fontScale, -1)),
     fontReset: () => changeFontScale(DEFAULT_FONT_SCALE),
@@ -409,6 +419,7 @@ export default function App() {
     action('askClaude', 'Ask Claude', [KeyMod.CtrlCmd | KeyCode.KeyI])
     action('showShortcuts', 'Keyboard shortcuts')
     action('toggleTopBar', 'Hide / show the top bar')
+    action('toggleTheme', 'Galaxy / retro terminal theme')
     // No keys inside the editor (+ and - are for typing), but they show up in F1.
     action('fontBigger', 'Bigger text')
     action('fontSmaller', 'Smaller text')
@@ -689,6 +700,20 @@ export default function App() {
                 <PictureIcon />
               </button>
               <button
+                className={theme === 'terminal' ? 'icon-btn theme-btn active' : 'icon-btn theme-btn'}
+                aria-pressed={theme === 'terminal'}
+                aria-label="Retro terminal theme"
+                title={withShortcut(
+                  theme === 'terminal'
+                    ? 'Theme: retro terminal. Click for the galaxy theme.'
+                    : 'Theme: galaxy. Click for the retro terminal theme (green screen).',
+                  'toggleTheme',
+                )}
+                onClick={toggleTheme}
+              >
+                <TerminalIcon />
+              </button>
+              <button
                 className="icon-btn hide-top-btn"
                 onClick={toggleTopBar}
                 aria-label="Hide the top bar for more room"
@@ -718,6 +743,7 @@ export default function App() {
             solutions={solutions.sql}
             onSolved={(id, solved) => setSolutions((s) => saveSolution(s, 'sql', id, solved))}
             fontScale={fontScale}
+            theme={theme}
             commandsRef={sqlCommandsRef}
             runCommand={runCommand}
             onStatus={setSqlStatus}
@@ -752,9 +778,10 @@ export default function App() {
               value={code}
               onChange={(v) => setCode(v ?? '')}
               onMount={onMount}
-              theme={EDITOR_THEME}
+              theme={editorLook(theme).theme}
               options={{
                 ...editorFont(fontScale),
+                cursorStyle: editorLook(theme).cursorStyle,
                 fontFamily: "'JetBrains Mono', ui-monospace, Consolas, monospace",
                 padding: { top: 14 },
                 minimap: { enabled: false },

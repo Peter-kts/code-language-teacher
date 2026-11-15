@@ -23,6 +23,7 @@ import 'monaco-editor/languages/definitions/javascript/register'
 import 'monaco-editor/languages/definitions/sql/register'
 import EditorWorker from 'monaco-editor/editor/editor.worker?worker'
 import { loader } from '@monaco-editor/react'
+import type { Theme } from './layout/theme'
 
 self.MonacoEnvironment = { getWorker: () => new EditorWorker() }
 loader.config({ monaco })
@@ -95,3 +96,78 @@ monaco.editor.defineTheme(EDITOR_THEME, {
 
 // Monaco measures glyphs once; re-measure after JetBrains Mono arrives so the cursor lines up.
 document.fonts?.ready.then(() => monaco.editor.remeasureFonts())
+
+// Retro terminal theme (src/layout/theme.ts): green phosphor on black, amber strings, cyan numbers.
+// Like the galaxy theme its background is see-through, so the pane's own color shows.
+export const TERMINAL_EDITOR_THEME = 'terminal'
+monaco.editor.defineTheme(TERMINAL_EDITOR_THEME, {
+  base: 'vs-dark',
+  inherit: true,
+  rules: [
+    { token: 'comment', foreground: '3f9e57', fontStyle: 'italic' },
+    { token: 'keyword', foreground: '33ff66', fontStyle: 'bold' },
+    { token: 'string', foreground: 'ffb000' },
+    { token: 'number', foreground: '5ff5f5' },
+    { token: 'type', foreground: '66ffcc' },
+    { token: 'delimiter', foreground: '62d97e' },
+    { token: 'identifier', foreground: 'b4ffc4' },
+  ],
+  colors: {
+    'editor.background': '#00000000',
+    'editor.foreground': '#b4ffc4',
+    'editorGutter.background': '#00000000',
+    'editorLineNumber.foreground': '#2c7a42',
+    'editorLineNumber.activeForeground': '#33ff66',
+    'editorCursor.foreground': '#33ff66',
+    'editor.selectionBackground': '#33ff6640',
+    'editor.inactiveSelectionBackground': '#33ff6624',
+    'editor.lineHighlightBackground': '#33ff660d',
+    'editor.lineHighlightBorder': '#00000000',
+    'editorIndentGuide.background1': '#33ff6614',
+    'editorIndentGuide.activeBackground1': '#33ff6645',
+    'editorError.foreground': '#ff5555',
+    'editorBracketHighlight.foreground1': '#33ff66',
+    'editorBracketHighlight.foreground2': '#ffb000',
+    'editorBracketHighlight.foreground3': '#5ff5f5',
+    'editorBracketMatch.background': '#33ff6624',
+    'editorBracketMatch.border': '#33ff6680',
+    'editorWidget.background': '#03140a',
+    'editorWidget.border': '#1f7a3a',
+    'editorSuggestWidget.background': '#03140a',
+    'editorSuggestWidget.border': '#1f7a3a',
+    'editorSuggestWidget.selectedBackground': '#33ff6630',
+    'editorHoverWidget.background': '#03140a',
+    'editorHoverWidget.border': '#1f7a3a',
+    'editorOverviewRuler.border': '#00000000',
+    // Find matches in magenta, so they don't read as the amber "read" highlight.
+    'editor.findMatchBackground': '#ff79c659',
+    'editor.findMatchHighlightBackground': '#ff79c626',
+    'editorOverviewRuler.findMatchForeground': '#ff79c699',
+    'editor.selectionHighlightBackground': '#33ff6624',
+    'focusBorder': '#33ff6680',
+    'input.background': '#010702',
+    'input.border': '#1f7a3a',
+    'input.placeholderForeground': '#3f9e57',
+    'inputOption.activeBorder': '#33ff66',
+    'inputOption.activeBackground': '#33ff6633',
+    'quickInput.background': '#03140a',
+    'quickInputList.focusBackground': '#33ff6630',
+    'list.hoverBackground': '#33ff660d',
+    'list.highlightForeground': '#33ff66',
+    'keybindingLabel.background': '#33ff660d',
+    'keybindingLabel.border': '#1f7a3a',
+    'keybindingLabel.bottomBorder': '#1f7a3a',
+    'keybindingLabel.foreground': '#b4ffc4',
+    'widget.shadow': '#000000aa',
+    'scrollbarSlider.background': '#33ff6626',
+    'scrollbarSlider.hoverBackground': '#33ff6640',
+    'scrollbarSlider.activeBackground': '#33ff6659',
+  },
+})
+
+/** The editor theme and cursor that go with an app theme. */
+export function editorLook(theme: Theme) {
+  return theme === 'terminal'
+    ? { theme: TERMINAL_EDITOR_THEME, cursorStyle: 'block' as const }
+    : { theme: EDITOR_THEME, cursorStyle: 'line' as const }
+}

@@ -26,7 +26,7 @@ import {
 import { sharedObjects, type SharedNote } from './sharing'
 
 // Bright enough to read on the dark galaxy panels, and distinct from each other.
-const POINTER_COLORS = ['#c8b4ff', '#f0a7cf', '#8fb4ff', '#7ee0b8', '#ffc978', '#6fd8e8']
+const POINTER_COLORS = ['var(--accent)', 'var(--pink)', 'var(--blue)', 'var(--pass)', 'var(--source)', 'var(--cyan)']
 
 /** The problem function's answer, shown on the last step next to what the test expected. */
 export interface Answer {
@@ -444,7 +444,7 @@ function graphMarks(graphName: string, g: { nodes: string[] }, step: Step): Grap
   return marks
 }
 
-const SHARED_COLORS = ['#6fd8e8', '#f0a7cf', '#ffc978', '#c8b4ff', '#7ee0b8', '#8fb4ff']
+const SHARED_COLORS = ['var(--cyan)', 'var(--pink)', 'var(--source)', 'var(--accent)', 'var(--pass)', 'var(--blue)']
 
 /** `🔗 same array as b`, or `🔗 .tags: same array as user.tags` for a part of the variable. */
 function SharedChip({ name, note }: { name: string; note: SharedNote }) {
