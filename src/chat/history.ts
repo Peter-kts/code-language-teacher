@@ -1,6 +1,12 @@
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+  /** What this answer changed on screen, in plain words (an answer can change code or tables). */
+  edits?: string[]
+  /** Names this answer's changes, so its Undo button finds what to put back. */
+  editId?: number
+  /** The learner pressed Undo on these changes. */
+  undone?: boolean
 }
 
 export const HISTORY_KEY = 'clt.chat.v1'
@@ -15,7 +21,10 @@ export function loadHistory(storage?: Pick<Storage, 'getItem'>): ChatMessage[] {
     if (!Array.isArray(saved)) return []
     return saved.filter(
       (m): m is ChatMessage =>
-        !!m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content !== '',
+        !!m &&
+        (m.role === 'user' || m.role === 'assistant') &&
+        typeof m.content === 'string' &&
+        (m.content !== '' || (Array.isArray(m.edits) && m.edits.length > 0)),
     )
   } catch {
     return []

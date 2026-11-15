@@ -10,11 +10,14 @@ import { useRunner } from './runner/useRunner'
 import { Visualizer } from './viz/Visualizer'
 import { findNames, previousInFrame, stepRoles } from './viz/changes'
 import { buildHistory } from './viz/history'
+import { formatValue } from './viz/format'
 import { HistoryPanel } from './viz/HistoryPanel'
 import { ConsolePanel } from './console/ConsolePanel'
 import { SyntaxHelper } from './syntax/SyntaxHelper'
 import { CodeHover } from './syntax/CodeHover'
 import { Chat } from './chat/Chat'
+import type { ChatMarks } from './chat/marks'
+import { useEditMarks } from './chat/useEditMarks'
 import { PointerFlash, PointerTour, type Pointing } from './chat/PointerTour'
 import type { Ref, RefContext, TourStop, ViewSummary } from './chat/refs'
 import { CARDS } from './syntax/cards'
@@ -438,7 +441,23 @@ export default function App() {
     () => ({ lineCount: code.split('\n').length, stepCount: steps.length, vars: variables, glossary: new Set(glossaryIds) }),
     [code, steps.length, variables, glossaryIds],
   )
-  const view: ViewSummary = { step: steps.length ? shownStep + 1 : 0, steps: steps.length, vars: [...variables], glossary: glossaryIds }
+  const stepValues = useMemo(
+    () => (step && !covered ? Object.fromEntries(Object.entries(step.vars).map(([k, v]) => [k, formatValue(v)])) : null),
+    [step, covered],
+  )
+  const view: ViewSummary = {
+    step: steps.length ? shownStep + 1 : 0,
+    steps: steps.length,
+    vars: [...variables],
+    glossary: glossaryIds,
+    // What the visualizer shows, so Claude can talk about real values. A predict problem keeps them
+    // hidden until the learner has guessed, from Claude too.
+    ...(stepValues && { values: stepValues, output: step?.stdout ?? '' }),
+    ...(problem && !problem.track && problem.tests[caseIndex] && { input: `${problem.functionName}(${problem.tests[caseIndex].args.map((a) => JSON.stringify(a)).join(', ')})` }),
+  }
+  // Lines the chat just changed, lit up in the editor until the code changes again.
+  const [chatMarks, setChatMarks] = useState<ChatMarks | null>(null)
+  useEditMarks(mounted?.editor ?? null, mounted?.api ?? null, code, chatMarks)
   const [flash, setFlash] = useState<{ ref: Ref; n: number } | null>(null)
   const [tour, setTour] = useState<{ stops: TourStop[]; from: { x: number; y: number }; panel: typeof sidePanel } | null>(null)
   const endFlash = useCallback(() => setFlash(null), [])
@@ -947,7 +966,11 @@ export default function App() {
             {/* Keep the chat mounted so switching tabs doesn't lose the conversation. */}
             <div hidden={sidePanel !== 'chat'} className="side-body">
               <Chat
-                code={code}
+                playground={{ code }}
+                onPlaygroundChange={(next, marks) => {
+                  setCode(next.code)
+                  setChatMarks(marks)
+                }}
                 language={language}
                 problem={problem?.title ?? null}
                 onInsert={insert}

@@ -1268,3 +1268,28 @@ button.ref-chip.ref-step:hover:not(:disabled) { color: var(--source); background
 }
 /* The meter takes some of the top bar, so the name tightens up instead of trimming to "…". */
 @media (min-width: 901px) { :root[data-theme="focus"] .wordmark { letter-spacing: 0.22em; margin-right: -0.22em; } }
+
+/* ---------- What the chat changed on screen ---------- */
+/* Same colors as the visualizer: green for what's new, amber for what changed. */
+.monaco-editor .chat-edited-line { background: rgb(var(--pass-rgb) / 0.13); }
+.monaco-editor .chat-edited-gutter { background: var(--pass); width: 3px !important; margin-left: 3px; }
+.sql-table tr.chat-added td { background: rgb(var(--pass-rgb) / 0.2); color: var(--pass); }
+.sql-table tr.chat-added td:first-child, .sql-table tr.chat-updated td:first-child { box-shadow: inset 3px 0 0 var(--pass); }
+.sql-table tr.chat-updated td.chat-cell { background: rgb(var(--source-rgb) / 0.22); color: var(--source); }
+.sql-role.by-chat { border-color: rgb(var(--pass-rgb) / 0.5); color: var(--pass); }
+.sql-edited { margin: 0.2rem 0 0.5rem; font-size: 0.8rem; color: var(--muted); }
+.sql-edited .chip { margin-left: 0.3rem; }
+.chat-edits {
+  margin-top: 0.45rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid rgb(var(--pass-rgb) / 0.4);
+  border-left: 3px solid var(--pass);
+  border-radius: 6px;
+  background: rgb(var(--pass-rgb) / 0.07);
+  font-size: 0.8rem;
+}
+.chat-edits-title { color: var(--pass); font-weight: 600; }
+.chat-edits ul { margin: 0.2rem 0 0.3rem; padding-left: 1.1rem; }
+.chat-edits button { font-size: 0.75rem; padding: 0.1rem 0.6rem; }
+.chat-edits.undone { opacity: 0.6; border-color: var(--line); background: none; }
+.chat-edits.undone .chat-edits-title { color: var(--muted); }

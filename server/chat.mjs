@@ -4,12 +4,21 @@ import Anthropic from '@anthropic-ai/sdk'
 import { existsSync } from 'node:fs'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { join } from 'node:path'
+import { applyTool, describeTables, playgroundTools, PlaygroundEditError, readPlayground } from './playground.mjs'
 
 // Load ANTHROPIC_API_KEY from a .env file in the project root, if there is one.
 const envFile = join(import.meta.dirname, '..', '.env')
 if (existsSync(envFile)) process.loadEnvFile(envFile)
 
 const MODEL = 'claude-opus-5-5'
+// How many times one answer may go back to Claude after changing the screen (each round resends the chat).
+const MAX_TOOL_ROUNDS = 3
+// Separates a screen change from the answer's text in the stream (an ASCII "record separator", which
+// never shows up in ordinary text). The browser splits these out: see src/chat/stream.ts.
+export const EDIT_MARK = '\x1e'
+
+/** What the tools let Claude do, said once for every language. */
+const editing = (sql) => `You can also change what is on their screen with tools: edit_code and write_code change ${sql ? 'the query in their editor, and set_table, edit_rows and drop_table change the tables the query runs on' : 'the code in their editor'}. Use them only when the learner asks you to change, fix, add or try something on their screen (like ${sql ? '"add a customer with no orders", "make one salary NULL", "fix my query"' : '"fix my loop", "put that in my editor", "try it with an empty list"'}). For a hint or an explanation, leave their screen alone. After changing something, say in a sentence or two what you changed and what to look for: the changes light up on their screen and one click undoes them, so don't repeat the changed code in a fenced block.`
 
 // The language the learner has picked in the editor, as its name and its code fence tag.
 const LANGUAGES = {
@@ -32,7 +41,9 @@ When showing where things are would explain it better than words alone (which st
 line:3 | This LEFT JOIN keeps every customer
 step:2 | Here WHERE drops the rows with NULL
 \`\`\`
-Leave the tour out for quick syntax questions.`
+Leave the tour out for quick syntax questions.
+
+${editing(true)}`
 
 const system = (lang) => `You are the syntax helper inside a code-learning IDE. The learner is practicing ${lang.name} and LeetCode-style problems.
 
@@ -48,7 +59,9 @@ line:3 | The loop starts here
 var:nums | It walks this list one box at a time
 step:12 | Here total jumps from 4 to 16
 \`\`\`
-They press "Show me" and a pointer moves through the stops in order. Leave the tour out for quick syntax questions.`
+They press "Show me" and a pointer moves through the stops in order. Leave the tour out for quick syntax questions.
+
+${editing(false)}`
 
 let client
 
@@ -96,12 +109,21 @@ export async function handleChat(req, res) {
     return
   }
   const lang = Object.hasOwn(LANGUAGES, body.language) ? LANGUAGES[body.language] : LANGUAGES.python
+  const subject = Object.hasOwn(LANGUAGES, body.language) ? body.language : 'python'
+  // The screen as it is now: Claude's tool calls are checked and applied against this copy.
+  let screen = readPlayground(body.playground, body.code)
   const context = [
     body.problem ? `Problem: ${body.problem}` : 'Mode: free playground',
-    `Current code (numbered for [[line:N]]; the numbers are not part of the code):\n\`\`\`${lang.fence}\n${numbered(String(body.code ?? '').slice(0, 8000))}\n\`\`\``,
+    `Current code (numbered for [[line:N]]; the numbers are not part of the code):\n\`\`\`${lang.fence}\n${numbered(screen.code)}\n\`\`\``,
     ...viewLines(body.view),
+    ...(screen.tables
+      ? [
+          `The data the query runs on (row numbers are for edit_rows${body.problem ? '; in a problem, changing tables only changes the data shown for the current test case so they can explore, while the tests keep their own data' : ''}):\n${describeTables(screen.tables) || '(no tables)'}`,
+        ]
+      : []),
   ].join('\n')
-  const messages = history.map((m, i) => ({
+  /** @type {any[]} */
+  let messages = history.map((m, i) => ({
     role: m.role === 'assistant' ? 'assistant' : 'user',
     content: i === history.length - 1 ? `${String(m.content)}\n\n<editor>\n${context}\n</editor>` : String(m.content),
   }))
@@ -109,22 +131,67 @@ export async function handleChat(req, res) {
   try {
     if (!apiKey()) throw new Error('missing api key')
     client ??= new Anthropic({ apiKey: apiKey() })
-    const stream = client.beta.messages.stream({
-      model: MODEL,
-      max_tokens: 4000,
-      output_config: { effort: 'low' },
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
-      system: body.language === 'sql' ? sqlSystem : system(lang),
-      messages,
+    const tools = playgroundTools(subject)
+    let wroteText = false
+    let started = false
+    // If the learner leaves (closes the tab, starts a new chat), stop paying for the answer.
+    let current = null
+    let gone = false
+    res.on('close', () => {
+      if (res.writableEnded) return
+      gone = true
+      current?.abort()
     })
-    res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-cache' })
-    req.on('close', () => stream.abort())
-    for await (const event of stream) {
-      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') res.write(event.delta.text)
+    for (let round = 0; round < MAX_TOOL_ROUNDS && !gone; round++) {
+      // A tool-free last round, so the answer always ends in words rather than a call nobody runs.
+      const last = round === MAX_TOOL_ROUNDS - 1
+      const stream = client.beta.messages.stream({
+        model: MODEL,
+        max_tokens: 4000,
+        output_config: { effort: 'low' },
+        betas: ['server-side-fallback-2026-07-01'],
+        fallbacks: 'default',
+        system: body.language === 'sql' ? sqlSystem : system(lang),
+        tools,
+        ...(last && { tool_choice: { type: 'none' } }),
+        messages,
+      })
+      if (!started) {
+        res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-cache' })
+        started = true
+      }
+      current = stream
+      let gap = wroteText
+      for await (const event of stream) {
+        if (event.type === 'content_block_delta' && event.delta.type === 'text_delta' && event.delta.text) {
+          // Text after a screen change starts a new paragraph.
+          res.write(gap ? `\n\n${event.delta.text}` : event.delta.text)
+          gap = false
+          wroteText = true
+        }
+      }
+      const final = await stream.finalMessage()
+      if (final.stop_reason === 'refusal') {
+        res.write('\n\n(Claude declined to answer that one.)')
+        break
+      }
+      if (final.stop_reason !== 'tool_use') break
+      // Apply each change in order; the browser is told about the ones that worked.
+      const results = []
+      for (const block of final.content) {
+        if (block.type !== 'tool_use') continue
+        try {
+          const applied = applyTool(screen, block.name, block.input)
+          screen = applied.state
+          res.write(`${EDIT_MARK}${JSON.stringify({ name: block.name, input: block.input })}${EDIT_MARK}`)
+          results.push({ type: 'tool_result', tool_use_id: block.id, content: `Done: ${applied.summary}. It is on their screen now.` })
+        } catch (err) {
+          if (!(err instanceof PlaygroundEditError)) throw err
+          results.push({ type: 'tool_result', tool_use_id: block.id, content: err.message, is_error: true })
+        }
+      }
+      messages = [...messages, { role: 'assistant', content: final.content }, { role: 'user', content: results }]
     }
-    const final = await stream.finalMessage()
-    if (final.stop_reason === 'refusal') res.write('\n\n(Claude declined to answer that one.)')
     res.end()
   } catch (err) {
     console.error('chat error:', err)
@@ -170,8 +237,27 @@ function viewLines(view) {
     steps
       ? `Visualizer: showing step ${Number(view.step) || steps} of ${steps}. Variables: ${names(view.vars, 60) || '(none)'}`
       : 'Visualizer: nothing has run yet (no steps or variables to point at).',
+    ...valueLines(view),
     `Glossary ids: ${names(view.glossary, 200)}`,
   ]
+}
+
+/** The values the visualizer shows at this step, and what has printed so far, kept short. */
+function valueLines(view) {
+  const out = []
+  if (typeof view.input === 'string' && view.input) out.push(`Running with: ${view.input.slice(0, 400)}`)
+  if (view.values && typeof view.values === 'object') {
+    const pairs = Object.entries(view.values)
+      .filter(([, v]) => typeof v === 'string')
+      .slice(0, 40)
+      .map(([k, v]) => `${k} = ${v.length > 200 ? `${v.slice(0, 200)}…` : v}`)
+    if (pairs.length) out.push(`Values at this step:\n${pairs.join('\n')}`)
+  }
+  if (typeof view.output === 'string' && view.output) {
+    const text = view.output.length > 1500 ? `…${view.output.slice(-1500)}` : view.output
+    out.push(`Printed so far:\n${text}`)
+  }
+  return out
 }
 
 // Trim stray spaces or newlines that sneak in when a key is pasted into a settings page.

@@ -1,6 +1,5 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-// @ts-expect-error plain JS module shared with the production server
 import { handleChat } from './server/chat.mjs'
 
 export default defineConfig({
