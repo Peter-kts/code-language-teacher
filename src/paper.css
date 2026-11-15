@@ -225,7 +225,9 @@
   .divider-closed::after { background: var(--accent); box-shadow: none; }
 
   /* ---------- Controls ---------- */
-  button:hover:not(:disabled) { background: var(--text); color: var(--bg); border-color: var(--text); }
+  /* Hovering swaps a button's colors (ink block, paper letters). That rule is the classic one in
+     styles.css, left alone on purpose: repeating it here would outweigh the exceptions written
+     there for buttons that are really links (console line numbers, chat pointers). */
   button:active:not(:disabled) { transform: translate(1px, 1px); }
   .controls { gap: 0.4rem; }
   .icon-btn { width: 2.1rem; height: 2.1rem; padding: 0; color: var(--ink); border: 2px solid var(--ink); background: var(--paper-lite); }
@@ -448,14 +450,13 @@
     background: var(--ink); color: var(--paper);
   }
   .msg-user ::selection { background: var(--paper); color: var(--ink); }
-  .suggestion { font-size: 0.78rem; color: var(--ink); }
+  .suggestion { font-size: 0.78rem; }
   .suggestion::before { content: '→ '; }
-  .chat-code button { background: var(--paper-lite); }
-  .chat-new { color: var(--ink); }
   .chat-edits { border: 2px solid var(--ink); border-left: 8px solid var(--pass); border-radius: 0; background: rgb(var(--pass-rgb) / 0.16); }
   .chat-edits.undone { border-color: var(--line); background: none; }
   .ref-chip { border-radius: 0; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
   .show-me { color: var(--paper-lite); background: var(--accent); border-color: var(--ink); box-shadow: var(--lift); }
+  .show-me:hover:not(:disabled), .tour-next:hover:not(:disabled) { background: var(--ink); color: var(--paper-lite); }
 
   /* ---------- Pop-ups: paper notes with a hard shadow ---------- */
   .code-hover, .tap-tip, .tour-bubble {
@@ -463,7 +464,6 @@
     box-shadow: 5px 5px 0 var(--ink);
   }
   .code-hover-head { color: var(--accent); font-weight: 600; }
-  .code-hover-close, .tour-x { color: var(--ink); }
   .tour-ring { border: 3px solid var(--accent); border-radius: 0; box-shadow: 0 0 0 9999px rgb(var(--line-rgb) / 0.35); }
   .tour-ring.flash { box-shadow: 0 0 0 4px rgb(var(--accent-rgb) / 0.3); }
   .tour-hand { fill: var(--paper-lite); stroke: var(--ink); stroke-width: 1.6; filter: drop-shadow(2px 2px 0 var(--ink)); }
@@ -576,7 +576,7 @@
   .dot.col-shown { background: var(--pass-hi); }
   .dot.col-used, .dot.kept { background: var(--source-hi); }
   .sql-stage-chips li + li::before { color: var(--ink); font-weight: 600; }
-  .sql-stage-chips .chip.done { color: var(--ink); background: var(--paper-deep); }
+  .sql-stage-chips .chip.done:not(:hover) { color: var(--ink); background: var(--paper-deep); }
   .sql-stage-explain { font-size: 0.95rem; line-height: 1.5; color: var(--ink); }
   .sql-stage-count { font-weight: 600; }
   .sql-join-head code { font-weight: 600; }
