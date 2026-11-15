@@ -27,7 +27,7 @@ import { ShortcutsDialog } from './ShortcutsDialog'
 import { stepAfterRerun } from './timeline'
 import { TapTip } from './TapTip'
 import { loadTopBarHidden, saveTopBarHidden } from './layout/topBar'
-import { applyTheme, loadTheme, saveTheme, type Theme } from './layout/theme'
+import { THEME_NAMES, applyTheme, loadTheme, nextTheme, saveTheme, type Theme } from './layout/theme'
 import { DEFAULT_FONT_SCALE, applyFontScale, editorFont, isLargest, isSmallest, loadFontScale, saveFontScale, stepFontScale } from './layout/fontSize'
 import { usePaneLayout, type LayoutMode } from './layout/usePaneLayout'
 import type { Language, RunRequest } from './types'
@@ -160,10 +160,10 @@ export default function App() {
   }
   // Before paint, so a saved size never flashes at normal first.
   useLayoutEffect(() => applyFontScale(fontScale), [fontScale])
-  // Color theme (src/layout/theme.ts): the galaxy, or the retro green-screen terminal.
+  // Color theme (src/layout/theme.ts): the galaxy, the green-screen terminal, or the black and white one.
   const [theme, setTheme] = useState<Theme>(loadTheme)
   const toggleTheme = () => {
-    const next = theme === 'terminal' ? 'galaxy' : 'terminal'
+    const next = nextTheme(theme)
     setTheme(next)
     saveTheme(next)
   }
@@ -419,7 +419,7 @@ export default function App() {
     action('askClaude', 'Ask Claude', [KeyMod.CtrlCmd | KeyCode.KeyI])
     action('showShortcuts', 'Keyboard shortcuts')
     action('toggleTopBar', 'Hide / show the top bar')
-    action('toggleTheme', 'Galaxy / retro terminal theme')
+    action('toggleTheme', 'Next theme (galaxy, green terminal, black and white)')
     // No keys inside the editor (+ and - are for typing), but they show up in F1.
     action('fontBigger', 'Bigger text')
     action('fontSmaller', 'Smaller text')
@@ -700,15 +700,9 @@ export default function App() {
                 <PictureIcon />
               </button>
               <button
-                className={theme === 'terminal' ? 'icon-btn theme-btn active' : 'icon-btn theme-btn'}
-                aria-pressed={theme === 'terminal'}
-                aria-label="Retro terminal theme"
-                title={withShortcut(
-                  theme === 'terminal'
-                    ? 'Theme: retro terminal. Click for the galaxy theme.'
-                    : 'Theme: galaxy. Click for the retro terminal theme (green screen).',
-                  'toggleTheme',
-                )}
+                className={theme !== 'galaxy' ? 'icon-btn theme-btn active' : 'icon-btn theme-btn'}
+                aria-label={`Theme: ${THEME_NAMES[theme]}. Switch to the ${THEME_NAMES[nextTheme(theme)]} theme`}
+                title={withShortcut(`Theme: ${THEME_NAMES[theme]}. Click for the ${THEME_NAMES[nextTheme(theme)]}.`, 'toggleTheme')}
                 onClick={toggleTheme}
               >
                 <TerminalIcon />

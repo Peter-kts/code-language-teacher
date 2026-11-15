@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { THEME_KEY, applyTheme, loadTheme, saveTheme } from './theme'
+import { THEME_KEY, applyTheme, loadTheme, nextTheme, saveTheme } from './theme'
 
 describe('theme choice', () => {
   it('starts as the galaxy, and remembers the terminal', () => {
     expect(loadTheme({ getItem: () => null })).toBe('galaxy')
     expect(loadTheme({ getItem: (k) => (k === THEME_KEY ? 'terminal' : null) })).toBe('terminal')
+    expect(loadTheme({ getItem: (k) => (k === THEME_KEY ? 'mono' : null) })).toBe('mono')
     // Anything else (an old or garbled value) falls back to the default.
     expect(loadTheme({ getItem: (k) => (k === THEME_KEY ? 'neon' : null) })).toBe('galaxy')
   })
@@ -30,7 +31,18 @@ describe('theme choice', () => {
     const root = { dataset: {} as Record<string, string | undefined> }
     applyTheme('terminal', root)
     expect(root.dataset.theme).toBe('terminal')
+    expect(root.dataset.retro).toBe('')
+    applyTheme('mono', root)
+    expect(root.dataset.theme).toBe('mono')
+    expect(root.dataset.retro).toBe('')
     applyTheme('galaxy', root)
     expect(root.dataset.theme).toBeUndefined()
+    expect(root.dataset.retro).toBeUndefined()
+  })
+
+  it('steps galaxy, green, black and white, then back to galaxy', () => {
+    expect(nextTheme('galaxy')).toBe('terminal')
+    expect(nextTheme('terminal')).toBe('mono')
+    expect(nextTheme('mono')).toBe('galaxy')
   })
 })

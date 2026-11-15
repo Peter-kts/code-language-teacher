@@ -959,7 +959,10 @@ button.ref-chip.ref-step:hover:not(:disabled) { color: var(--source); background
 }
 
 /* ---------- Retro terminal theme ---------- */
-/* Turned on by data-theme="terminal" on <html> (src/layout/theme.ts). It looks like an old green
+/* Two retro themes share this section: the green screen (data-theme="terminal") and the black and
+   white one (data-theme="mono"). Both also get data-retro on <html> (src/layout/theme.ts), which
+   turns on the shared shape rules below; each theme only brings its own token values.
+   The green one looks like an old green
    screen: a black glass tube, glowing green letters in one fixed-width font, faint scanlines (the
    dark gaps between the lines a tube draws), and a pinstriped title bar with a close box like the
    windows on a classic Mac. It mostly hands the tokens at the top of this file new values, so the
@@ -1003,91 +1006,135 @@ button.ref-chip.ref-step:hover:not(:disabled) { color: var(--source); background
   font-weight: 400;
   -webkit-font-smoothing: auto;
 }
-:root[data-theme="terminal"] .app { text-shadow: var(--glow); }
+:root[data-retro] .app { text-shadow: var(--glow); }
 
-/* The picture behind turns into a dim green-screen image, so it's still there but quiet. */
+/* Black and white terminal: a white-on-black screen, but the colors that mean something stay
+   (syntax colors, amber = read, green = changed, red = error), as on a modern terminal with a
+   plain black and white profile. Same shape as the green screen. */
+:root[data-theme="mono"] {
+  --bg: #000000;
+  --bg-rgb: 0 0 0;
+  --panel-rgb: 14 14 14;
+  --line-rgb: 255 255 255;
+  --accent-rgb: 255 255 255;
+  --pass-rgb: 80 250 123;
+  --source-rgb: 255 184 108;
+  --error-rgb: 255 85 85;
+  --pink-rgb: 255 121 198;
+  --blue-rgb: 139 170 255;
+  --panel: rgb(0 0 0 / 0.9);
+  --panel-solid: #111111;
+  --editor-glass: rgb(0 0 0 / 0.93);
+  --text: #ececec;
+  --muted: #b4b4b4;
+  --faint: #8c8c8c;
+  --line: rgb(var(--line-rgb) / 0.18);
+  --line-strong: rgb(var(--line-rgb) / 0.4);
+  --box: rgb(var(--accent-rgb) / 0.05);
+  --accent: #ffffff;
+  --accent-soft: rgb(var(--accent-rgb) / 0.14);
+  --pink: #ff79c6;
+  --pass: #50fa7b;
+  --source: #ffb86c;
+  --error: #ff5555;
+  --blue: #8baaff;
+  --cyan: #8be9fd;
+  --widget-border: #555555;
+  --font-display: var(--font-mono);
+  --font-retro: 'VT323', var(--font-mono);
+  --glow: 0 0 3px rgb(255 255 255 / 0.3);
+  font-weight: 400;
+  -webkit-font-smoothing: auto;
+}
+
+/* The picture behind turns into a dim screen image (green or gray), so it's still there but quiet. */
 :root[data-theme="terminal"] .pixel-sky,
 :root[data-theme="terminal"] .sky,
 :root[data-theme="terminal"] .sky-fallback {
   filter: grayscale(1) brightness(0.32) sepia(1) hue-rotate(70deg) saturate(3) !important;
 }
-:root[data-theme="terminal"] .grain { display: none; }
-:root[data-theme="terminal"] .pixel-shade { background: radial-gradient(ellipse at center, transparent 35%, rgb(var(--bg-rgb) / 0.8) 100%); }
+:root[data-theme="mono"] .pixel-sky,
+:root[data-theme="mono"] .sky,
+:root[data-theme="mono"] .sky-fallback {
+  filter: grayscale(1) brightness(0.3) !important;
+}
+:root[data-retro] .grain { display: none; }
+:root[data-retro] .pixel-shade { background: radial-gradient(ellipse at center, transparent 35%, rgb(var(--bg-rgb) / 0.8) 100%); }
 /* No frosted glass: a tube is flat and sharp. */
-:root[data-theme="terminal"] .pane,
-:root[data-theme="terminal"] .top,
-:root[data-theme="terminal"] .app.pixel-bg .pane,
-:root[data-theme="terminal"] .app.pixel-bg .top { -webkit-backdrop-filter: none; backdrop-filter: none; }
+:root[data-retro] .pane,
+:root[data-retro] .top,
+:root[data-retro] .app.pixel-bg .pane,
+:root[data-retro] .app.pixel-bg .top { -webkit-backdrop-filter: none; backdrop-filter: none; }
 
 /* The screen: square-ish corners, a soft green halo, and scanlines laid over everything inside.
    The scanlines are one repeating gradient (2px clear, 1px dark), so they cost nothing to draw,
    and pointer-events: none lets every click go straight through them. */
-:root[data-theme="terminal"] .frame {
+:root[data-retro] .frame {
   border: 2px solid var(--line-strong); border-radius: 6px;
   box-shadow: 0 0 0 1px #000, 0 0 24px rgb(var(--accent-rgb) / 0.18);
 }
-:root[data-theme="terminal"] .frame::after {
+:root[data-retro] .frame::after {
   content: ''; position: absolute; inset: 0; z-index: 20; pointer-events: none;
   background: repeating-linear-gradient(to bottom, transparent 0 2px, rgb(0 0 0 / 0.22) 2px 3px);
 }
-:root[data-theme="terminal"] .tick::before,
-:root[data-theme="terminal"] .tick::after { background: var(--faint); }
+:root[data-retro] .tick::before,
+:root[data-retro] .tick::after { background: var(--faint); }
 
 /* Title bar: green pinstripes like a classic Mac window, with the name on a black plate and a
    close box in front of it. The box is only a picture; the bar has no real close button. */
-:root[data-theme="terminal"] .top {
+:root[data-retro] .top {
   background:
     repeating-linear-gradient(to bottom, rgb(var(--accent-rgb) / 0.13) 0 1px, transparent 1px 3px),
     var(--bg);
   border-bottom: 2px solid var(--line-strong);
 }
-:root[data-theme="terminal"] .wordmark {
+:root[data-retro] .wordmark {
   display: flex; align-items: center; gap: 0.6rem;
   margin: 0 auto; padding: 0.1rem 0.9rem; background: var(--bg);
   font-family: var(--font-retro); font-size: 1.35rem; letter-spacing: 0.12em; margin-right: auto;
   text-transform: none; color: var(--accent);
 }
-:root[data-theme="terminal"] .wordmark::before {
+:root[data-retro] .wordmark::before {
   content: ''; flex: none; width: 0.7rem; height: 0.7rem;
   border: 2px solid var(--accent); box-shadow: inset 0 0 0 2px var(--bg);
 }
 /* A blinking block cursor after the name, as at a prompt. */
-:root[data-theme="terminal"] .wordmark::after {
+:root[data-retro] .wordmark::after {
   content: ''; flex: none; width: 0.55em; height: 1em; margin-left: -0.35rem;
   background: var(--accent); animation: term-blink 1.1s steps(1) infinite;
 }
 @keyframes term-blink { 50% { opacity: 0; } }
 
 /* Buttons and tags: square, like a text screen, instead of the galaxy's pills. */
-:root[data-theme="terminal"] button,
-:root[data-theme="terminal"] .badge,
-:root[data-theme="terminal"] .remembered,
-:root[data-theme="terminal"] .shared-chip,
-:root[data-theme="terminal"] .hist-delta,
-:root[data-theme="terminal"] kbd { border-radius: 2px; }
-:root[data-theme="terminal"] .card,
-:root[data-theme="terminal"] .hist-row,
-:root[data-theme="terminal"] .var-card,
-:root[data-theme="terminal"] .box,
-:root[data-theme="terminal"] textarea,
-:root[data-theme="terminal"] input,
-:root[data-theme="terminal"] .shortcuts { border-radius: 3px; }
+:root[data-retro] button,
+:root[data-retro] .badge,
+:root[data-retro] .remembered,
+:root[data-retro] .shared-chip,
+:root[data-retro] .hist-delta,
+:root[data-retro] kbd { border-radius: 2px; }
+:root[data-retro] .card,
+:root[data-retro] .hist-row,
+:root[data-retro] .var-card,
+:root[data-retro] .box,
+:root[data-retro] textarea,
+:root[data-retro] input,
+:root[data-retro] .shortcuts { border-radius: 3px; }
 /* Pressed and hovered buttons show in reverse video (dark letters on a lit block), as terminals did. */
-:root[data-theme="terminal"] button:hover:not(:disabled),
-:root[data-theme="terminal"] .icon-btn:hover:not(:disabled) { background: var(--accent); color: var(--bg); border-color: var(--accent); text-shadow: none; }
-:root[data-theme="terminal"] .play-btn { text-shadow: none; box-shadow: 0 0 12px rgb(var(--accent-rgb) / 0.4); }
-:root[data-theme="terminal"] .tab.active { color: var(--bg); background: var(--accent); padding-left: 0.35rem; padding-right: 0.35rem; text-shadow: none; }
-:root[data-theme="terminal"] .tab.active::after { display: none; }
-:root[data-theme="terminal"] .tab:hover:not(:disabled):not(.active) { background: transparent; color: var(--text); }
-:root[data-theme="terminal"] .tab::before { content: '>'; margin-right: 0.15em; }
-:root[data-theme="terminal"] ::selection { background: var(--accent); color: var(--bg); text-shadow: none; }
-:root[data-theme="terminal"] .theme-btn.active { color: var(--accent); border-color: var(--accent); }
+:root[data-retro] button:hover:not(:disabled),
+:root[data-retro] .icon-btn:hover:not(:disabled) { background: var(--accent); color: var(--bg); border-color: var(--accent); text-shadow: none; }
+:root[data-retro] .play-btn { text-shadow: none; box-shadow: 0 0 12px rgb(var(--accent-rgb) / 0.4); }
+:root[data-retro] .tab.active { color: var(--bg); background: var(--accent); padding-left: 0.35rem; padding-right: 0.35rem; text-shadow: none; }
+:root[data-retro] .tab.active::after { display: none; }
+:root[data-retro] .tab:hover:not(:disabled):not(.active) { background: transparent; color: var(--text); }
+:root[data-retro] .tab::before { content: '>'; margin-right: 0.15em; }
+:root[data-retro] ::selection { background: var(--accent); color: var(--bg); text-shadow: none; }
+:root[data-retro] .theme-btn.active { color: var(--accent); border-color: var(--accent); }
 
 @media (prefers-reduced-motion: reduce) {
-  :root[data-theme="terminal"] .wordmark::after { animation: none; }
+  :root[data-retro] .wordmark::after { animation: none; }
 }
-@media (min-width: 901px) and (max-width: 1060px) { :root[data-theme="terminal"] .wordmark { display: none; } }
+@media (min-width: 901px) and (max-width: 1060px) { :root[data-retro] .wordmark { display: none; } }
 /* Phones: the name sits on its own row at the top, so it starts at the left like the others. */
 @media (max-width: 900px) {
-  :root[data-theme="terminal"] .wordmark { margin: 0.5rem 0.75rem 0; padding: 0.1rem 0.5rem; font-size: 1.2rem; letter-spacing: 0.06em; }
+  :root[data-retro] .wordmark { margin: 0.5rem 0.75rem 0; padding: 0.1rem 0.5rem; font-size: 1.2rem; letter-spacing: 0.06em; }
 }
