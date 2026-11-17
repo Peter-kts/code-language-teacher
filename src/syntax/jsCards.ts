@@ -986,4 +986,103 @@ export const JS_CARDS: SyntaxCard[] = [
       'Can some of the items add up to a target, using each one at most once? Keep track of which sums you can reach. Each new item can be added to every sum already reachable. An array of true and false for the sums 0 to target, walked from the top down so an item is not used twice, makes it O(n · target) instead of trying all 2ⁿ picks.',
     code: 'const nums = [1, 5, 11, 5]\nconst target = 11\nconst can = new Array(target + 1).fill(false)\ncan[0] = true                          // picking nothing adds up to 0\nfor (const n of nums) {\n  for (let s = target; s >= n; s--) {  // top down: each item once\n    if (can[s - n]) can[s] = true\n  }\n}\nconst answer = can[target]   // true: 11, or 1 + 5 + 5\n',
   },
+  {
+    id: "constructor",
+    title: "constructor and this",
+    topic: 'functions',
+    level: 4,
+    questions: ['organize', 'remember'],
+    keywords: ['constructor', 'this', 'new', 'class', 'field', 'object', 'instance', 'setup'],
+    explanation:
+      "new Dog(\"Rex\") makes a new object and runs its constructor. Inside, this is that new object: this.name = name saves data on it. Methods use this to read and change the object they were called on.",
+    code: "class Dog {\n  constructor(name) {\n    this.name = name // saved on this dog\n  }\n\n  speak() {\n    return `${this.name} says woof`\n  }\n}\n\nconst rex = new Dog(\"Rex\")\nconst line = rex.speak() // \"Rex says woof\"\n",
+  },
+  {
+    id: "instance-vs-class",
+    title: "Instance vs static fields",
+    topic: 'functions',
+    level: 4,
+    questions: ['remember', 'broke'],
+    keywords: ['static', 'class', 'field', 'instance', 'shared', 'manifest', 'this', 'counter'],
+    explanation:
+      "this.x = ... in the constructor, or a plain class field x = [], gives each object its own x. static x belongs to the class itself, reached as Ship.x, and is shared by everything. That is right for a count of ships made, and a bug for a per-ship list. (Python differs: a list in a Python class body is shared.)",
+    code: "class Ship {\n  static built = 0 // one number for the whole class\n  manifest = []    // a class field: a new array for each ship\n\n  constructor(name) {\n    this.name = name\n    Ship.built += 1\n  }\n}\n\nconst a = new Ship(\"Atlas\")\nconst b = new Ship(\"Borealis\")\na.manifest.push(\"C1\") // b.manifest is still []\n",
+  },
+  {
+    id: "composition",
+    title: "Composition (\"has a\")",
+    topic: 'functions',
+    level: 4,
+    questions: ['organize'],
+    keywords: ['composition', 'has', 'contains', 'holds', 'object', 'inside', 'design', 'part'],
+    explanation:
+      "Building an object out of other objects: a Truck has an array of Containers, a Port has a Yard and a Crane. The outer object holds the inner ones in its fields and asks them to do their part. Use it when one thing \"has a\" another; it is usually a better first choice than inheritance.",
+    code: "class Container {\n  constructor(code, weight) {\n    this.code = code\n    this.weight = weight\n  }\n}\n\nclass Truck {\n  containers = [] // a truck has containers\n\n  totalWeight() {\n    return this.containers.reduce((sum, c) => sum + c.weight, 0)\n  }\n}\n\nconst t = new Truck()\nt.containers.push(new Container(\"C1\", 10))\n",
+  },
+  {
+    id: "inheritance",
+    title: "Inheritance and polymorphism (\"is a\")",
+    topic: 'functions',
+    level: 4,
+    questions: ['organize'],
+    keywords: ['inheritance', 'extends', 'super', 'parent', 'child', 'polymorphism', 'override', 'subclass'],
+    explanation:
+      "class Circle extends Shape makes Circle a kind of Shape: it gets Shape's methods and can replace (override) some of them. super(...) runs the parent's constructor. Calling the same method on different kinds of shape and getting each one's own version is polymorphism.",
+    code: "class Shape {\n  describe() {\n    return `area ${this.area()}`\n  }\n}\n\nclass Square extends Shape {\n  constructor(side) {\n    super()\n    this.side = side\n  }\n\n  area() {\n    return this.side ** 2\n  }\n}\n\nconst line = new Square(3).describe() // \"area 9\"\n",
+  },
+  {
+    id: "encapsulation",
+    title: "Encapsulation",
+    topic: 'functions',
+    level: 4,
+    questions: ['organize', 'decide'],
+    keywords: ['encapsulation', 'private', 'hide', 'rules', '#', 'method', 'state', 'invariant'],
+    explanation:
+      "Keep an object's data and the rules about it together, and change the data only through its methods. Then every change is checked in one place. A # in front of a field or method name (#balance) makes it truly private: only the class's own code can reach it.",
+    code: "class Account {\n  #balance = 0\n\n  deposit(amount) {\n    if (amount <= 0) throw new Error(\"must be more than 0\")\n    this.#balance += amount\n  }\n\n  balance() {\n    return this.#balance\n  }\n}\n\nconst acct = new Account()\nacct.deposit(5)\n",
+  },
+  {
+    id: "raise-errors",
+    title: "Throwing errors",
+    topic: 'errors',
+    level: 4,
+    questions: ['broke', 'decide'],
+    keywords: ['throw', 'error', 'exception', 'try', 'catch', 'refuse', 'invalid', 'new error'],
+    explanation:
+      "throw new Error(\"why\") stops the function at once and hands the problem to whoever called it. Throw when asked to do something impossible (withdraw too much, load a container that isn't there) instead of quietly doing nothing. Check first and throw before changing anything, so a refused call leaves things as they were. try/catch catches an error.",
+    code: "function withdraw(balance, amount) {\n  if (amount > balance) throw new Error(\"not enough money\")\n  return balance - amount\n}\n\nlet message = \"\"\ntry {\n  withdraw(10, 50)\n} catch (e) {\n  message = e.message // \"not enough money\"\n}\n",
+  },
+  {
+    id: "to-string",
+    title: "toString and equals",
+    topic: 'functions',
+    level: 4,
+    questions: ['organize', 'text'],
+    keywords: ['tostring', 'string', 'print', 'equals', 'compare', '===', 'identity', 'text'],
+    explanation:
+      "An object turns into text with its toString() method, so `${box}` and String(box) can say \"Container(C1, 10t)\" instead of \"[object Object]\". === always asks \"the very same object?\", so to compare two objects by their data, write a method like equals(other).",
+    code: "class Container {\n  constructor(code) {\n    this.code = code\n  }\n\n  toString() {\n    return `Container(${this.code})`\n  }\n\n  equals(other) {\n    return other instanceof Container && this.code === other.code\n  }\n}\n\nconst text = `${new Container(\"C1\")}`              // \"Container(C1)\"\nconst same = new Container(\"C1\").equals(new Container(\"C1\")) // true\n",
+  },
+  {
+    id: "nouns-and-verbs",
+    title: "Word problem to classes",
+    topic: 'patterns',
+    level: 4,
+    questions: ['solve', 'organize'],
+    keywords: ['design', 'ood', 'oop', 'object', 'oriented', 'noun', 'verb', 'class', 'model', 'interview', 'word', 'problem'],
+    explanation:
+      "For an object-oriented design question, underline the nouns and the verbs. Nouns that hold data or do things become classes (Ship, Container, Yard); nouns that are just data become fields or plain arrays (a manifest of codes). Verbs become methods on the class that owns the data they change (ship.takeOff, port.arrive). Say this plan out loud before writing code.",
+    code: "// \"A ship has a manifest of containers. It comes into port and unloads them into the yard.\"\n// nouns: ship, manifest, container, port, yard   -> classes (manifest is just an array)\n// verbs: comes into port, unloads                -> port.arrive(ship), crane.unload(...)\nclass Ship {\n  constructor(name, manifest) {\n    this.name = name\n    this.manifest = [...manifest]\n  }\n}\n",
+  },
+  {
+    id: "single-responsibility",
+    title: "One job per class",
+    topic: 'patterns',
+    level: 4,
+    questions: ['organize', 'solve'],
+    keywords: ['single', 'responsibility', 'srp', 'design', 'job', 'split', 'coordinator', 'manager', 'small'],
+    explanation:
+      "Give each class one job: a Yard stores containers, a Ship tracks its cargo, a Crane moves one container, a Port coordinates them. Small classes with one job are easier to explain, test and change. When a class keeps growing, look for a noun inside it that wants to be its own class.",
+    code: "class Yard {}  // stores containers\nclass Crane {} // moves one container between a ship and the yard\n\nclass Port {   // coordinates: ships arrive, get worked, depart\n  constructor() {\n    this.yard = new Yard()\n    this.crane = new Crane()\n  }\n}\n",
+  },
 ]

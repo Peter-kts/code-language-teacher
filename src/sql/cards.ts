@@ -513,4 +513,15 @@ export const SQL_CARDS: SyntaxCard[] = [
       'WITH RECURSIVE: a starting query, UNION ALL, then a query that reads the CTE itself. It repeats until a round adds no rows. Used for org charts, trees and number or date series. Give it a WHERE that ends it.',
     code: 'WITH RECURSIVE n(x) AS (\n  SELECT 1\n  UNION ALL\n  SELECT x + 1 FROM n WHERE x < 5\n)\nSELECT x FROM n;\n',
   },
+  {
+    id: 'objects-to-tables',
+    title: 'Objects to tables',
+    topic: 'objects',
+    level: 4,
+    questions: ['combine'],
+    keywords: ['object', 'class', 'orm', 'table', 'row', 'list', 'foreign', 'key', 'model', 'design', 'save', 'persist'],
+    explanation:
+      'Saving objects in a database: each class becomes a table, each object a row, each field a column, with a primary key to tell rows apart. An object that holds another becomes a foreign key column pointing at it. A list inside an object (a ship\'s manifest) becomes a table of its own, one row per item, each pointing back at its owner. Objects are quick while the program runs; tables survive restarts and can be queried in new ways.',
+    code: "CREATE TABLE ships (id INTEGER PRIMARY KEY, name TEXT);\nCREATE TABLE manifest (ship_id INTEGER REFERENCES ships(id), code TEXT);\nINSERT INTO ships VALUES (1, 'Atlas');\nINSERT INTO manifest VALUES (1, 'C1'), (1, 'C2');\nSELECT s.name, m.code FROM ships s JOIN manifest m ON m.ship_id = s.id;\n",
+  },
 ]

@@ -57,7 +57,7 @@ export function sharedObjects(vars: Record<string, Value>): Record<string, Share
 }
 
 /** `.tags`, `["two words"]` or `.get("a")`, as code would reach it; always `['tags']` in Python. */
-function keyPath(k: Value, map: boolean, python: boolean): string {
+export function keyPath(k: Value, map: boolean, python: boolean): string {
   const text = k.type === 'prim' ? k.repr : '?'
   if (map) return `.get(${text})`
   if (python) return `[${text}]`

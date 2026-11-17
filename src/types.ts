@@ -27,6 +27,11 @@ export type Value = { t?: string } & (
 export interface NodeData {
   cls: string
   fields: [string, Value][]
+  /**
+   * Fields (listed last in `fields`) that live on the class, not the object, so every object of
+   * the class shares them: Python class attributes, JavaScript `static x` fields and prototype data.
+   */
+  fromClass?: string[]
 }
 // `id` (JavaScript only) names the object a list or dict is, so two variables holding
 // the same object can be told apart from two that hold equal copies.
@@ -247,4 +252,9 @@ export interface RunRequest {
   testFor?: string
   /** Arguments and answers that are linked lists or trees. */
   io?: NodeIo
+  /**
+   * Which problem the run is for, handed back with its results (useRunner's ranFor), so results
+   * from another problem are never taken for this one's, even when both test the same names.
+   */
+  tag?: string
 }

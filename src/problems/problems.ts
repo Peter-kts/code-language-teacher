@@ -1,4 +1,4 @@
-import type { Language, NodeIo } from '../types'
+import type { Language, NodeIo, RunCase } from '../types'
 import { EDGE_CASES } from './edgeCases'
 import { ADVANCED } from './sets/advanced'
 import { ALGORITHMS } from './sets/algorithms'
@@ -13,10 +13,11 @@ export interface TestCase {
   /** Accept the answer in any order (e.g. a pair of indexes). */
   unordered?: boolean
   /**
-   * JavaScript concept problems: code that uses the learner's function and returns
+   * Concept and object problems: code that uses the learner's function (or classes) and returns
    * what to check (a function body), for answers that are functions or need several calls.
+   * The object problems exist in both languages, so they give a version for each.
    */
-  run?: string
+  run?: Text
   /** What the case checks, in words, when it isn't plain arguments. */
   name?: string
 }
@@ -27,10 +28,25 @@ export type Text = string | Record<Language, string>
 /** The text in the given language. */
 export const say = (text: Text, language: Language) => (typeof text === 'string' ? text : text[language])
 
-export type ConceptTrack = 'js-concepts' | 'py-concepts'
+/** Test cases as the runners take them: a `run` written for both languages, in this one. */
+export const runCases = (tests: TestCase[], language: Language): RunCase[] =>
+  tests.map(({ run, ...t }) => (run === undefined ? t : { ...t, run: say(run, language) }))
+
+/** The concept tracks, each in its own language, and the object-oriented track, in both. */
+export type ConceptTrack = 'js-concepts' | 'py-concepts' | 'oop'
 
 /** The sections of the Python concept list, in the order they're meant to be learned. */
-export type ConceptGroup = 'predict' | 'functions' | 'builtins' | 'iteration' | 'collections' | 'classes'
+export type ConceptGroup =
+  | 'predict'
+  | 'functions'
+  | 'builtins'
+  | 'iteration'
+  | 'collections'
+  | 'classes'
+  | 'oop-warmup'
+  | 'oop-easy'
+  | 'oop-medium'
+  | 'oop-port'
 
 export const CONCEPT_GROUPS: { id: ConceptGroup; label: string }[] = [
   { id: 'predict', label: 'Predict the output' },
@@ -39,6 +55,11 @@ export const CONCEPT_GROUPS: { id: ConceptGroup; label: string }[] = [
   { id: 'iteration', label: 'Generators and iterators' },
   { id: 'collections', label: 'Collections and sorting' },
   { id: 'classes', label: 'Classes and dunder methods' },
+  // The object-oriented track (src/problems/oop.ts), building up to a design interview question.
+  { id: 'oop-warmup', label: 'Warm-ups: the parts of a class' },
+  { id: 'oop-easy', label: 'Easies: one small model each' },
+  { id: 'oop-medium', label: 'Mediums: a manager class' },
+  { id: 'oop-port', label: 'Capstone: the container port' },
 ]
 
 export type Difficulty = 'Warm-up' | 'Easy' | 'Medium' | 'Hard'
@@ -148,7 +169,13 @@ export interface Problem {
   /** `predict`: guess what the code prints, then step through it. `build`: write a function the tests check. */
   kind?: 'build' | 'predict'
   /** A predict problem's explanation, shown once the guess is in. */
-  explain?: string[]
+  explain?: Text[]
+  /**
+   * A worked answer the learner can open (the object problems), with `design`: why it is shaped
+   * that way, in plain words. The tests check that the answer passes.
+   */
+  answer?: Record<Language, string>
+  design?: Text[]
 }
 
 // The first set; the picker groups every problem by topic, easiest first.
