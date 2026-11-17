@@ -1027,6 +1027,94 @@ export const PYTHON_CARDS: SyntaxCard[] = [
       'Can some of the items add up to a target, using each one at most once? Keep track of which sums you can reach. Each new item can be added to every sum already reachable. A list of True and False for the sums 0 to target, walked from the top down so an item is not used twice, makes it O(n · target) instead of trying all 2ⁿ picks.',
     code: 'nums = [1, 5, 11, 5]\ntarget = 11\ncan = [False] * (target + 1)\ncan[0] = True                      # picking nothing adds up to 0\nfor n in nums:\n    for s in range(target, n - 1, -1):   # top down: each item once\n        if can[s - n]:\n            can[s] = True\nanswer = can[target]    # True: 11, or 1 + 5 + 5\n',
   },
+  {
+    id: "constructor",
+    title: "__init__ and self",
+    topic: 'functions',
+    level: 4,
+    questions: ['organize', 'remember'],
+    keywords: ['init', '__init__', 'self', 'constructor', 'attribute', 'object', 'instance', 'setup'],
+    explanation:
+      "Calling a class, like Dog(\"Rex\"), makes a new object and runs __init__ on it. Its first parameter, self, is that new object: self.name = name saves data on it. Every method takes self first, so it can read and change the object it was called on.",
+    code: "class Dog:\n    def __init__(self, name):\n        self.name = name          # saved on this dog\n\n    def speak(self):\n        return f\"{self.name} says woof\"\n\nrex = Dog(\"Rex\")\nline = rex.speak()   # \"Rex says woof\"\n",
+  },
+  {
+    id: "instance-vs-class",
+    title: "Instance vs class attributes",
+    topic: 'functions',
+    level: 4,
+    questions: ['remember', 'broke'],
+    keywords: ['class', 'attribute', 'instance', 'shared', 'static', 'manifest', 'self', 'gotcha', 'counter'],
+    explanation:
+      "self.x = ... in __init__ gives each object its own x. A name set in the class body belongs to the class and is shared by every object. That is right for a count of objects made, and a classic bug for a list: class Ship: manifest = [] gives every ship the same manifest. self.x reads the object first, then the class, but self.x = ... always writes on the object.",
+    code: "class Ship:\n    built = 0                 # one number for the whole class\n\n    def __init__(self, name):\n        self.name = name\n        self.manifest = []    # a new list for each ship\n        Ship.built += 1\n\na = Ship(\"Atlas\")\nb = Ship(\"Borealis\")\na.manifest.append(\"C1\")   # b.manifest is still []\n",
+  },
+  {
+    id: "composition",
+    title: "Composition (\"has a\")",
+    topic: 'functions',
+    level: 4,
+    questions: ['organize'],
+    keywords: ['composition', 'has', 'contains', 'holds', 'object', 'inside', 'design', 'part'],
+    explanation:
+      "Building an object out of other objects: a Truck has a list of Containers, a Port has a Yard and a Crane. The outer object holds the inner ones in its fields and asks them to do their part. Use it when one thing \"has a\" another; it is usually a better first choice than inheritance.",
+    code: "class Container:\n    def __init__(self, code, weight):\n        self.code = code\n        self.weight = weight\n\nclass Truck:\n    def __init__(self):\n        self.containers = []          # a truck has containers\n\n    def total_weight(self):\n        return sum(c.weight for c in self.containers)\n\nt = Truck()\nt.containers.append(Container(\"C1\", 10))\n",
+  },
+  {
+    id: "inheritance",
+    title: "Inheritance and polymorphism (\"is a\")",
+    topic: 'functions',
+    level: 4,
+    questions: ['organize'],
+    keywords: ['inheritance', 'subclass', 'super', 'parent', 'child', 'polymorphism', 'override', 'is', 'extends'],
+    explanation:
+      "class Circle(Shape) makes Circle a kind of Shape: it gets Shape's methods and can replace (override) some of them. super().__init__(...) runs the parent's setup. Calling the same method on different kinds of shape and getting each one's own version is polymorphism.",
+    code: "class Shape:\n    def describe(self):\n        return f\"area {self.area()}\"\n\nclass Square(Shape):\n    def __init__(self, side):\n        self.side = side\n\n    def area(self):\n        return self.side ** 2\n\nline = Square(3).describe()   # \"area 9\"\n",
+  },
+  {
+    id: "encapsulation",
+    title: "Encapsulation",
+    topic: 'functions',
+    level: 4,
+    questions: ['organize', 'decide'],
+    keywords: ['encapsulation', 'private', 'hide', 'rules', 'underscore', 'method', 'state', 'invariant'],
+    explanation:
+      "Keep an object's data and the rules about it together, and change the data only through its methods. Then every change is checked in one place. A leading underscore (self._balance, def _helper) tells other code \"this is internal, don't touch it\".",
+    code: "class Account:\n    def __init__(self):\n        self._balance = 0\n\n    def deposit(self, amount):\n        if amount <= 0:\n            raise ValueError(\"must be more than 0\")\n        self._balance += amount\n\n    def balance(self):\n        return self._balance\n",
+  },
+  {
+    id: "raise-errors",
+    title: "Raising errors",
+    topic: 'errors',
+    level: 4,
+    questions: ['broke', 'decide'],
+    keywords: ['raise', 'error', 'exception', 'valueerror', 'keyerror', 'try', 'except', 'refuse', 'invalid'],
+    explanation:
+      "raise ValueError(\"why\") stops the function at once and hands the problem to whoever called it. Raise when asked to do something impossible (withdraw too much, load a container that isn't there) instead of quietly doing nothing. Check first and raise before changing anything, so a refused call leaves things as they were. try/except catches an error.",
+    code: "def withdraw(balance, amount):\n    if amount > balance:\n        raise ValueError(\"not enough money\")\n    return balance - amount\n\ntry:\n    withdraw(10, 50)\nexcept ValueError as e:\n    message = str(e)   # \"not enough money\"\n",
+  },
+  {
+    id: "nouns-and-verbs",
+    title: "Word problem to classes",
+    topic: 'patterns',
+    level: 4,
+    questions: ['solve', 'organize'],
+    keywords: ['design', 'ood', 'oop', 'object', 'oriented', 'noun', 'verb', 'class', 'model', 'interview', 'word', 'problem'],
+    explanation:
+      "For an object-oriented design question, underline the nouns and the verbs. Nouns that hold data or do things become classes (Ship, Container, Yard); nouns that are just data become fields or plain lists (a manifest of codes). Verbs become methods on the class that owns the data they change (ship.take_off, port.arrive). Say this plan out loud before writing code.",
+    code: "# \"A ship has a manifest of containers. It comes into port and unloads them into the yard.\"\n# nouns: ship, manifest, container, port, yard   -> classes (manifest is just a list)\n# verbs: comes into port, unloads                -> port.arrive(ship), crane.unload(...)\nclass Ship:\n    def __init__(self, name, manifest):\n        self.name = name\n        self.manifest = list(manifest)\n",
+  },
+  {
+    id: "single-responsibility",
+    title: "One job per class",
+    topic: 'patterns',
+    level: 4,
+    questions: ['organize', 'solve'],
+    keywords: ['single', 'responsibility', 'srp', 'design', 'job', 'split', 'coordinator', 'manager', 'small'],
+    explanation:
+      "Give each class one job: a Yard stores containers, a Ship tracks its cargo, a Crane moves one container, a Port coordinates them. Small classes with one job are easier to explain, test and change. When a class keeps growing, look for a noun inside it that wants to be its own class.",
+    code: "class Yard:      # stores containers\n    pass\n\nclass Crane:     # moves one container between a ship and the yard\n    pass\n\nclass Port:      # coordinates: ships arrive, get worked, depart\n    def __init__(self):\n        self.yard = Yard()\n        self.crane = Crane()\n",
+  },
 ]
 
 /** Each language's glossary. */

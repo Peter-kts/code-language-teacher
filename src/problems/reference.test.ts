@@ -1,15 +1,15 @@
 import { spawnSync } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
 import { runTests, runTraced } from '../js/runtime'
-import type { RunCase, TestResult } from '../types'
-import { PROBLEMS, type Problem } from './problems'
+import type { Language, RunCase, TestResult } from '../types'
+import { PROBLEMS, runCases, type Problem } from './problems'
 import { REFERENCES } from './reference'
 
 // Every problem is checked in both languages: its worked answer passes every case and the
 // speed test, its slow answer runs out of steps, and its starters run without an error.
 // Python runs in CPython with the same tracer.py the browser loads into Pyodide.
 
-const cases = (p: Problem): RunCase[] => (p.speed ? [...p.tests, p.speed] : p.tests)
+const cases = (p: Problem, language: Language = 'javascript'): RunCase[] => (p.speed ? [...runCases(p.tests, language), p.speed] : runCases(p.tests, language))
 
 interface PyJob {
   code: string

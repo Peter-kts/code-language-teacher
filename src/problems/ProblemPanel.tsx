@@ -130,6 +130,7 @@ export function ProblemPanel({
           })}
         </ul>
       )}
+      {problem.answer && <WorkedAnswer problem={problem} language={language} solved={allPassed} />}
       {!concept && (
       <div className="cases">
         <span className="muted">Visualize case:</span>
@@ -295,9 +296,35 @@ function Predict({
         problem.explain?.map((para, i) => (
           <p key={i} className="explain">
             {i === 0 && <span className="muted">Why: </span>}
-            {para}
+            {say(para, language)}
           </p>
         ))}
+    </div>
+  )
+}
+
+/**
+ * The object problems' worked answer and the reasons behind its design. Hidden until asked for,
+ * so it doesn't give the game away; once the tests pass it is offered as "compare with".
+ */
+function WorkedAnswer({ problem, language, solved }: { problem: Problem; language: Language; solved: boolean }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="worked-answer">
+      <button className="chip" onClick={() => setOpen(!open)} aria-expanded={open}>
+        {open ? 'Hide the worked answer' : solved ? 'Compare with a worked answer' : 'Show a worked answer'}
+      </button>
+      {open && (
+        <>
+          {problem.design?.map((para, i) => (
+            <p key={i} className="explain">
+              {i === 0 && <span className="muted">Why this design: </span>}
+              {say(para, language)}
+            </p>
+          ))}
+          <pre className="worked-code">{problem.answer![language]}</pre>
+        </>
+      )}
     </div>
   )
 }

@@ -1295,3 +1295,41 @@ button.ref-chip.ref-step:hover:not(:disabled) { color: var(--source); background
 .chat-edits button { font-size: 0.75rem; padding: 0.1rem 0.6rem; }
 .chat-edits.undone { opacity: 0.6; border-color: var(--line); background: none; }
 .chat-edits.undone .chat-edits-title { color: var(--muted); }
+
+/* Objects (ObjectView.tsx): one card per object, what it holds drawn inside it. */
+.objects { margin-bottom: 1.4rem; }
+.objects .list-name .muted { font-weight: 400; font-size: 0.75rem; color: var(--faint); }
+.obj-root { margin: 0.5rem 0 0.9rem; }
+.obj-var { font-family: var(--font-mono); font-weight: 600; font-size: 0.85rem; color: var(--accent); margin-bottom: 0.25rem; }
+.obj-card {
+  --share-color: var(--line);
+  display: inline-block; vertical-align: top; min-width: 9rem; max-width: 100%;
+  border: 1.5px solid var(--line); border-radius: 6px; background: rgb(var(--bg-rgb) / 0.55);
+  font-family: var(--font-mono); font-size: 0.82rem; transition: border-color 0.2s, box-shadow 0.2s;
+}
+.obj-card[style] { border-color: var(--share-color); }
+.obj-card.new { border-color: var(--pass); box-shadow: 0 0 8px rgb(var(--pass-rgb) / 0.35); }
+.obj-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem; padding: 0.2rem 0.55rem; border-bottom: 1px solid var(--line); }
+.obj-cls { font-weight: 700; color: var(--text); }
+.obj-tag { color: var(--share-color); font-weight: 700; }
+.obj-also { color: var(--faint); font-size: 0.7rem; }
+.obj-row { display: flex; gap: 0.6rem; align-items: baseline; padding: 0.12rem 0.55rem; border-left: 2px solid transparent; }
+.obj-row.changed { border-left-color: var(--pass); background: rgb(var(--pass-rgb) / 0.09); }
+.obj-row.changed > .obj-field { color: var(--pass); }
+.obj-field { color: var(--muted); white-space: nowrap; }
+.obj-value { min-width: 0; color: var(--text); }
+.obj-class { border-top: 1px dashed var(--source); padding-bottom: 0.15rem; }
+.obj-class-label { padding: 0.15rem 0.55rem 0; font-size: 0.66rem; letter-spacing: 0.04em; color: var(--source); }
+.obj-coll { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem; }
+.obj-coll.stacked { flex-direction: column; align-items: flex-start; gap: 0.3rem; }
+.obj-coll.stacked > .obj-item { padding-left: 0.7rem; }
+.obj-item { display: inline-block; }
+.obj-bracket, .obj-key { color: var(--faint); }
+.obj-seen { margin-left: 0; }
+.obj-more { font-size: 0.75rem; }
+.worked-answer { margin: 0.6rem 0; }
+.worked-code {
+  margin: 0.5rem 0 0; padding: 0.6rem 0.75rem; max-height: 22rem; overflow: auto;
+  border: 1px solid var(--line); border-radius: 6px; background: rgb(var(--bg-rgb) / 0.55);
+  font-family: var(--font-mono); font-size: 0.78rem; line-height: 1.45; white-space: pre; color: var(--text);
+}

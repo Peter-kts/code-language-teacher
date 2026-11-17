@@ -486,13 +486,17 @@ export function runTests(source: string, name: string, cases: RunCase[], io?: No
   } catch (err) {
     return cases.map(() => ({ passed: false, got: null, error: errorText(err) }))
   }
+  // Several classes ("Container,Yard") come back as an object of them, and the tests' code gets each by name.
+  const names = name.split(',').map((n) => n.trim())
+  const given = names.length > 1 ? names.map((n) => (fn as Record<string, unknown> | undefined)?.[n]) : [fn]
+  const missing = names.find((_, i) => typeof given[i] !== 'function')
   return cases.map((c) => {
-    if (typeof fn !== 'function') return { passed: false, got: null, error: `define a function named ${name}` }
+    if (missing !== undefined) return { passed: false, got: null, error: `define a ${names.length > 1 ? 'class' : 'function'} named ${missing}` }
     const counted = () => (c.maxSteps !== undefined ? { steps: guard.steps } : {})
     try {
       const args = c.run ? [] : callArgs(c.args, io)
       guard.start(c.maxSteps)
-      const raw = c.run ? new Function(name, `"use strict";\n${c.run}`)(fn) : fn(...args)
+      const raw = c.run ? new Function(...names, `"use strict";\n${c.run}`)(...given) : (fn as (...a: unknown[]) => unknown)(...args)
       const stepsTaken = counted()
       guard.start()
       // A function that returns nothing gets undefined back, so it can't pass as an empty list or tree.
@@ -635,8 +639,46 @@ function nodeRef(obj: object, cls: string, id: number, nodes: Record<string, Nod
       const desc = Object.getOwnPropertyDescriptor(obj, k)
       if (desc && 'value' in desc && typeof desc.value !== 'function') data.fields.push([k, serialize(desc.value, 1)])
     }
+    // Data that lives on the class, shared by every object of it: `static manifest = []`, or
+    // something put on the prototype. Shown on each object so the sharing can be seen.
+    const shared = classData(obj)
+    if (shared.length) {
+      for (const [k, v] of shared) data.fields.push([k, serialize(v, 1)])
+      data.fromClass = shared.map(([k]) => k)
+    }
   }
   return { type: 'ref', id, cls }
+}
+
+const BUILT_IN_STATICS = new Set(['length', 'name', 'prototype', 'caller', 'arguments'])
+
+/**
+ * Plain data on an object's class and its parents: static fields (named `static x`, since the
+ * code reaches them as `Ship.x`) and data on the prototype (read as `this.x`). The object's own
+ * fields of the same name win, and methods and getters are left out.
+ */
+function classData(obj: object): [string, unknown][] {
+  const out: [string, unknown][] = []
+  const seen = new Set(Object.keys(obj))
+  for (let proto = Object.getPrototypeOf(obj); proto && proto !== Object.prototype; proto = Object.getPrototypeOf(proto)) {
+    const ctor = Object.prototype.hasOwnProperty.call(proto, 'constructor') ? proto.constructor : null
+    for (const k of Object.getOwnPropertyNames(proto)) {
+      if (k === 'constructor' || seen.has(k)) continue
+      const desc = Object.getOwnPropertyDescriptor(proto, k)
+      if (!desc || !('value' in desc) || typeof desc.value === 'function') continue
+      seen.add(k)
+      out.push([k, desc.value])
+    }
+    if (typeof ctor !== 'function') continue
+    for (const k of Object.getOwnPropertyNames(ctor)) {
+      if (BUILT_IN_STATICS.has(k) || seen.has(`static ${k}`)) continue
+      const desc = Object.getOwnPropertyDescriptor(ctor, k)
+      if (!desc || !('value' in desc) || typeof desc.value === 'function') continue
+      seen.add(`static ${k}`)
+      out.push([`static ${k}`, desc.value])
+    }
+  }
+  return out.slice(0, MAX_NODE_FIELDS)
 }
 
 /** The same number for the same object for the whole run (none outside a traced run). */

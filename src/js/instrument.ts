@@ -204,20 +204,28 @@ class Instrumenter {
     this.module = scopes
     this.current = scopes
     const body = this.statements(program.body, scopes, false)
-    // Hand the problem's function back from inside the block that declares it.
-    if (callName && /^[A-Za-z_$][\w$]*$/.test(callName)) {
+    // Hand the problem's function back from inside the block that declares it. Problems about
+    // several classes name them all ("Container,Yard"), and get an object of them back.
+    const names = (callName ?? '').split(',').map((n) => n.trim()).filter((n) => /^[A-Za-z_$][\w$]*$/.test(n))
+    const handBack = (name: string): Node =>
+      ({
+        type: 'ConditionalExpression',
+        test: {
+          type: 'BinaryExpression',
+          operator: '===',
+          left: { type: 'UnaryExpression', operator: 'typeof', prefix: true, argument: id(name) },
+          right: lit('function'),
+        },
+        consequent: id(name),
+        alternate: id('undefined'),
+      }) as Node
+    if (names.length === 1) body.push({ type: 'ReturnStatement', argument: handBack(names[0]) } as Node)
+    else if (names.length > 1) {
       body.push({
         type: 'ReturnStatement',
         argument: {
-          type: 'ConditionalExpression',
-          test: {
-            type: 'BinaryExpression',
-            operator: '===',
-            left: { type: 'UnaryExpression', operator: 'typeof', prefix: true, argument: id(callName) },
-            right: lit('function'),
-          },
-          consequent: id(callName),
-          alternate: id('undefined'),
+          type: 'ObjectExpression',
+          properties: names.map((n) => ({ type: 'Property', key: id(n), value: handBack(n), kind: 'init', computed: false, method: false, shorthand: false })),
         },
       } as Node)
     }

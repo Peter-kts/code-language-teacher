@@ -1,0 +1,11 @@
+
+const port = new Port()
+const atlas = new Ship("Atlas", "unload", ["C1", "C2"], [new Container("C1", 10), new Container("C2", 12)])
+const borealis = new Ship("Borealis", "load", ["C2"])
+port.arrive(atlas)
+port.arrive(borealis)
+port.process("Atlas")
+port.process("Borealis")
+port.depart("Atlas")
+console.log(port.yard.codes(), port.docked())
+console.log(port.log)

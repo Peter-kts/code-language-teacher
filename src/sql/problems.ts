@@ -6,7 +6,7 @@ import type { Cell, SqlTable } from './engine'
 // (ties, NULLs, empty tables); the expected result of every case comes from running `answer` on it,
 // so expected tables can never drift from the worked answer.
 
-export type SqlTopic = 'basics' | 'nulls' | 'joins' | 'grouping' | 'subqueries' | 'ctes' | 'windows' | 'text' | 'classics'
+export type SqlTopic = 'basics' | 'nulls' | 'joins' | 'grouping' | 'subqueries' | 'ctes' | 'windows' | 'text' | 'classics' | 'objects'
 
 export const SQL_TOPICS: { id: SqlTopic; label: string }[] = [
   { id: 'basics', label: 'Select and filter' },
@@ -18,6 +18,8 @@ export const SQL_TOPICS: { id: SqlTopic; label: string }[] = [
   { id: 'windows', label: 'Window functions' },
   { id: 'text', label: 'CASE, text and dates' },
   { id: 'classics', label: 'Interview classics' },
+  // The bonus step after the object-oriented port problems (src/problems/oop): the same port as tables.
+  { id: 'objects', label: 'From objects to tables (the port)' },
 ]
 
 export interface SqlCase {
@@ -106,6 +108,33 @@ const PRODUCTS = t('products', 'id INTEGER PRIMARY KEY, name TEXT, category TEXT
   [5, 'Notebook', 'Office', 4],
   [6, 'Short Stories', 'Books', 19.5],
   [7, 'Chair', 'Home', 120],
+])
+
+// ---------- The port from the object-oriented track, as tables ----------
+// Each Ship object is a row in ships; each Container a row in containers, where ship_id says which
+// ship it is on (NULL: in the yard); each ship's manifest list becomes rows in manifest.
+
+const SHIPS = t('ships', 'id INTEGER PRIMARY KEY, name TEXT, mode TEXT', [
+  [1, 'Atlas', 'unload'],
+  [2, 'Borealis', 'load'],
+  [3, 'Calm', 'load'],
+])
+
+const CONTAINERS = t('containers', 'code TEXT PRIMARY KEY, weight INTEGER, ship_id INTEGER REFERENCES ships(id)', [
+  ['C1', 10, 1],
+  ['C2', 12, 1],
+  ['C3', 7, null],
+  ['C4', 15, null],
+  ['C5', 9, 2],
+  ['C6', 11, null],
+])
+
+const MANIFEST = t('manifest', 'ship_id INTEGER REFERENCES ships(id), code TEXT REFERENCES containers(code)', [
+  [1, 'C1'],
+  [1, 'C2'],
+  [2, 'C4'],
+  [2, 'C5'],
+  [2, 'C6'],
 ])
 
 export const SQL_PLAYGROUND_TABLES: SqlTable[] = [EMPLOYEES, DEPARTMENTS, CUSTOMERS, ORDERS]
@@ -1366,5 +1395,91 @@ export const SQL_PROBLEMS: SqlProblem[] = [
     answer: 'SELECT email FROM customers\nUNION\nSELECT email FROM subscribers\nORDER BY email;',
     why: 'UNION removes duplicates across and within both lists (so cy@x.com shows once). UNION ALL is faster when you know there are none or want to keep them.',
     concepts: ['union'],
+  },
+
+  // ---------- From objects to tables (the port) ----------
+  {
+    id: 'sql-port-rows',
+    title: 'Port: objects become rows',
+    topic: 'objects',
+    difficulty: 'Easy',
+    statement: [
+      'The port from the Objects section, saved in a database instead of in memory. Each object becomes a row and each of its fields a column: a Container\'s code and weight are columns of `containers`, and its code is the primary key (the value that tells rows apart, like a dict key).',
+      'In the classes, the yard held containers in a dict. A table can\'t hold another table, so "where is this container?" becomes a column instead: `ship_id` holds the id of the ship it\'s on, or NULL when it\'s in the yard. A column that points at another table\'s key is a foreign key.',
+      'Return the `code` and `weight` of every container in the yard, heaviest first (by code when weights tie).',
+    ],
+    tables: [SHIPS, CONTAINERS],
+    cases: [
+      { name: 'the example' },
+      { name: 'an empty yard', rows: { containers: [['C1', 10, 1], ['C2', 5, 2]] } },
+      { name: 'equal weights go by code', rows: { containers: [['C9', 5, null], ['C2', 5, null], ['C7', 8, null], ['C1', 3, 1]] } },
+    ],
+    ordered: true,
+    hints: [
+      'In the yard means ship_id has no value: NULL.',
+      'NULL never equals anything, not even NULL, so `ship_id = NULL` matches nothing. Write `ship_id IS NULL`.',
+      'ORDER BY weight DESC, code.',
+    ],
+    answer: 'SELECT code, weight\nFROM containers\nWHERE ship_id IS NULL\nORDER BY weight DESC, code;',
+    why: 'In Python this was sorted(port.yard.containers.values(), ...). In the database the yard isn\'t a thing of its own; it\'s the rows with no ship. Objects are quick and simple while the program runs, but disappear when it stops; rows survive a restart and can answer questions nobody planned for.',
+    concepts: ['keys', 'is-null', 'order-by', 'objects-to-tables'],
+  },
+  {
+    id: 'sql-port-manifest',
+    title: 'Port: a list becomes a table',
+    topic: 'objects',
+    difficulty: 'Easy',
+    statement: [
+      'In Python each Ship had `self.manifest = [...]`, a list of container codes. A row can\'t hold a list, so the list moves into a table of its own: `manifest` has one row per code, with a `ship_id` pointing back at the ship it belongs to. That is how "a ship has many codes" (a one-to-many relationship) is stored.',
+      'For every ship, return its `name` and `manifest_size`, the number of codes on its manifest, ordered by name. Ships with an empty manifest show 0.',
+    ],
+    tables: [SHIPS, MANIFEST],
+    cases: [
+      { name: 'the example' },
+      { name: 'no manifests at all', rows: { manifest: [] } },
+      { name: 'one ship, many codes', rows: { ships: [[7, 'Delta', 'load']], manifest: [[7, 'A'], [7, 'B'], [7, 'C']] } },
+    ],
+    ordered: true,
+    hints: [
+      'Join ships to manifest on manifest.ship_id = ships.id.',
+      'A plain JOIN drops ships with no manifest rows. LEFT JOIN keeps every ship.',
+      'COUNT(m.code) counts only the matched rows, so a ship with none gets 0. COUNT(*) would give it 1.',
+    ],
+    answer:
+      'SELECT s.name, COUNT(m.code) AS manifest_size\nFROM ships s\nLEFT JOIN manifest m ON m.ship_id = s.id\nGROUP BY s.id, s.name\nORDER BY s.name;',
+    why: 'In Python: [(ship.name, len(ship.manifest)) for ship in ships]. In SQL, the list lives in its own table and the join puts it back together. The shared-manifest bug can\'t happen here: every manifest row says which ship it belongs to.',
+    concepts: ['keys', 'left-join', 'count', 'group-by', 'objects-to-tables'],
+  },
+  {
+    id: 'sql-port-remaining',
+    title: 'Port: remaining() as a query',
+    topic: 'objects',
+    difficulty: 'Medium',
+    statement: [
+      'The same question two ways. In Python, `ship.remaining()` listed the manifest codes still waiting: for an unloading ship the ones still on board, for a loading ship the ones not on board yet.',
+      'Write it as one query for every ship at once: return `name` (the ship) and `code` for each manifest code still waiting, ordered by name, then code. Every code on a manifest has a row in `containers`.',
+    ],
+    tables: [SHIPS, CONTAINERS, MANIFEST],
+    cases: [
+      { name: 'the example' },
+      {
+        name: 'everything already moved',
+        rows: { containers: [['C1', 10, null], ['C2', 12, null], ['C4', 15, 2], ['C5', 9, 2], ['C6', 11, 2]] },
+      },
+      {
+        name: "a loading ship whose container is on another ship still waits for it",
+        rows: { ships: [[1, 'Atlas', 'unload'], [2, 'Borealis', 'load']], containers: [['C1', 10, 1]], manifest: [[1, 'C1'], [2, 'C1']] },
+      },
+    ],
+    ordered: true,
+    hints: [
+      'Start from manifest, and join ships (for the name and mode) and containers (for where each code is now).',
+      "Unloading ships wait for codes still on board: `s.mode = 'unload' AND c.ship_id = s.id`.",
+      "Loading ships wait for codes not on board yet: `s.mode = 'load' AND c.ship_id IS NOT s.id` (IS NOT treats NULL as a value, so a container in the yard counts).",
+    ],
+    answer:
+      "SELECT s.name, m.code\nFROM manifest m\nJOIN ships s ON s.id = m.ship_id\nJOIN containers c ON c.code = m.code\nWHERE (s.mode = 'unload' AND c.ship_id = s.id)\n   OR (s.mode = 'load' AND c.ship_id IS NOT s.id)\nORDER BY s.name, m.code;",
+    why: 'The method answered for one ship by looping over its manifest; the query answers for every ship in one go, and the database can use indexes to do it fast on millions of rows. In real programs both live together: classes for the rules, a database to keep the data. A library that turns rows into objects and back is called an ORM.',
+    concepts: ['inner-join', 'keys', 'where', 'objects-to-tables'],
   },
 ]

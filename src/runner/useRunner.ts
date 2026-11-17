@@ -39,7 +39,7 @@ export function useRunner(request: RunRequest, language: Language, enabled = tru
   const [trace, setTrace] = useState<GoodTrace | null>(null)
   const [error, setError] = useState<CodeError | null>(null)
   const [tests, setTests] = useState<TestResult[] | null>(null)
-  // The function the trace and tests above called, so a caller can tell they're from another problem.
+  // The problem (or else the function) the trace and tests above ran for, so a caller can tell they're from another problem.
   const [ranFor, setRanFor] = useState<string | null>(null)
   const workerRef = useRef<Worker | null>(null)
   const latestId = useRef(0)
@@ -91,7 +91,7 @@ export function useRunner(request: RunRequest, language: Language, enabled = tru
       const id = ++latestId.current
       const req = JSON.parse(requestKey) as RunRequest
       latestCode.current = req.code
-      latestCall.current = req.call?.name ?? req.testFor ?? null
+      latestCall.current = req.tag ?? req.call?.name ?? req.testFor ?? null
       if (statusRef.current !== 'loading') setStatus('running')
       workerRef.current?.postMessage({ id, ...req } satisfies WorkerRequest)
       window.clearTimeout(timeoutRef.current)

@@ -174,6 +174,21 @@ def _refs(serialized, out):
     return out
 
 
+def _class_data(cls, own):
+    """The class's (and its parents') plain data attributes an object reads unless it has its own."""
+    out = []
+    seen = set(own)
+    for c in cls.__mro__:
+        if c is object or c.__module__ != "__main__":
+            continue
+        for k, v in vars(c).items():
+            if k in seen or k.startswith("__") or callable(v) or isinstance(v, (staticmethod, classmethod, property)):
+                continue
+            seen.add(k)
+            out.append((k, v))
+    return out[:MAX_NODE_FIELDS]
+
+
 class _Heap:
     """The class instances one snapshot reaches, by a number that stays the same for the whole run."""
 
@@ -194,11 +209,19 @@ class _Heap:
         key = str(n)
         if key not in self.nodes and len(self.nodes) < MAX_NODES:
             self.nodes[key] = None  # placeholder, so a cycle stops here
-            fields = list(getattr(obj, "__dict__", {}).items())[:MAX_NODE_FIELDS]
-            self.nodes[key] = {
+            own = getattr(obj, "__dict__", {})
+            fields = list(own.items())[:MAX_NODE_FIELDS]
+            node = {
                 "cls": type(obj).__name__,
                 "fields": [[k, _serialize(v, 1, self)] for k, v in fields if not k.startswith("__")],
             }
+            # Data that lives on the class (`manifest = []` in the class body), shared by every
+            # object of it, unless the object has its own of that name.
+            shared = _class_data(type(obj), own)
+            if shared:
+                node["fields"] += [[k, _serialize(v, 1, self)] for k, v in shared]
+                node["fromClass"] = [k for k, _ in shared]
+            self.nodes[key] = node
         return {"type": "ref", "id": n, "cls": type(obj).__name__}
 
 
@@ -1049,10 +1072,14 @@ def run_tests(source, name, cases, max_seconds=2.0, node_io=None):
             exec(compile(source, USER_FILENAME, "exec"), user_globals)
         except Exception as exc:  # noqa: BLE001
             return json.dumps([{"passed": False, "got": None, "error": f"{type(exc).__name__}: {exc}"}] * len(cases))
-        func = user_globals.get(name)
+        # Problems about several classes name them all ("Container,Yard"); each must be defined.
+        names = [n.strip() for n in name.split(",")]
+        func = user_globals.get(names[0])
+        missing = next((n for n in names if not callable(user_globals.get(n))), None)
         for case in cases:
-            if not callable(func):
-                results.append({"passed": False, "got": None, "error": f"define a function named {name}"})
+            if missing is not None:
+                kind = "class" if len(names) > 1 else "function"
+                results.append({"passed": False, "got": None, "error": f"define a {kind} named {missing}"})
                 continue
             deadline = time.monotonic() + max_seconds
             limit = case.get("maxSteps")

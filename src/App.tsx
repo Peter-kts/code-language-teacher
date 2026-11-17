@@ -22,11 +22,12 @@ import { loadSavedData, saveData, withSavedData } from './chat/savedData'
 import { PointerFlash, PointerTour, type Pointing } from './chat/PointerTour'
 import type { Ref, RefContext, TourStop, ViewSummary } from './chat/refs'
 import { CARDS } from './syntax/cards'
-import { CONCEPT_GROUPS, DIFFICULTIES, PROBLEM_TOPICS, PROBLEMS, type Problem } from './problems/problems'
+import { CONCEPT_GROUPS, DIFFICULTIES, PROBLEM_TOPICS, PROBLEMS, runCases, type Problem } from './problems/problems'
 import { progressFor } from './problems/progress'
 import { ProblemPanel } from './problems/ProblemPanel'
 import { loadSolutions, saveSolution, type Solutions } from './problems/solutions'
 import { CONCEPTS } from './problems/concepts'
+import { OOP_PROBLEMS } from './problems/oop'
 import { commandFor, focusKind, withShortcut, type Command } from './shortcuts'
 import { ShortcutsDialog } from './ShortcutsDialog'
 import { stepAfterRerun } from './timeline'
@@ -93,11 +94,11 @@ function savedLanguage(): Language {
 const starterCode = (): Record<Language, Record<string, string>> => ({
   python: {
     [PLAYGROUND]: STARTERS.python,
-    ...Object.fromEntries([...PROBLEMS, ...CONCEPTS.python].map((p) => [p.id, p.starters.python])),
+    ...Object.fromEntries([...PROBLEMS, ...CONCEPTS.python, ...OOP_PROBLEMS].map((p) => [p.id, p.starters.python])),
   },
   javascript: {
     [PLAYGROUND]: STARTERS.javascript,
-    ...Object.fromEntries([...PROBLEMS, ...CONCEPTS.javascript].map((p) => [p.id, p.starters.javascript])),
+    ...Object.fromEntries([...PROBLEMS, ...CONCEPTS.javascript, ...OOP_PROBLEMS].map((p) => [p.id, p.starters.javascript])),
   },
 })
 
@@ -207,7 +208,7 @@ export default function App() {
   }, [look])
   // Solved problems in the current language, for the focus theme's progress meter.
   const progress = useMemo(
-    () => (sqlOn ? progressFor(solutions, 'sql', SQL_PROBLEMS) : progressFor(solutions, language, [...PROBLEMS, ...CONCEPTS[language]])),
+    () => (sqlOn ? progressFor(solutions, 'sql', SQL_PROBLEMS) : progressFor(solutions, language, [...PROBLEMS, ...CONCEPTS[language], ...OOP_PROBLEMS])),
     [sqlOn, solutions, language],
   )
   const toggleBackground = () => {
@@ -224,7 +225,10 @@ export default function App() {
   const [caseIndex, setCaseIndex] = useState(0)
   const layout = usePaneLayout()
   const [sidePanel, setSidePanel] = useState<'chat' | 'history' | 'cards'>('chat')
-  const problem: Problem | undefined = PROBLEMS.find((p) => p.id === mode) ?? CONCEPTS[language].find((p) => p.id === mode)
+  const problem: Problem | undefined =
+    PROBLEMS.find((p) => p.id === mode) ?? CONCEPTS[language].find((p) => p.id === mode) ?? OOP_PROBLEMS.find((p) => p.id === mode)
+  // A problem from the current language's concept track is open (the object track has its own picker).
+  const conceptOpen = !!problem?.track && problem.track !== 'oop'
   // Predict problems keep the output and steps covered until the learner has guessed (or skipped).
   const [revealed, setRevealed] = useState<Set<string>>(() => new Set())
   const covered = problem?.kind === 'predict' && !revealed.has(problem.id)
@@ -248,18 +252,19 @@ export default function App() {
     ? { code }
     : problem.track
       ? problem.tests.length
-        ? { code, tests: problem.tests, testFor: problem.functionName }
-        : { code }
+        ? { code, tests: runCases(problem.tests, language), testFor: problem.functionName, tag: problem.id }
+        : { code, tag: problem.id }
       : {
           code,
           call: { name: problem.functionName, args: problem.tests[caseIndex].args },
           // The speed test (a big input with a step budget) runs after the ordinary cases.
-          tests: problem.speed ? [...problem.tests, problem.speed] : problem.tests,
+          tests: problem.speed ? [...runCases(problem.tests, language), problem.speed] : runCases(problem.tests, language),
           ...(problem.io && { io: problem.io }),
+          tag: problem.id,
         }
   const { status, trace, error, tests, ranFor } = useRunner(request, language, !sqlOn)
   // Right after switching problems, the last results are still the old problem's until the new run lands.
-  const resultsFresh = problem !== undefined && (ranFor ?? '') === problem.functionName
+  const resultsFresh = problem !== undefined && ranFor === problem.id
   // trace.code is the exact source those tests ran, even if the editor has changed since. Both languages
   // share function names, so also check the run was in this language (a switch shows the old one briefly).
   const solvedCode =
@@ -676,8 +681,8 @@ export default function App() {
                 })}
               </select>
               <select
-                className={problem?.track ? 'problem-select concept-select active' : 'problem-select concept-select'}
-                value={problem?.track ? problem.id : ''}
+                className={conceptOpen ? 'problem-select concept-select active' : 'problem-select concept-select'}
+                value={conceptOpen ? problem.id : ''}
                 onChange={(e) => openProblem(e.target.value)}
                 aria-label={language === 'python' ? 'Python concept' : 'JavaScript concept'}
                 title={
@@ -686,12 +691,26 @@ export default function App() {
                     : 'How JavaScript itself behaves: closures, references, array methods'
                 }
               >
-                {!problem?.track && (
+                {!conceptOpen && (
                   <option value="" disabled>
                     {language === 'python' ? 'Python' : 'JS'} concepts ({CONCEPTS[language].length})
                   </option>
                 )}
                 <ConceptOptions problems={CONCEPTS[language]} solved={solutions[language]} />
+              </select>
+              <select
+                className={problem?.track === 'oop' ? 'problem-select concept-select active' : 'problem-select concept-select'}
+                value={problem?.track === 'oop' ? problem.id : ''}
+                onChange={(e) => openProblem(e.target.value)}
+                aria-label="Object-oriented problem"
+                title="Object-oriented design: turn a word problem into classes, from a first class up to an interview question"
+              >
+                {problem?.track !== 'oop' && (
+                  <option value="" disabled>
+                    Objects ({OOP_PROBLEMS.length})
+                  </option>
+                )}
+                <ConceptOptions problems={OOP_PROBLEMS} solved={solutions[language]} />
               </select>
             </nav>
             )}

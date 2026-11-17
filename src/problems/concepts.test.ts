@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { runTests, runTraced } from '../js/runtime'
-import { PROBLEMS } from './problems'
+import { PROBLEMS, runCases } from './problems'
 import { JS_CONCEPTS } from './concepts'
 import { checkGuess } from './guess'
 
@@ -29,9 +29,9 @@ describe('JavaScript concept problems', () => {
 
   it('fail their tests until solved, and pass once solved', () => {
     for (const p of JS_CONCEPTS.filter((p) => p.kind === 'build')) {
-      const before = runTests(p.starters.javascript, p.functionName, p.tests)
+      const before = runTests(p.starters.javascript, p.functionName, runCases(p.tests, 'javascript'))
       expect(before.some((r) => !r.passed), p.id).toBe(true)
-      const after = runTests(SOLUTIONS[p.id], p.functionName, p.tests)
+      const after = runTests(SOLUTIONS[p.id], p.functionName, runCases(p.tests, 'javascript'))
       expect(after.filter((r) => !r.passed), p.id).toEqual([])
     }
   })

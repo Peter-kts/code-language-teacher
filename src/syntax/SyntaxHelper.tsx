@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Subject } from '../types'
 import { PROBLEMS } from '../problems/problems'
 import { CONCEPTS } from '../problems/concepts'
+import { OOP_PROBLEMS } from '../problems/oop'
 import { SQL_PROBLEMS } from '../sql/problems'
 import { SQL_CARDS, SQL_LEVELS, SQL_QUESTIONS, SQL_TOPICS } from '../sql/cards'
 import { CARDS, CODE_GROUPS, groupCards, searchCards, type GroupBy, type GroupLists, type SyntaxCard } from './cards'
@@ -11,7 +12,7 @@ const SQL_GROUPS: GroupLists = { topics: SQL_TOPICS, levels: SQL_LEVELS, questio
 /** The problems that practice a glossary entry, as id and title. Each concept track only exists in its own language. */
 function practiceFor(language: Subject, id: string): { id: string; title: string }[] {
   if (language === 'sql') return SQL_PROBLEMS.filter((p) => p.concepts.includes(id))
-  return [...PROBLEMS, ...CONCEPTS[language]].filter((p) => p.concepts[language].includes(id))
+  return [...PROBLEMS, ...CONCEPTS[language], ...OOP_PROBLEMS].filter((p) => p.concepts[language].includes(id))
 }
 
 const GROUP_BYS: { id: GroupBy; label: string }[] = [

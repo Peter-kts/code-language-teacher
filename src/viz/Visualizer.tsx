@@ -5,6 +5,8 @@ import { containerChanges, scalarChanges, stepRoles, type DeltaPart, type Plans,
 import { formatValue, functionName, nodeText } from './format'
 import { buildNodeGraph } from './nodes'
 import { NodeView } from './NodeView'
+import { ObjectView } from './ObjectView'
+import { buildObjectScene, holdsObjects, isObjectModel } from './objects'
 import { placePointers, type PlacedPointer } from './pointers'
 import { GraphView, HeapView, IntervalView, type GraphMarks } from './ShapeViews'
 import {
@@ -191,12 +193,16 @@ function Variables({
   const colorOf = (label: string) => POINTER_COLORS[labels.indexOf(label) % POINTER_COLORS.length]
   // Only color variables that are drawn as an arrow right now.
   const shown = new Set(Object.values(placed).flatMap((ps) => ps.map((p) => p.label)))
-  const entries = Object.entries(step.vars)
+  const allEntries = Object.entries(step.vars)
   // Heap objects (a MinHeap) are drawn as their heap, not in the node drawing.
   const heapIds = heapNodeIds(step)
   const heapOwned = heapLists(step)
   const heapNames = new Set([...(plans?.heaps ?? []), ...heapOwned.filter((h) => !h.owner).map((h) => h.name)])
-  const graph = buildNodeGraph(step, prevStep, heapIds)
+  // Plain objects (ships, accounts) are drawn as cards; list and tree nodes keep their drawing.
+  const objectScene = isObjectModel(step, heapIds) ? buildObjectScene(step, prevStep, heapIds) : null
+  const graph = objectScene ? null : buildNodeGraph(step, prevStep, heapIds)
+  // Variables holding objects are drawn inside the object cards, so the rest leave them out.
+  const entries = objectScene ? allEntries.filter(([, v]) => !holdsObjects(v)) : allEntries
   const nodeNames = [...new Set(Object.values(graph?.names ?? {}).flat())]
   const nameColor = (name: string) => (labels.includes(name) ? colorOf(name) : POINTER_COLORS[Math.max(0, nodeNames.indexOf(name)) % POINTER_COLORS.length])
   const shared = sharedObjects(step.vars)
@@ -262,6 +268,7 @@ function Variables({
   return (
     <>
       {graph && <NodeView graph={graph} language={language} colorOf={nameColor} />}
+      {objectScene && <ObjectView scene={objectScene} language={language} notes={(name) => notes(name)} />}
       {heapOwned
         // Inside the heap's own methods a local variable (`a = this.items`) already draws it.
         .filter((h) => h.owner && !heapOwned.some((o) => !o.owner))
@@ -394,7 +401,7 @@ function Variables({
           })}
         </div>
       )}
-      {entries.length === 0 && <p className="muted">No variables yet.</p>}
+      {allEntries.length === 0 && <p className="muted">No variables yet.</p>}
     </>
   )
 }
